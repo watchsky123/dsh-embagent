@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "px_per_mm": 3.7795,
+  "mismatches": [],
+  "not_verified": [],
+  "summary": {
+    "mismatches": 0,
+    "errors": 0,
+    "warnings": 0,
+    "unverified": 0,
+    "refs": []
+  },
+  "note": "未采购/无数据进 not_verified，不当作矛盾；矛盾必须有两侧数字"
+}

@@ -1,0 +1,4 @@
+Reference,Value,Footprint,LCSC
+R1,10k,Resistor_SMD:R_0603,C25804
+Q1,2N7002,Package_TO_SOT_SMD:SOT-23,C8545
+J1,Battery,Connector_JST:JST_PH_S2,C131337

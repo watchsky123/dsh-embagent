@@ -1,0 +1,170 @@
+/**
+ * Host → Python 的唯一通道。
+ *
+ * 设计纪律（与 hwforge 宿主半同一条）：
+ *
+ * 1. **不重写判定。** 模型、检查、预算、闸门全在 Python（`hw_velxio.design`），
+ *    这里只做进程调用与 JSON 解析。TS 侧再写一份就是第二个事实源。
+ * 2. **不把失败变成空成功。** 三种状态原样透传：`ok` / `not_ready`（前置缺失）
+ *    / `failed`（跑了但出错）。解析不出 JSON 也是 `failed`，绝不当成 `{}`。
+ * 3. **一次调用一行 JSON。** 契约来自 `hwforge.blocks_cli`，两边一致。
+ *
+ * @module dsh-hw-velxio/bridge
+ */
+
+import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+export type Status = 'ok' | 'not_ready' | 'failed'
+
+export interface BridgeResult {
+  readonly status: Status
+  readonly findings?: readonly string[]
+  readonly wrote?: readonly string[]
+  readonly [key: string]: unknown
+}
+
+/** 插件目录（`dist/` 的上一级）。 */
+function moduleDir(): string | null {
+  try {
+    const url = (import.meta as { url?: unknown }).url
+    if (typeof url !== 'string' || !url.startsWith('file:')) return null
+    return dirname(fileURLToPath(url))
+  } catch {
+    return null
+  }
+}
+
+/** 仓库根：同时能找到 `hw_velxio/bridge.py` 与（通常）`hwforge/` 的目录。 */
+export function repoRoot(): string {
+  const candidates: string[] = []
+  const push = (value: string | undefined): void => {
+    if (value !== undefined && value !== '') candidates.push(resolve(value))
+  }
+  push(process.env.HW_VELXIO_ROOT)
+  const here = moduleDir()
+  if (here !== null) {
+    push(join(here, '..'))
+    push(join(here, '..', '..'))
+    push(join(here, '..', '..', '..'))
+  }
+  push(process.cwd())
+  for (const candidate of candidates) {
+    if (existsSync(join(candidate, 'hw_velxio', 'bridge.py'))) return candidate
+  }
+  return candidates[0] ?? process.cwd()
+}
+
+/** Python 解释器。允许用环境变量覆盖（虚拟环境/多版本共存）。 */
+export function pythonExecutable(): string {
+  const configured = process.env.HW_VELXIO_PYTHON
+  if (configured !== undefined && configured !== '') return configured
+  return process.platform === 'win32' ? 'python' : 'python3'
+}
+
+export interface SpawnOptions {
+  /** 默认 120s；检查大板会慢一些，但不要无限等。 */
+  readonly timeoutMs?: number
+  /** 追加到子进程环境（例如传入 stdin 之外的数据用不到，留作扩展）。 */
+  readonly env?: NodeJS.ProcessEnv
+}
+
+/**
+ * 跑一个 `python -m <module> ...` 并解析最后一行 JSON。
+ *
+ * stdout 里可能有其它行（Python 的警告、库的 print），所以取**最后一行可解析
+ * 的 JSON**而不是第一行；解析失败时把 stderr 尾部带回去，让面板显示真正原因。
+ */
+export function runPython(
+  module: string,
+  args: readonly string[],
+  options: SpawnOptions = {},
+): Promise<BridgeResult> {
+  const cwd = repoRoot()
+  const timeoutMs = options.timeoutMs ?? 120_000
+  return new Promise((resolvePromise) => {
+    try {
+      execFile(
+      pythonExecutable(),
+      ['-m', module, ...args],
+      {
+        cwd,
+        timeout: timeoutMs,
+        maxBuffer: 32 * 1024 * 1024,
+        windowsHide: true,
+        env: {
+          ...process.env,
+          PYTHONIOENCODING: 'utf-8',
+          PYTHONUTF8: '1',
+          ...options.env,
+        },
+      },
+        (error, stdout, stderr) => {
+          const parsed = parseLastJson(stdout)
+          if (parsed !== null) {
+            const status = normaliseStatus(parsed)
+            resolvePromise({ ...parsed, status })
+            return
+          }
+          const detail = String(stderr || '').trim()
+          const tail = detail.length > 1500 ? detail.slice(-1500) : detail
+          resolvePromise({
+            status: 'failed',
+            findings: [
+              error !== null && error !== undefined
+                ? `Python 调用失败：${error.message}`
+                : `Python 没有输出可解析的 JSON（module=${module}）`,
+              tail,
+            ].filter((line) => line !== ''),
+          })
+        },
+      )
+    } catch (error) {
+      // `spawn` 可以**同步**抛（EPERM/ENOENT），不接住就是未处理的 rejection，
+      // 客户端会看到"读取中"永远不结束。
+      resolvePromise({
+        status: 'failed',
+        findings: [
+          `无法启动 Python（${pythonExecutable()}）：`
+          + (error instanceof Error ? error.message : String(error)),
+          `工作目录：${cwd}`,
+        ],
+      })
+    }
+  })
+}
+
+function normaliseStatus(payload: Record<string, unknown>): Status {
+  const raw = payload.status
+  if (raw === 'ok' || raw === 'not_ready' || raw === 'failed') return raw
+  return 'failed'
+}
+
+function parseLastJson(stdout: string): Record<string, unknown> | null {
+  const lines = stdout.trim().split(/\r?\n/)
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]?.trim() ?? ''
+    if (!line.startsWith('{')) continue
+    try {
+      const parsed = JSON.parse(line) as unknown
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      // 继续往前找：可能是 Python 打了一行带大括号的日志
+    }
+  }
+  return null
+}
+
+/** 规范模型入口（`hw_velxio.design_cli`）。 */
+export function design(...args: string[]): Promise<BridgeResult> {
+  return runPython('hw_velxio.design_cli', args)
+}
+
+/** hwforge 积木 / Velxio HTTP 能力入口（`hw_velxio.bridge`）。 */
+export function bridge(...args: string[]): Promise<BridgeResult> {
+  return runPython('hw_velxio.bridge', args)
+}

@@ -1,0 +1,121 @@
+{
+  "schema": "hw_velxio.design/1",
+  "units": "mm",
+  "id": "002-sensor-node",
+  "title": "sensor-node",
+  "board": {
+    "kind": "kicad",
+    "name": "sensor-node",
+    "outline": [
+      [
+        0.0,
+        30.0
+      ],
+      [
+        40.0,
+        30.0
+      ],
+      [
+        40.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0
+      ]
+    ],
+    "size_mm": {
+      "w": 40.0,
+      "h": 30.0
+    },
+    "thickness_mm": 1.6,
+    "mount_holes": [],
+    "px_per_mm": 3.7795
+  },
+  "parts": [
+    {
+      "ref": "R1",
+      "kind": "Resistor_SMD:R_0603",
+      "label": "10k",
+      "role": "component",
+      "size_mm": {
+        "w": 1.6,
+        "h": 0.8,
+        "d": 0.0
+      },
+      "physical_source": "derived",
+      "placement": {
+        "x_mm": 9.2,
+        "y_mm": 19.6,
+        "z_mm": 0.0,
+        "rotation_z": 90,
+        "mount": "board"
+      },
+      "lcsc": "C25804",
+      "electrical": {
+        "footprint": "Resistor_SMD:R_0603"
+      }
+    },
+    {
+      "ref": "Q1",
+      "kind": "Package_TO_SOT_SMD:SOT-23",
+      "label": "2N7002",
+      "role": "component",
+      "size_mm": {
+        "w": 3.0,
+        "h": 3.2,
+        "d": 0.0
+      },
+      "physical_source": "derived",
+      "placement": {
+        "x_mm": 23.5,
+        "y_mm": 16.4,
+        "z_mm": 0.0,
+        "rotation_z": 0,
+        "mount": "board"
+      },
+      "lcsc": "C8545",
+      "electrical": {
+        "footprint": "Package_TO_SOT_SMD:SOT-23"
+      }
+    },
+    {
+      "ref": "J1",
+      "kind": "Connector_JST:JST_PH_S2",
+      "label": "Battery",
+      "role": "component",
+      "size_mm": {
+        "w": 6.0,
+        "h": 4.0,
+        "d": 0.0
+      },
+      "physical_source": "derived",
+      "placement": {
+        "x_mm": 17.0,
+        "y_mm": -0.5,
+        "z_mm": 0.0,
+        "rotation_z": 0,
+        "mount": "board"
+      },
+      "lcsc": "C131337",
+      "electrical": {
+        "footprint": "Connector_JST:JST_PH_S2"
+      }
+    }
+  ],
+  "nets": [],
+  "wires": [],
+  "meta": {
+    "source": "kicad-pcb",
+    "file": "sensor-node.kicad_pcb",
+    "origin": {
+      "x_mm": 0.0,
+      "y_mm": 0.0
+    }
+  },
+  "warnings": [
+    "R1: 高度未知（PCB 文件不含 3D 高度），3D 按薄片显示",
+    "Q1: 高度未知（PCB 文件不含 3D 高度），3D 按薄片显示",
+    "J1: 高度未知（PCB 文件不含 3D 高度），3D 按薄片显示"
+  ]
+}

@@ -1,0 +1,25 @@
+# 依赖与构建产物：可由 `npm install` / `npm run build` 复现，不入库。
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Python 字节码与缓存
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 测试与临时目录（tests 会写 _tmp/fab-test）
+_tmp/
+
+# 制造包是 design.json 的导出物，随导出生灭；工程本身（project/<id>/）才是
+# 交付物，按 hwforge 的同一条规矩入库。
+project/*/fab/
+
+# 编辑器/系统噪音
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

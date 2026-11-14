@@ -1,0 +1,49 @@
+[
+  {
+    "actor": "cli",
+    "parent_hash": "genesis",
+    "payload": {
+      "board": "kicad",
+      "title": "KiCad 传感器节点"
+    },
+    "payload_hash": "371b2d40adba3860",
+    "seq": 1,
+    "ts": "2026-11-14T12:37:48+00:00",
+    "type": "design.created"
+  },
+  {
+    "actor": "cli",
+    "parent_hash": "371b2d40adba3860",
+    "payload": {
+      "file": "hw_velxio/examples/kicad/sensor-node.kicad_pcb",
+      "parts": 3
+    },
+    "payload_hash": "b76e5ff0ab7c9f10",
+    "seq": 2,
+    "ts": "2026-11-14T12:37:48+00:00",
+    "type": "design.imported"
+  },
+  {
+    "actor": "cli",
+    "parent_hash": "b76e5ff0ab7c9f10",
+    "payload": {
+      "failed": 2,
+      "ok": false
+    },
+    "payload_hash": "d34c995956ba94ca",
+    "seq": 3,
+    "ts": "2026-11-14T12:37:48+00:00",
+    "type": "checks.run"
+  },
+  {
+    "actor": "cli",
+    "parent_hash": "d34c995956ba94ca",
+    "payload": {
+      "mismatches": 0
+    },
+    "payload_hash": "3082daee6bb7f778",
+    "seq": 4,
+    "ts": "2026-11-14T12:37:49+00:00",
+    "type": "crosscheck.run"
+  }
+]

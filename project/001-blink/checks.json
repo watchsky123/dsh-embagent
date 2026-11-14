@@ -1,0 +1,132 @@
+{
+  "ok": true,
+  "pitch_mm": 0.5,
+  "space": {
+    "dims_mm": [
+      82.58,
+      63.34,
+      12.0
+    ],
+    "dims_voxels": [
+      166,
+      127,
+      24
+    ],
+    "occupied_voxels": 3565,
+    "placements": 3
+  },
+  "findings": [
+    {
+      "check": "space.overlap",
+      "ok": true,
+      "severity": "info",
+      "refs": [],
+      "measured": 0,
+      "limit": 0,
+      "message": "没有实体重叠",
+      "fix": {}
+    },
+    {
+      "check": "space.keepout",
+      "ok": true,
+      "severity": "info",
+      "refs": [],
+      "measured": 0,
+      "limit": 0,
+      "message": "没有 keepout 区",
+      "fix": {}
+    },
+    {
+      "check": "space.bounds",
+      "ok": true,
+      "severity": "info",
+      "refs": [],
+      "measured": null,
+      "limit": null,
+      "message": "所有元件足迹都在板轮廓内",
+      "fix": {}
+    },
+    {
+      "check": "space.height",
+      "ok": true,
+      "severity": "info",
+      "refs": [
+        "led1"
+      ],
+      "measured": 8.6,
+      "limit": null,
+      "message": "最高点 8.60 mm（led1）；未声明限高（没有外壳内腔，也没设 meta.max_height_mm），未核对",
+      "fix": {}
+    },
+    {
+      "check": "space.net_reach",
+      "ok": true,
+      "severity": "info",
+      "refs": [],
+      "measured": null,
+      "limit": null,
+      "message": "5 条网表都在 30 mm 内",
+      "fix": {}
+    },
+    {
+      "check": "space.connector_edge",
+      "ok": true,
+      "severity": "info",
+      "refs": [],
+      "measured": 0,
+      "limit": 3.0,
+      "message": "没有连接器类元件",
+      "fix": {}
+    },
+    {
+      "check": "mech.mount_holes",
+      "ok": true,
+      "severity": "info",
+      "refs": [],
+      "measured": null,
+      "limit": null,
+      "message": "4 个安装孔均无遮挡",
+      "fix": {}
+    },
+    {
+      "check": "consistency.legacy_px",
+      "ok": true,
+      "severity": "info",
+      "refs": [],
+      "measured": null,
+      "limit": null,
+      "message": "旧画布像素与 2D 投影一致（差 ≤1.5px）",
+      "fix": {}
+    },
+    {
+      "check": "consistency.provenance",
+      "ok": false,
+      "severity": "warning",
+      "refs": [
+        "btn1"
+      ],
+      "measured": 1,
+      "limit": 0,
+      "message": "1 个元件的物理尺寸是估算值：btn1。3D 与核对面板必须显示'估算'，不可当精确尺寸使用",
+      "fix": {
+        "need": "import_datasheet_or_measure"
+      }
+    }
+  ],
+  "not_verified": [
+    "statics：非地面轮式安装，未运行（不是通过）"
+  ],
+  "unsized": [],
+  "estimated": [
+    "btn1"
+  ],
+  "summary": {
+    "total": 9,
+    "failed": 1,
+    "errors": 0,
+    "warnings": 1,
+    "refs_with_issues": [
+      "btn1"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "actor": "cli",
+    "parent_hash": "genesis",
+    "payload": {
+      "board": "arduino-uno",
+      "title": "Blink + 按键"
+    },
+    "payload_hash": "d8d4432c2a887ab6",
+    "seq": 1,
+    "ts": "2026-11-14T12:37:26+00:00",
+    "type": "design.created"
+  },
+  {
+    "actor": "cli",
+    "parent_hash": "d8d4432c2a887ab6",
+    "payload": {
+      "file": "hw_velxio/examples/wokwi/blink.json",
+      "parts": 3
+    },
+    "payload_hash": "9ad10ba65c405128",
+    "seq": 2,
+    "ts": "2026-11-14T12:37:26+00:00",
+    "type": "design.imported"
+  },
+  {
+    "actor": "cli",
+    "parent_hash": "9ad10ba65c405128",
+    "payload": {
+      "failed": 1,
+      "ok": true
+    },
+    "payload_hash": "790e598c761d4c91",
+    "seq": 3,
+    "ts": "2026-11-14T12:37:26+00:00",
+    "type": "checks.run"
+  }
+]
