@@ -1,0 +1,786 @@
+{
+  "space": {
+    "dims": [
+      520,
+      440,
+      440
+    ],
+    "pitch_mm": 0.5,
+    "policy": {
+      "allow_overlap_voxels": 0,
+      "max_net_reach_mm": 120.0,
+      "max_connector_edge_gap_mm": 3.0,
+      "keepout_must_be_empty": true,
+      "max_height_mm": 160.0,
+      "min_test_points": 2
+    },
+    "placements": [
+      {
+        "ref": "BR1",
+        "kind": "blocker",
+        "box": {
+          "x0": 4,
+          "y0": 4,
+          "z0": 4,
+          "nx": 8,
+          "ny": 180,
+          "nz": 160
+        },
+        "nets": [],
+        "meta": {
+          "role": "wall_bracket",
+          "anchored": true,
+          "source": "derived",
+          "template": "wall_bracket",
+          "note": "墙面支架"
+        }
+      },
+      {
+        "ref": "PS1",
+        "kind": "module",
+        "box": {
+          "x0": 14,
+          "y0": 16,
+          "z0": 12,
+          "nx": 60,
+          "ny": 40,
+          "nz": 24
+        },
+        "nets": [],
+        "meta": {
+          "role": "regulator_5v",
+          "vout": "5V",
+          "vout_v": 5.0,
+          "source": "derived",
+          "template": "psu_5v",
+          "on": "BR1",
+          "on_bracket": "BR1"
+        }
+      },
+      {
+        "ref": "PS2",
+        "kind": "module",
+        "box": {
+          "x0": 14,
+          "y0": 144,
+          "z0": 12,
+          "nx": 44,
+          "ny": 32,
+          "nz": 16
+        },
+        "nets": [],
+        "meta": {
+          "role": "regulator_3v3",
+          "vout": "3v3",
+          "vout_v": 3.3,
+          "source": "derived",
+          "template": "regulator_3v3",
+          "on": "BR1",
+          "on_bracket": "BR1"
+        }
+      },
+      {
+        "ref": "U1",
+        "kind": "module",
+        "box": {
+          "x0": 14,
+          "y0": 76,
+          "z0": 12,
+          "nx": 90,
+          "ny": 60,
+          "nz": 20
+        },
+        "nets": [],
+        "meta": {
+          "role": "mcu",
+          "source": "derived",
+          "template": "mcu_board",
+          "on": "BR1",
+          "on_bracket": "BR1"
+        }
+      },
+      {
+        "ref": "SV1",
+        "kind": "module",
+        "box": {
+          "x0": 106,
+          "y0": 64,
+          "z0": 16,
+          "nx": 40,
+          "ny": 40,
+          "nz": 40
+        },
+        "nets": [],
+        "meta": {
+          "role": "gimbal_pan",
+          "axis": "pan",
+          "orientation": {
+            "facing": "up",
+            "spin_deg": 0
+          },
+          "mounting": "upright",
+          "source": "derived",
+          "template": "gimbal_servo",
+          "on": "BR1",
+          "on_bracket": "BR1",
+          "options": {
+            "axis": "pan"
+          }
+        }
+      },
+      {
+        "ref": "SV2",
+        "kind": "module",
+        "box": {
+          "x0": 146,
+          "y0": 64,
+          "z0": 60,
+          "nx": 40,
+          "ny": 40,
+          "nz": 40
+        },
+        "nets": [],
+        "meta": {
+          "role": "gimbal_tilt",
+          "axis": "tilt",
+          "orientation": {
+            "facing": "up",
+            "spin_deg": 0
+          },
+          "mounting": "upright",
+          "source": "derived",
+          "template": "gimbal_servo",
+          "on": "BR1",
+          "on_bracket": "BR1",
+          "options": {
+            "axis": "tilt"
+          }
+        }
+      },
+      {
+        "ref": "CAM1",
+        "kind": "module",
+        "box": {
+          "x0": 146,
+          "y0": 104,
+          "z0": 60,
+          "nx": 16,
+          "ny": 50,
+          "nz": 50
+        },
+        "nets": [],
+        "meta": {
+          "role": "camera",
+          "lens_face": "east",
+          "source": "derived",
+          "template": "camera_module",
+          "on": "BR1",
+          "on_bracket": "BR1"
+        }
+      }
+    ],
+    "occupied_voxels": 586528,
+    "density": 0.0058
+  },
+  "wires": {
+    "pitch_mm": 0.5,
+    "policy": {
+      "max_run_mm": 400.0,
+      "min_net_spacing_voxels": 2,
+      "allow_through_body": false,
+      "require_pin_landing": true
+    },
+    "nets": [
+      "CAM_DATA",
+      "CAM_GND",
+      "CAM_PWR",
+      "PWM_PAN",
+      "REG3_GND",
+      "REG3_IN",
+      "REG3_OUT",
+      "SERVO_GND",
+      "SERVO_PWR"
+    ],
+    "runs": [
+      {
+        "net": "CAM_DATA",
+        "length": 231,
+        "layer": "top",
+        "from": {
+          "ref": "CAM1",
+          "pin": "DATA",
+          "voxel": [
+            146,
+            148,
+            60
+          ]
+        },
+        "to": {
+          "ref": "U1",
+          "pin": "CAM_DATA",
+          "voxel": [
+            14,
+            106,
+            12
+          ]
+        },
+        "vias": [],
+        "endpoints": [
+          [
+            146,
+            148,
+            60
+          ],
+          [
+            14,
+            106,
+            12
+          ]
+        ]
+      },
+      {
+        "net": "PWM_PAN",
+        "length": 152,
+        "layer": "top",
+        "from": {
+          "ref": "U1",
+          "pin": "PWM_PAN",
+          "voxel": [
+            14,
+            88,
+            12
+          ]
+        },
+        "to": {
+          "ref": "SV1",
+          "pin": "PWM",
+          "voxel": [
+            145,
+            72,
+            16
+          ]
+        },
+        "vias": [],
+        "endpoints": [
+          [
+            14,
+            88,
+            12
+          ],
+          [
+            145,
+            72,
+            16
+          ]
+        ]
+      },
+      {
+        "net": "REG3_IN",
+        "length": 183,
+        "layer": "top",
+        "from": {
+          "ref": "PS1",
+          "pin": "5V",
+          "voxel": [
+            73,
+            36,
+            12
+          ]
+        },
+        "to": {
+          "ref": "PS2",
+          "pin": "IN",
+          "voxel": [
+            14,
+            153,
+            12
+          ]
+        },
+        "vias": [],
+        "endpoints": [
+          [
+            73,
+            36,
+            12
+          ],
+          [
+            14,
+            153,
+            12
+          ]
+        ]
+      },
+      {
+        "net": "REG3_GND",
+        "length": 182,
+        "layer": "top",
+        "from": {
+          "ref": "PS2",
+          "pin": "GND",
+          "voxel": [
+            14,
+            163,
+            12
+          ]
+        },
+        "to": {
+          "ref": "PS1",
+          "pin": "GND",
+          "voxel": [
+            73,
+            47,
+            12
+          ]
+        },
+        "vias": [],
+        "endpoints": [
+          [
+            14,
+            163,
+            12
+          ],
+          [
+            73,
+            47,
+            12
+          ]
+        ]
+      },
+      {
+        "net": "CAM_GND",
+        "length": 210,
+        "layer": "top",
+        "from": {
+          "ref": "PS1",
+          "pin": "GND",
+          "voxel": [
+            73,
+            47,
+            12
+          ]
+        },
+        "to": {
+          "ref": "CAM1",
+          "pin": "GND",
+          "voxel": [
+            146,
+            133,
+            60
+          ]
+        },
+        "vias": [],
+        "endpoints": [
+          [
+            73,
+            47,
+            12
+          ],
+          [
+            146,
+            133,
+            60
+          ]
+        ]
+      },
+      {
+        "net": "CAM_PWR",
+        "length": 205,
+        "layer": "top",
+        "from": {
+          "ref": "PS1",
+          "pin": "5V",
+          "voxel": [
+            73,
+            36,
+            12
+          ]
+        },
+        "to": {
+          "ref": "CAM1",
+          "pin": "5V",
+          "voxel": [
+            146,
+            119,
+            60
+          ]
+        },
+        "vias": [],
+        "endpoints": [
+          [
+            73,
+            36,
+            12
+          ],
+          [
+            146,
+            119,
+            60
+          ]
+        ]
+      },
+      {
+        "net": "REG3_OUT",
+        "length": 131,
+        "layer": "top",
+        "from": {
+          "ref": "PS2",
+          "pin": "OUT",
+          "voxel": [
+            57,
+            160,
+            12
+          ]
+        },
+        "to": {
+          "ref": "U1",
+          "pin": "VIN",
+          "voxel": [
+            103,
+            82,
+            12
+          ]
+        },
+        "vias": [],
+        "endpoints": [
+          [
+            57,
+            160,
+            12
+          ],
+          [
+            103,
+            82,
+            12
+          ]
+        ]
+      },
+      {
+        "net": "SERVO_PWR",
+        "length": 125,
+        "layer": "top",
+        "from": {
+          "ref": "PS1",
+          "pin": "5V",
+          "voxel": [
+            73,
+            36,
+            12
+          ]
+        },
+        "to": {
+          "ref": "SV1",
+          "pin": "VCC",
+          "voxel": [
+            145,
+            84,
+            16
+          ]
+        },
+        "vias": [],
+        "endpoints": [
+          [
+            73,
+            36,
+            12
+          ],
+          [
+            145,
+            84,
+            16
+          ]
+        ]
+      },
+      {
+        "net": "SERVO_GND",
+        "length": 125,
+        "layer": "top",
+        "from": {
+          "ref": "PS1",
+          "pin": "GND",
+          "voxel": [
+            73,
+            47,
+            12
+          ]
+        },
+        "to": {
+          "ref": "SV1",
+          "pin": "GND",
+          "voxel": [
+            145,
+            95,
+            16
+          ]
+        },
+        "vias": [],
+        "endpoints": [
+          [
+            73,
+            47,
+            12
+          ],
+          [
+            145,
+            95,
+            16
+          ]
+        ]
+      }
+    ],
+    "voxel_count": 1544
+  },
+  "marks": [
+    {
+      "tag": "body:BR1",
+      "box": {
+        "x0": 4,
+        "y0": 4,
+        "z0": 4,
+        "nx": 8,
+        "ny": 180,
+        "nz": 160
+      },
+      "note": "墙面支架"
+    },
+    {
+      "tag": "power:PS1",
+      "box": {
+        "x0": 14,
+        "y0": 16,
+        "z0": 12,
+        "nx": 60,
+        "ny": 40,
+        "nz": 24
+      },
+      "note": "5V 电源模块"
+    },
+    {
+      "tag": "power:PS2",
+      "box": {
+        "x0": 14,
+        "y0": 144,
+        "z0": 12,
+        "nx": 44,
+        "ny": 32,
+        "nz": 16
+      },
+      "note": "3.3V 稳压"
+    },
+    {
+      "tag": "logic:U1",
+      "box": {
+        "x0": 14,
+        "y0": 76,
+        "z0": 12,
+        "nx": 90,
+        "ny": 60,
+        "nz": 20
+      },
+      "note": "主控板"
+    },
+    {
+      "tag": "actuator:SV1",
+      "box": {
+        "x0": 106,
+        "y0": 64,
+        "z0": 16,
+        "nx": 40,
+        "ny": 40,
+        "nz": 40
+      },
+      "note": "pan 舵机"
+    },
+    {
+      "tag": "actuator:SV2",
+      "box": {
+        "x0": 146,
+        "y0": 64,
+        "z0": 60,
+        "nx": 40,
+        "ny": 40,
+        "nz": 40
+      },
+      "note": "tilt 舵机"
+    },
+    {
+      "tag": "sensor:CAM1",
+      "box": {
+        "x0": 146,
+        "y0": 104,
+        "z0": 60,
+        "nx": 16,
+        "ny": 50,
+        "nz": 50
+      },
+      "note": "相机模组"
+    }
+  ],
+  "cables": [
+    {
+      "net": "SERVO_PWR",
+      "from": "PS1.5V",
+      "to": "SV1.VCC",
+      "span_mm": 43.3,
+      "max_mm": 200,
+      "gauge": "22AWG",
+      "ok": true,
+      "source": "derived"
+    },
+    {
+      "net": "SERVO_GND",
+      "from": "PS1.GND",
+      "to": "SV1.GND",
+      "span_mm": 43.3,
+      "max_mm": 200,
+      "gauge": "22AWG",
+      "ok": true,
+      "source": "derived"
+    },
+    {
+      "net": "PWM_PAN",
+      "from": "U1.PWM_PAN",
+      "to": "SV1.PWM",
+      "span_mm": 66.0,
+      "max_mm": 150,
+      "gauge": "signal",
+      "ok": true,
+      "source": "derived"
+    },
+    {
+      "net": "CAM_PWR",
+      "from": "PS1.5V",
+      "to": "CAM1.5V",
+      "span_mm": 60.3,
+      "max_mm": 200,
+      "gauge": "22AWG",
+      "ok": true,
+      "source": "derived"
+    },
+    {
+      "net": "CAM_GND",
+      "from": "PS1.GND",
+      "to": "CAM1.GND",
+      "span_mm": 61.3,
+      "max_mm": 200,
+      "gauge": "22AWG",
+      "ok": true,
+      "source": "derived"
+    },
+    {
+      "net": "CAM_DATA",
+      "from": "CAM1.DATA",
+      "to": "U1.CAM_DATA",
+      "span_mm": 73.3,
+      "max_mm": 150,
+      "gauge": "ribbon",
+      "ok": true,
+      "source": "derived"
+    },
+    {
+      "net": "REG3_IN",
+      "from": "PS1.5V",
+      "to": "PS2.IN",
+      "span_mm": 65.5,
+      "max_mm": 120,
+      "gauge": "22AWG",
+      "ok": true,
+      "source": "derived"
+    },
+    {
+      "net": "REG3_OUT",
+      "from": "PS2.OUT",
+      "to": "U1.VIN",
+      "span_mm": 45.3,
+      "max_mm": 120,
+      "gauge": "22AWG",
+      "ok": true,
+      "source": "derived"
+    },
+    {
+      "net": "REG3_GND",
+      "from": "PS2.GND",
+      "to": "PS1.GND",
+      "span_mm": 65.1,
+      "max_mm": 120,
+      "gauge": "22AWG",
+      "ok": true,
+      "source": "derived"
+    }
+  ],
+  "unverified": [
+    "墙面承重与膨胀螺栓抗拔（需现场拉拔试验）",
+    "舵机堵转电流与电源容量",
+    "3.3V LDO 在舵机侧的压降与热耗",
+    "视频端到端延迟与码率",
+    "Wi-Fi 穿墙与天线朝向",
+    "长期振动下的松脱"
+  ],
+  "assembly": {
+    "target": "wall_gimbal_camera",
+    "install": "wall_vertical",
+    "sources": {
+      "BR1": "derived",
+      "PS1": "derived",
+      "PS2": "derived",
+      "U1": "derived",
+      "SV1": "derived",
+      "SV2": "derived",
+      "CAM1": "derived"
+    },
+    "unsourced_parts": [],
+    "cables_unrouted": []
+  },
+  "wall": {
+    "face": "west",
+    "offset_mm": 0.0,
+    "pullout_kg_per_bolt": 3.0
+  },
+  "mounted": [
+    {
+      "ref": "BR1",
+      "anchors": [
+        {
+          "ref": "BR1",
+          "at": [
+            4,
+            9,
+            9
+          ],
+          "count": 4,
+          "note": "4 颗 M4 膨胀螺栓，四角"
+        }
+      ],
+      "cantilever_mm": 0.0
+    },
+    {
+      "ref": "PS1",
+      "anchors": [],
+      "cantilever_mm": 5.0
+    },
+    {
+      "ref": "PS2",
+      "anchors": [],
+      "cantilever_mm": 5.0
+    },
+    {
+      "ref": "U1",
+      "anchors": [],
+      "cantilever_mm": 5.0
+    },
+    {
+      "ref": "SV1",
+      "anchors": [],
+      "cantilever_mm": 47.0
+    },
+    {
+      "ref": "SV2",
+      "anchors": [],
+      "cantilever_mm": 67.0
+    },
+    {
+      "ref": "CAM1",
+      "anchors": [],
+      "cantilever_mm": 67.0
+    }
+  ]
+}

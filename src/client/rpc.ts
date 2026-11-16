@@ -15,6 +15,8 @@
  */
 
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import { makePickDirectory } from './directoryPicker.js'
+import type { DirectoryPickerSeams } from './directoryPicker.js'
 import type {
   BootstrapPayload,
   BudgetPayload,
@@ -97,10 +99,36 @@ export interface WorkbenchFace {
   velxioHealth(): Promise<Record<string, unknown>>
   runBlock(project: string, block: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>
   hint(): Promise<HintPayload>
+  /** 勘察工作区（P2）。write=true 会刷新初审.md 的事实段。 */
+  survey(write?: boolean): Promise<Record<string, unknown>>
+  /** 读回初审.md（含 stale 判定）。 */
+  initialReview(): Promise<Record<string, unknown>>
+  workspace(): Promise<WorkspacePayload>
+  setWorkspace(path: string): Promise<WorkspacePayload>
+  createWorkspace(parent: string, name: string): Promise<WorkspacePayload>
+  /** 原生文件夹选择（由 view.ts 注入宿主的 directoryPicker 实现）。 */
+  pickDirectory(): Promise<string | null>
+}
+
+/** 工作区载荷（`source` 说清这个根从哪来，面板要显示出来）。 */
+export interface WorkspacePayload {
+  readonly status?: string
+  readonly findings?: readonly string[]
+  readonly workspace: string
+  readonly exists?: boolean
+  readonly writable?: boolean
+  readonly source?: 'env' | 'config' | 'default'
+  readonly default?: string
+  readonly config_path?: string
+  readonly created?: boolean
+  readonly projects?: readonly string[]
 }
 
 /** 用一个真实连接构造 face。 */
-export function createFace(handle: ConnectionHandle): WorkbenchFace {
+export function createFace(
+  handle: ConnectionHandle,
+  seams?: () => DirectoryPickerSeams,
+): WorkbenchFace {
   return {
     bootstrap: () => call<BootstrapPayload>(handle, 'bootstrap'),
     snapshot: (project, pitchMm) =>
@@ -150,5 +178,15 @@ export function createFace(handle: ConnectionHandle): WorkbenchFace {
       call<Record<string, unknown>>(handle, 'runBlock',
         params === undefined ? { project, block } : { project, block, params }),
     hint: () => call<HintPayload>(handle, 'hint'),
+    survey: (write) => call<Record<string, unknown>>(handle, 'survey',
+      write === true ? { write: true } : {}),
+    initialReview: () => call<Record<string, unknown>>(handle, 'initialReview'),
+    workspace: () => call<WorkspacePayload>(handle, 'workspace'),
+    setWorkspace: (path) => call<WorkspacePayload>(handle, 'setWorkspace', { path }),
+    createWorkspace: (parent, name) =>
+      call<WorkspacePayload>(handle, 'createWorkspace', { parent, name }),
+    // 原生选择器不走本插件的 RPC：它是宿主**客户端**的能力（桌面壳 preload
+    // 或 uiWorkspace），seams 每次点击时才解析，装载顺序不影响可用性。
+    pickDirectory: makePickDirectory(seams ?? (() => ({}))),
   }
 }

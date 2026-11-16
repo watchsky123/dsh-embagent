@@ -5,6 +5,9 @@
  * 真实动作：量了一个件、查到数据手册，就把 `estimated` 改成 `measured`。
  * 但改它要用户显式点，不能由程序自动"升级"——伪造来源比缺数据更危险。
  *
+ * 样式纪律（前端方案 F1）：布局与间距全走令牌类（`hwv-*`），组件里不留
+ * 裸 px/hex；唯一的内联值是把手给来的列宽。
+ *
  * @module dsh-hw-velxio/client/Inspector
  */
 
@@ -13,6 +16,8 @@ import type { DesignPart, Finding, SnapshotPayload } from '../shared/types.js'
 
 export interface InspectorProps {
   readonly snapshot: SnapshotPayload
+  /** 列宽 px：把手拖动 + localStorage（styles.ts 不再钉死 268）。 */
+  readonly width: number
   readonly selectedRef: string
   readonly findings: readonly Finding[]
   readonly onSelect: (ref: string) => void
@@ -35,16 +40,43 @@ export function Inspector(props: InspectorProps): JSX.Element {
   const [newRef, setNewRef] = useState('')
   const [newKind, setNewKind] = useState('led')
 
+  /**
+   * 数据完整性提示 —— 来自 `design.meta` 的**机器事实**，前端不自己推断。
+   *
+   * 两条最要紧的：
+   *   1. 只导入了 8 块板中的 1 块（`parts_skipped`）；
+   *   2. 从 BOM 补的元件位置是排布不是布局（`bom_fill.placement`）。
+   * 用户在看一板元件时必须知道这两个限制，否则会把估算当事实。
+   */
+  const meta = snapshot.design.meta as Record<string, unknown>
+  const provenanceNotes: string[] = []
+  const skipped = Number(meta['parts_skipped'] ?? 0)
+  const sourceBoards = Number(meta['source_boards'] ?? 0)
+  if (Number.isFinite(skipped) && skipped > 0) {
+    provenanceNotes.push(
+      `本工程共 ${sourceBoards} 块板；当前模型是单板的，只导入了主板的 `
+      + `${snapshot.design.parts.length - Math.round(Number(
+        (meta['bom_fill'] as { added?: number } | undefined)?.added ?? 0))} 个元件，`
+      + `${skipped} 个元件（其他 ${sourceBoards - 1} 块板）未导入、也未参与检查。`)
+  }
+  const bomFill = meta['bom_fill'] as { added?: number; unsized?: number } | undefined
+  if (bomFill !== undefined && (bomFill.added ?? 0) > 0) {
+    provenanceNotes.push(
+      `其中 ${bomFill.added} 个元件来自 BOM：位置是**网格排布**，不是真实 PCB 布局，`
+      + `不能照着布线。${(bomFill.unsized ?? 0) > 0
+        ? `另有 ${bomFill.unsized} 个封装查不到、尺寸标 estimated。` : ''}`)
+  }
+
   if (part === undefined) {
     return (
-      <div className="hwv-inspector">
+      <div className="hwv-inspector" style={{ width: props.width }}>
         <h4>检查器</h4>
-        <div className="hwv-dim" style={{ lineHeight: 1.8 }}>
+        <div className="hwv-dim hwv-note">
           没有选中对象。<br />
           在 2D 或 3D 里点一个元件，两边会同步高亮。
         </div>
-        <h4 style={{ marginTop: 16 }}>加一个元件</h4>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <h4>加一个元件</h4>
+        <div className="hwv-form">
           <input className="hwv-input" placeholder="参考号，如 LED1" value={newRef}
                  onChange={(event) => { setNewRef(event.target.value) }} />
           <input className="hwv-input" placeholder="类型，如 led / esp32 / servo" value={newKind}
@@ -55,19 +87,32 @@ export function Inspector(props: InspectorProps): JSX.Element {
                     setNewRef('')
                   }}>添加到板角</button>
           <div className="hwv-dim">
-            尺寸从内置尺寸表查；查不到就是估算件，3D 里会单独标出。
+            尺寸从内置尺寸表查；查不到的件会以 <b>estimated 0 尺寸</b> 加入，
+            3D 显示为薄片、判定面板会单列它。
           </div>
         </div>
-        <h4 style={{ marginTop: 16 }}>工程</h4>
+        <h4>工程</h4>
         <dl className="hwv-kv">
           <dt>板卡</dt><dd>{snapshot.design.board.name}</dd>
           <dt>尺寸</dt>
-          <dd>{snapshot.design.board.size_mm.w.toFixed(2)} ×
+          <dd className="hwv-mono">{snapshot.design.board.size_mm.w.toFixed(2)} ×
             {snapshot.design.board.size_mm.h.toFixed(2)} mm</dd>
-          <dt>厚度</dt><dd>{snapshot.design.board.thickness_mm} mm</dd>
-          <dt>元件</dt><dd>{snapshot.design.parts.length}</dd>
-          <dt>网表</dt><dd>{snapshot.design.nets.length}</dd>
+          <dt>厚度</dt><dd className="hwv-mono">{snapshot.design.board.thickness_mm} mm</dd>
+          <dt>元件</dt><dd className="hwv-mono">{snapshot.design.parts.length}</dd>
+          <dt>网表</dt><dd className="hwv-mono">{snapshot.design.nets.length}</dd>
         </dl>
+        {/* 数据来源的**限制**必须在这里说，不能只写在日志里：
+            "这个工程只导入了 8 块板中的 1 块" 是用户最需要知道的一句话。 */}
+        {provenanceNotes.length > 0 && (
+          <>
+            <h4>数据完整性</h4>
+            <ul className="hwv-provenance">
+              {provenanceNotes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     )
   }
@@ -75,7 +120,7 @@ export function Inspector(props: InspectorProps): JSX.Element {
   const issues = props.findings.filter((f) => !f.ok && f.refs.includes(part.ref))
 
   return (
-    <div className="hwv-inspector">
+    <div className="hwv-inspector" style={{ width: props.width }}>
       <h4>检查器 · {part.ref}</h4>
       <dl className="hwv-kv">
         <dt>类型</dt><dd>{part.kind}</dd>
@@ -93,12 +138,12 @@ export function Inspector(props: InspectorProps): JSX.Element {
       </dl>
 
       {part.physical_source === 'estimated' && (
-        <div className="hwv-banner info" style={{ marginTop: 8 }}>
+        <div className="hwv-banner info" style={{ margin: 'var(--hwv-space-4) 0' }}>
           尺寸是估算值。3D 实体与判定都基于它，请核对后再当精确值使用。
         </div>
       )}
 
-      <h4 style={{ marginTop: 14 }}>位置（mm）</h4>
+      <h4>位置（mm）</h4>
       <NumberRow label="X" value={part.placement.x_mm}
                  onCommit={(value) => {
                    props.onMove(part.ref, value, part.placement.y_mm,
@@ -114,7 +159,7 @@ export function Inspector(props: InspectorProps): JSX.Element {
                    props.onMove(part.ref, part.placement.x_mm, part.placement.y_mm,
                      part.placement.rotation_z, value)
                  }} />
-      <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
+      <div className="hwv-inline" style={{ marginTop: 'var(--hwv-space-3)' }}>
         <span className="hwv-dim">旋转</span>
         <button className="hwv-btn" onClick={() => {
           props.onMove(part.ref, part.placement.x_mm, part.placement.y_mm,
@@ -122,28 +167,22 @@ export function Inspector(props: InspectorProps): JSX.Element {
         }}>{part.placement.rotation_z}° →</button>
       </div>
 
-      <h4 style={{ marginTop: 14 }}>尺寸与来源</h4>
+      <h4>尺寸与来源</h4>
       <SizeRow part={part} onSetPart={props.onSetPart} />
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+      <div className="hwv-btn-row">
         <button className="hwv-btn" onClick={() => {
-          props.onSetPart(part.ref, {
-            size_mm: part.size_mm,
-            physical_source: 'measured',
-          })
+          props.onSetPart(part.ref, { size_mm: part.size_mm, physical_source: 'measured' })
         }}>标为实测</button>
         <button className="hwv-btn" onClick={() => {
-          props.onSetPart(part.ref, {
-            size_mm: part.size_mm,
-            physical_source: 'datasheet',
-          })
+          props.onSetPart(part.ref, { size_mm: part.size_mm, physical_source: 'datasheet' })
         }}>标为手册</button>
         <button className="hwv-btn danger" onClick={() => { props.onDelete(part.ref) }}>
           删除
         </button>
       </div>
 
-      <h4 style={{ marginTop: 14 }}>该元件的判定</h4>
+      <h4>该元件的判定</h4>
       {issues.length === 0
         ? <div className="hwv-dim">没有与它相关的未通过项。</div>
         : issues.map((finding) => (
@@ -154,7 +193,7 @@ export function Inspector(props: InspectorProps): JSX.Element {
           </div>
         ))}
 
-      <h4 style={{ marginTop: 14 }}>预算 claim</h4>
+      <h4>预算 claim</h4>
       <ClaimEditor part={part} onSetPart={props.onSetPart} />
     </div>
   )
@@ -168,8 +207,8 @@ function NumberRow(props: {
   const [text, setText] = useState(String(props.value))
   useEffect(() => { setText(String(props.value)) }, [props.value])
   return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
-      <span className="hwv-dim" style={{ width: 18 }}>{props.label}</span>
+    <div className="hwv-inline" style={{ marginBottom: 'var(--hwv-space-2)' }}>
+      <span className="hwv-dim" style={{ width: 18, flex: '0 0 18px' }}>{props.label}</span>
       <input className="hwv-input" value={text}
              onChange={(event) => { setText(event.target.value) }}
              onBlur={() => {
@@ -210,10 +249,10 @@ function SizeRow(props: {
   }
 
   return (
-    <div style={{ display: 'flex', gap: 4 }}>
+    <div className="hwv-row-3">
       {([['w', w, setW], ['h', h, setH], ['d', d, setD]] as const).map(([key, value, setter]) => (
-        <div key={key} style={{ flex: 1 }}>
-          <div className="hwv-dim" style={{ fontSize: 10 }}>{key} (mm)</div>
+        <div key={key}>
+          <div className="hwv-field-label">{key} (mm)</div>
           <input className="hwv-input" value={value}
                  onChange={(event) => { setter(event.target.value) }}
                  onBlur={commit}
@@ -249,14 +288,14 @@ function ClaimEditor(props: {
   }
 
   return (
-    <div style={{ display: 'flex', gap: 4 }}>
-      <div style={{ flex: 1 }}>
-        <div className="hwv-dim" style={{ fontSize: 10 }}>功率 (W)</div>
+    <div className="hwv-row-3">
+      <div>
+        <div className="hwv-field-label">功率 (W)</div>
         <input className="hwv-input" value={power}
                onChange={(event) => { setPower(event.target.value) }} onBlur={commit} />
       </div>
-      <div style={{ flex: 1 }}>
-        <div className="hwv-dim" style={{ fontSize: 10 }}>成本 ($)</div>
+      <div>
+        <div className="hwv-field-label">成本 ($)</div>
         <input className="hwv-input" value={cost}
                onChange={(event) => { setCost(event.target.value) }} onBlur={commit} />
       </div>

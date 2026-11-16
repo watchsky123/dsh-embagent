@@ -4,7 +4,7 @@
 
 * **画图**：旧 Velxio 画布的像素（``electrical.legacy_px``）
 * **事实**：``size_mm`` / 数据手册 / catalog
-* **复用**：``hwforge.crosscheck`` 的 overlay 判定（Wokwi 引脚间距 vs 数据手册）
+* **本地**：overlay 判定（画图外框 vs 数据手册、引脚间距）
 
 原则：**"未采购"与"矛盾"分开**。没有数据的件进 ``not_verified``，不进
 ``mismatches``——否则一个还没买传感器的项目会被报成"尺寸矛盾"。
@@ -18,33 +18,120 @@ from typing import Any
 from .model import DesignModel
 
 
-def _hwforge_crosscheck(overlay: dict[str, Any]) -> list[dict[str, Any]]:
-    try:
-        from ..bridge import hwforge_root
-        root = hwforge_root()
-        if root and root not in sys.path:
-            sys.path.insert(0, root)
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        from hwforge import crosscheck as crosscheck_module  # type: ignore
-    except Exception as exc:  # noqa: BLE001
-        return [{
-            "kind": "overlay/unavailable", "severity": "info", "refs": [],
-            "message": f"hwforge.crosscheck 不可用（{type(exc).__name__}: {exc}）",
-        }]
-    findings = crosscheck_module.crosscheck(overlay)
-    out: list[dict[str, Any]] = []
-    for finding in findings:
-        out.append({
-            "kind": getattr(finding, "kind", "overlay"),
-            "severity": "error" if getattr(finding, "blocking", False) else "warning",
-            "refs": list(getattr(finding, "refs", []) or []),
-            "message": getattr(finding, "message", str(finding)),
-            "measured": getattr(finding, "measured", None),
-            "expected": getattr(finding, "expected", None),
-        })
-    return out
+def _overlay_crosscheck(overlay: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+    """overlay 交叉核对（**本地实现**，不依赖 hwforge）。
+
+    ## overlay 是什么
+
+    一份**外部补全数据**：把某个元件在画图工具里的声明尺寸/引脚，与
+    数据手册（`partfacts`）的数值并排放，看有没有矛盾。
+
+    期望的形状（缺字段就跳过，不报矛盾）::
+
+        {"parts": {
+            "<element>": {
+                "wokwi_outline_mm": {"x": .., "y": .., "z": ..},
+                "wokwi_pins": {"<name>": [x, y], ...},
+                "overlay": {"size_mm": {"x": {"value": ..}, "y": {...}}},
+            }
+        }}
+
+    ## 纪律
+
+    **只有两侧都有数字时才能报矛盾。** 一侧缺失进 `not_verified` ——
+    "没数据"不是"对不上"。
+    """
+    findings: list[dict[str, Any]] = []
+    not_verified: list[str] = []
+
+    parts = (overlay or {}).get("parts")
+    if not isinstance(parts, dict) or not parts:
+        return ([{"kind": "overlay/empty", "severity": "info", "refs": [],
+                  "message": "overlay 里没有 parts，跳过", "measured": None,
+                  "expected": None}], [])
+
+    def _num(block: Any, key: str) -> float | None:
+        if not isinstance(block, dict):
+            return None
+        value = block.get(key)
+        if isinstance(value, dict):
+            value = value.get("value")
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    for element, rec in sorted(parts.items()):
+        if not isinstance(rec, dict):
+            not_verified.append(f"{element}: overlay 条目不是对象")
+            continue
+        facts = rec.get("overlay")
+        drawn = rec.get("wokwi_outline_mm") or {}
+
+        # XC-05：有没有 Z。**没有 Z 不能默认为 0** —— 那会让 3D 里所有件
+        # 都变成零厚度。
+        z_fact = _num((facts or {}).get("size_mm"), "z") if facts else None
+        if z_fact is None:
+            not_verified.append(
+                f"{element}: 没有 Z 尺寸，3D 里不能可靠放置（不默认为 0）")
+
+        if not facts:
+            not_verified.append(
+                f"{element}: 没有补全数据（不是「它简单」，是没考证）")
+            continue
+
+        # XC-01：画图外框 vs 数据手册本体
+        for axis in ("x", "y"):
+            drawn_mm = drawn.get(axis)
+            fact_mm = _num(facts.get("size_mm"), axis)
+            if drawn_mm is None or fact_mm is None:
+                continue
+            try:
+                delta = abs(float(drawn_mm) - fact_mm)
+            except (TypeError, ValueError):
+                not_verified.append(f"{element}: {axis} 尺寸不是数字")
+                continue
+            # 画图外框含焊盘外沿，通常比本体大；只报**画图比本体小**
+            # 或大出 3mm 以上的情况。
+            tolerance = 3.0
+            if float(drawn_mm) < fact_mm - 0.05 or delta > tolerance:
+                findings.append({
+                    "kind": "overlay/outline-vs-body",
+                    "severity": "warning",
+                    "refs": [element],
+                    "message": (
+                        f"{element}: 画图 {axis}={float(drawn_mm):.2f}mm，"
+                        f"数据手册 {axis}={fact_mm:.2f}mm，差 {delta:.2f}mm"),
+                    "measured": {"drawn_mm": float(drawn_mm)},
+                    "expected": {"datasheet_mm": fact_mm},
+                })
+
+        # XC-04：引脚最小间距（只核对"是否过分密集"，不判对错）
+        pins = rec.get("wokwi_pins")
+        if isinstance(pins, dict) and len(pins) >= 2:
+            coords = [tuple(v) for v in pins.values()
+                      if isinstance(v, (list, tuple)) and len(v) >= 2]
+            distances = []
+            for a in range(len(coords)):
+                for b in range(a + 1, len(coords)):
+                    dx = coords[a][0] - coords[b][0]
+                    dy = coords[a][1] - coords[b][1]
+                    d = (dx * dx + dy * dy) ** 0.5
+                    if d > 1e-6:
+                        distances.append(d)
+            if distances and min(distances) < 0.5:
+                findings.append({
+                    "kind": "overlay/pin-spacing",
+                    "severity": "warning",
+                    "refs": [element],
+                    "message": (
+                        f"{element}: 两个引脚间距只有 {min(distances):.2f}mm，"
+                        f"实际排针做不到"),
+                    "measured": {"min_spacing_mm": round(min(distances), 3)},
+                    "expected": {"min_spacing_mm": 0.5},
+                })
+
+    return (findings, not_verified)
 
 
 def run_crosscheck(design: DesignModel, *, overlay: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -151,7 +238,9 @@ def run_crosscheck(design: DesignModel, *, overlay: dict[str, Any] | None = None
             })
 
     if overlay is not None:
-        mismatches.extend(_hwforge_crosscheck(overlay))
+        overlay_findings, overlay_unverified = _overlay_crosscheck(overlay)
+        mismatches.extend(overlay_findings)
+        not_verified.extend(overlay_unverified)
 
     errors = [m for m in mismatches if m.get("severity") == "error"]
     warnings = [m for m in mismatches if m.get("severity") == "warning"]

@@ -41,24 +41,6 @@ ROLE_GROUPS: dict[str, str] = {
 }
 
 
-def _budget_module() -> Any:
-    try:
-        from ..bridge import hwforge_root
-        root = hwforge_root()
-        if root and root not in sys.path:
-            sys.path.insert(0, root)
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        from hwforge import budget as budget_module  # type: ignore
-        return budget_module
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            "预算需要 hwforge.budget（hwforge/budget.py）；"
-            f"请把 hwforge checkout 放到 HWFORGE_ROOT（{type(exc).__name__}: {exc}）"
-        ) from exc
-
-
 def _policy(design: DesignModel) -> dict[str, Any]:
     raw = design.meta.get("budget") or {}
     return dict(raw) if isinstance(raw, dict) else {}
@@ -66,8 +48,8 @@ def _policy(design: DesignModel) -> dict[str, Any]:
 
 def build_tree(design: DesignModel) -> Any:
     """生成预算树：system → 角色分组 → 元件。"""
-    budget_module = _budget_module()
-    tree = budget_module.BudgetTree()
+    from .budget import BudgetTree
+    tree = BudgetTree()
     policy = _policy(design)
     limits = dict(DEFAULT_LIMITS)
     limits.update({k: float(v) for k, v in (policy.get("limits") or {}).items()
@@ -112,7 +94,7 @@ def build_tree(design: DesignModel) -> Any:
 
 def evaluate(design: DesignModel) -> dict[str, Any]:
     """跑预算代数，并把 claim 映射回 ref（2D/3D 着色 + 面板点回）。"""
-    budget_module = _budget_module()
+    from .budget import RESOLUTION_ORDER
     tree = build_tree(design)
     verdict = tree.evaluate()
     policy = _policy(design)
@@ -166,7 +148,7 @@ def evaluate(design: DesignModel) -> dict[str, Any]:
         "confidence": confidence,
         "status": "ok" if confidence != "none" else "not_ready",
         "currencies": list(CURRENCIES),
-        "resolution_order": list(budget_module.RESOLUTION_ORDER),
+        "resolution_order": list(RESOLUTION_ORDER),
         "limits": limits,
         "by_currency": by_currency,
         "violations": verdict["violations"],

@@ -23,3 +23,5 @@ project/*/fab/
 Thumbs.db
 .idea/
 .vscode/
+scripts/.probe-entry.tsx
+scripts/.probe3d-entry.tsx

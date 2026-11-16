@@ -69,6 +69,14 @@ export interface SpawnOptions {
   readonly timeoutMs?: number
   /** 追加到子进程环境（例如传入 stdin 之外的数据用不到，留作扩展）。 */
   readonly env?: NodeJS.ProcessEnv
+  /**
+   * 写到子进程 stdin 的内容。
+   *
+   * `design_cli put <id> -` 从 stdin 读设计 JSON —— 那是**大对象**（几十个
+   * 元件的 design.json 有几十 KB），塞进命令行会被 Windows 的 32767 字符
+   * 上限截断。所以走 stdin 而不是 argv。
+   */
+  readonly stdin?: string
 }
 
 /**
@@ -84,9 +92,10 @@ export function runPython(
 ): Promise<BridgeResult> {
   const cwd = repoRoot()
   const timeoutMs = options.timeoutMs ?? 120_000
+  const payload = options.stdin
   return new Promise((resolvePromise) => {
     try {
-      execFile(
+      const child = execFile(
       pythonExecutable(),
       ['-m', module, ...args],
       {
@@ -121,6 +130,13 @@ export function runPython(
           })
         },
       )
+      // 大对象走 stdin：`put <id> -` 从这里读设计 JSON。不写就 end()，
+      // 否则子进程会一直等 stdin 而撞上 timeout。
+      if (child.stdin !== null && child.stdin !== undefined) {
+        child.stdin.on('error', () => { /* 子进程提前退出：由 callback 报错 */ })
+        if (payload !== undefined) child.stdin.write(payload, 'utf8')
+        child.stdin.end()
+      }
     } catch (error) {
       // `spawn` 可以**同步**抛（EPERM/ENOENT），不接住就是未处理的 rejection，
       // 客户端会看到"读取中"永远不结束。
@@ -162,6 +178,17 @@ function parseLastJson(stdout: string): Record<string, unknown> | null {
 /** 规范模型入口（`hw_velxio.design_cli`）。 */
 export function design(...args: string[]): Promise<BridgeResult> {
   return runPython('hw_velxio.design_cli', args)
+}
+
+/**
+ * 提交完整设计 JSON（走 `DesignModel` 校验）。
+ *
+ * 正文走 **stdin** 而不是 argv：Windows 的命令行上限是 32767 字符，
+ * 几十个元件的 design.json 很容易超过——截断后的 JSON 仍然"能解析"，
+ * 后果是**静默写入一份残缺设计**。这类错误比失败更难发现。
+ */
+export function designPut(project: string, json: string): Promise<BridgeResult> {
+  return runPython('hw_velxio.design_cli', ['put', project, '-'], { stdin: json })
 }
 
 /** hwforge 积木 / Velxio HTTP 能力入口（`hw_velxio.bridge`）。 */

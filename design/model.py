@@ -111,6 +111,17 @@ class Placement:
     z_mm: float = 0.0
     rotation_z: int = 0
     mount: str = "board"
+    #: 安装面：`"top"`（顶层）/ `"bottom"`（底层）/ `""`（未声明）。
+    #:
+    #: **这一项决定重叠判定是否成立。** 实测主 PCB：141 个元件里 71 个在顶层、
+    #: 70 个在底层。双面贴装的板上，顶层的 C80 和底层的 C82 **XY 重叠是正常的**
+    #: ——它们在板的两侧。没有这一项，重叠检查会把所有双面板报成几十条假错误。
+    side: str = ""
+    #: 所属板（多板设计）。空串 = 用 `DesignModel.board`（单板/主参考板）。
+    #:
+    #: 坐标是**这块板的局部坐标**，不是拼板坐标。这样移动一块板不会让
+    #: 它上面所有元件的坐标都要跟着改。
+    board_id: str = ""
 
     def __post_init__(self) -> None:
         self.x_mm = _num(self.x_mm, "placement.x_mm")
@@ -119,15 +130,25 @@ class Placement:
         self.rotation_z = _rotation(self.rotation_z)
         if self.mount not in MOUNTS:
             raise DesignError(f"placement.mount 非法：{self.mount!r}")
+        self.side = str(self.side or "").strip().lower()
+        if self.side not in ("", "top", "bottom"):
+            raise DesignError(
+                f"placement.side 非法：{self.side!r}（应为 top/bottom/空）")
+        self.board_id = str(self.board_id or "").strip()
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out = {
             "x_mm": round(self.x_mm, 4),
             "y_mm": round(self.y_mm, 4),
             "z_mm": round(self.z_mm, 4),
             "rotation_z": self.rotation_z,
             "mount": self.mount,
         }
+        if self.side:
+            out["side"] = self.side
+        if self.board_id:
+            out["board_id"] = self.board_id
+        return out
 
     @staticmethod
     def from_dict(data: dict[str, Any] | None) -> "Placement":
@@ -136,6 +157,8 @@ class Placement:
             x_mm=data.get("x_mm", 0), y_mm=data.get("y_mm", 0),
             z_mm=data.get("z_mm", 0), rotation_z=data.get("rotation_z", 0),
             mount=str(data.get("mount", "board")),
+            side=str(data.get("side", "")),
+            board_id=str(data.get("board_id", "")),
         )
 
 
@@ -154,12 +177,29 @@ class Part:
     lcsc: str | None = None
     electrical: dict[str, Any] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    # 引脚表：**只有导入器实测到才填**（立创 EDA 的焊盘号、KiCad 的焊盘）。
+    # 为空表示"这个元件没有引脚信息"，此时网表引脚**不校验**，
+    # 由 `pins.audit()` 作为未验证项报出——见 design/pins.py 的三档来源。
+    pins: list[str] = field(default_factory=list)
+    # 焊盘**几何**（板坐标系）。有它，2D 能画焊盘、飞线能连到真实引脚、
+    # 3D 有焊点；没有它，网表引脚只是名字（仍可校验存在性）。
+    pads: list[Pad] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.ref.strip():
             raise DesignError("part.ref 不能为空")
         if not self.kind.strip():
             raise DesignError(f"part {self.ref}: kind 不能为空")
+        # 引脚表去重、去空白，保持声明顺序（焊盘顺序有意义）。
+        seen_pins: set[str] = set()
+        cleaned: list[str] = []
+        for pin in self.pins or []:
+            name = str(pin).strip()
+            if name == "" or name in seen_pins:
+                continue
+            seen_pins.add(name)
+            cleaned.append(name)
+        self.pins = cleaned
         size = self.size_mm or {}
         self.size_mm = {
             "w": _num(size.get("w", 0), f"part {self.ref}.size_mm.w"),
@@ -187,10 +227,22 @@ class Part:
         return (cx - w / 2.0, cy - h / 2.0, cx + w / 2.0, cy + h / 2.0)
 
     def bbox_mm(self) -> tuple[float, float, float, float, float, float]:
-        """实体 AABB：``(x0, y0, z0, x1, y1, z1)``（板坐标系）。"""
+        """实体 AABB：``(x0, y0, z0, x1, y1, z1)``（板坐标系）。
+
+        **底层元件的 z 是负的**（板厚向下延伸），顶层是 0..d。
+        这样"顶层的件"和"底层的件"在 z 上天然不相交 —— 重叠检查不再需要
+        额外的过滤逻辑，而且 3D 渲染可以直接用这个盒子。
+        """
         x0, y0, x1, y1 = self.footprint_mm()
-        z0 = self.placement.z_mm
-        return (x0, y0, z0, x1, y1, z0 + self.size_mm["d"])
+        d = self.size_mm["d"]
+        if self.placement.side == "bottom":
+            # 底层：贴着板底面向下伸
+            z1 = self.placement.z_mm
+            z0 = z1 - d
+        else:
+            z0 = self.placement.z_mm
+            z1 = z0 + d
+        return (x0, y0, z0, x1, y1, z1)
 
     def center_mm(self) -> Point3:
         x0, y0, z0, x1, y1, z1 = self.bbox_mm()
@@ -214,6 +266,10 @@ class Part:
             out["electrical"] = dict(self.electrical)
         if self.notes:
             out["notes"] = list(self.notes)
+        if self.pins:
+            out["pins"] = list(self.pins)
+        if self.pads:
+            out["pads"] = [p.to_dict() for p in self.pads]
         return out
 
     @staticmethod
@@ -229,13 +285,32 @@ class Part:
             lcsc=data.get("lcsc"),
             electrical=dict(data.get("electrical") or {}),
             notes=[str(x) for x in (data.get("notes") or [])],
+            pins=[str(x) for x in (data.get("pins") or [])],
+            pads=[Pad.from_dict(p) for p in (data.get("pads") or [])],
         )
+
+    def pad_of(self, num: str) -> Pad | None:
+        """按引脚号找焊盘（大小写不敏感）。"""
+        wanted = str(num).strip().upper()
+        for pad in self.pads:
+            if pad.num.upper() == wanted:
+                return pad
+        return None
 
 
 @dataclass
 class Board:
-    """板轮廓 + 厚度 + 安装孔。轮廓是板坐标系里的闭合多边形（mm）。"""
+    """板轮廓 + 厚度 + 安装孔。轮廓是板坐标系里的闭合多边形（mm）。
 
+    `id` 是这块板在**多板设计**里的稳定标识（来自导入器的文档 id，
+    如 `PCB#a22effc90c196540`）。单板设计留空。
+
+    每块板有**自己的局部坐标系**（原点在它自己的左下角）。元件用
+    `Placement.board_id` 声明归属，坐标是**那块板的局部坐标**。
+    渲染时才按拼板排布平移过去 —— 平移只在 `projection` 里做一次。
+    """
+
+    id: str = ""
     kind: str = "arduino-uno"
     name: str = "Arduino Uno"
     outline: list[Point2] = field(default_factory=list)
@@ -268,7 +343,7 @@ class Board:
             raise DesignError("board.outline 至少需要 3 个点")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "kind": self.kind,
             "name": self.name,
             "outline": [[round(x, 4), round(y, 4)] for x, y in self.outline],
@@ -277,10 +352,14 @@ class Board:
             "mount_holes": [h.to_dict() for h in self.mount_holes],
             "px_per_mm": self.px_per_mm,
         }
+        if self.id:
+            out["id"] = self.id
+        return out
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "Board":
         return Board(
+            id=str(data.get("id") or ""),
             kind=str(data.get("kind") or "generic"),
             name=str(data.get("name") or "Generic"),
             outline=[(float(p[0]), float(p[1])) for p in (data.get("outline") or [])],
@@ -292,24 +371,101 @@ class Board:
 
 
 @dataclass
+class Pad:
+    """一个焊盘：**引脚的几何事实**。
+
+    这是"网表从声明变成事实"的那一步。`Part.pins` 只有引脚**名字**
+    （`"1"`、`"A"`），没有位置——于是 2D 画不出焊盘、飞线只能连元件中心、
+    3D 没有焊点。
+
+    坐标是**板坐标系**（mm，Y 向上，原点在板框左下角），和 `Part.placement`
+    同一套坐标系。`layer` �� 1 = 顶层，2 = 底层，12 = 多层（通孔）。
+    """
+
+    num: str
+    x_mm: float = 0.0
+    y_mm: float = 0.0
+    w_mm: float = 0.0
+    h_mm: float = 0.0
+    shape: str = "RECT"
+    rotation_z: float = 0.0
+    layer: int = 1
+    hole_mm: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not str(self.num).strip():
+            raise DesignError("pad.num 不能为空")
+        self.num = str(self.num).strip()
+        self.x_mm = float(self.x_mm)
+        self.y_mm = float(self.y_mm)
+        self.w_mm = float(self.w_mm)
+        self.h_mm = float(self.h_mm)
+        self.rotation_z = float(self.rotation_z) % 360.0
+        self.layer = int(self.layer)
+        self.hole_mm = float(self.hole_mm)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "num": self.num,
+            "x_mm": round(self.x_mm, 4),
+            "y_mm": round(self.y_mm, 4),
+            "w_mm": round(self.w_mm, 4),
+            "h_mm": round(self.h_mm, 4),
+            "shape": self.shape,
+            "rotation_z": round(self.rotation_z, 3),
+            "layer": self.layer,
+            "hole_mm": round(self.hole_mm, 4),
+        }
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> "Pad":
+        return Pad(
+            num=str(data.get("num") or ""),
+            x_mm=float(data.get("x_mm") or 0.0),
+            y_mm=float(data.get("y_mm") or 0.0),
+            w_mm=float(data.get("w_mm") or 0.0),
+            h_mm=float(data.get("h_mm") or 0.0),
+            shape=str(data.get("shape") or "RECT"),
+            rotation_z=float(data.get("rotation_z") or 0.0),
+            layer=int(data.get("layer") or 1),
+            hole_mm=float(data.get("hole_mm") or 0.0),
+        )
+
+
+@dataclass
 class Wire:
-    """一根导线：网表是语义真值，`path_mm` 只是走线几何（可缺省）。"""
+    """一根导线：网表是语义真值，`path_mm` 只是走线几何（可缺省）。
+
+    `layer` / `width_mm` 来自 PCB 文件（立创的 `LINE.layerId` / `LINE.width`）。
+    它们是**真实铜层属性** —— 3D 里走线贴在顶层还是底层由 `layer` 决定。
+    """
 
     net: str
     path_mm: list[Point3] = field(default_factory=list)
+    layer: int = 1
+    width_mm: float = 0.25
 
     def __post_init__(self) -> None:
         if not self.net.strip():
             raise DesignError("wire.net 不能为空")
         if self.path_mm and len(self.path_mm) < 2:
             raise DesignError(f"wire {self.net}: path_mm 至少需要 2 个点")
+        self.layer = int(self.layer or 1)
+        self.width_mm = _num(self.width_mm, f"wire {self.net}.width_mm")
+        if self.width_mm <= 0:
+            self.width_mm = 0.25
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "net": self.net,
             "path_mm": [[round(x, 4), round(y, 4), round(z, 4)]
                         for x, y, z in self.path_mm],
         }
+        if self.layer != 1:
+            out["layer"] = self.layer
+        if self.width_mm != 0.25:
+            out["width_mm"] = round(self.width_mm, 4)
+        return out
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "Wire":
@@ -317,6 +473,8 @@ class Wire:
             net=str(data["net"]),
             path_mm=[(float(p[0]), float(p[1]), float(p[2]) if len(p) > 2 else 0.0)
                      for p in (data.get("path_mm") or [])],
+            layer=int(data.get("layer") or 1),
+            width_mm=float(data.get("width_mm") or 0.25),
         )
 
 
@@ -347,11 +505,27 @@ class Enclosure:
 
 @dataclass
 class DesignModel:
-    """一份设计。2D 与 3D 都从这里投影。"""
+    """一份设计。2D 与 3D 都从这里投影。
+
+    ## 单板与多板
+
+    `board` 始终是**主参考板**（兼容旧字段与小工具）；`boards` 是**全部板**。
+
+    不变式（由 `__post_init__` / `board_list()` 保证）：
+
+    * `boards` 为空时 = 单板设计，一切按 `board`；
+    * `boards` 非空时，`board` **必须**是其中之一（同一个对象），
+      否则元件归属与渲染会分叉。
+
+    元件通过 `Placement.board_id` 归属某块板；空 `board_id` 归主参考板。
+    坐标是**所属板的局部坐标**，拼板平移只在投影里做一次。
+    """
 
     id: str = "untitled"
     title: str = ""
     board: Board = field(default_factory=Board)
+    #: 全部板（多板设计）。空 = 单板，等价于 `[board]`。
+    boards: list[Board] = field(default_factory=list)
     parts: list[Part] = field(default_factory=list)
     nets: list[dict[str, Any]] = field(default_factory=list)
     wires: list[Wire] = field(default_factory=list)
@@ -360,6 +534,56 @@ class DesignModel:
     warnings: list[str] = field(default_factory=list)
     schema: str = SCHEMA
     units: str = UNITS
+
+    def __post_init__(self) -> None:
+        # 多板时保证 `board` 就是 `boards` 里的**同一个对象**。
+        #
+        # 不能用 `board in boards` 判：dataclass 的 `__eq__` 是**按值**比较，
+        # 所以"相等"不代表"同一个"。实测：从磁盘读回后，`board` 与
+        # `boards[0]` 值相等但不是同一对象，`board in boards` 返回 True，
+        # 于是这里不做替换 —— 而 `panel_layout` 用 `is not main` 过滤，
+        # 结果主板被算了两次（8 块板排出 9 块，多出来的那块 0 个元件）。
+        #
+        # 所以必须**按 id 找到并替换成同一个对象**。
+        if self.boards:
+            same = next(
+                (b for b in self.boards
+                 if b is self.board
+                 or (b.id != "" and b.id == self.board.id)),
+                None)
+            self.board = same if same is not None else self.boards[0]
+
+    # -- boards -----------------------------------------------------------
+
+    def board_list(self) -> list[Board]:
+        """全部板。单板设计返回 `[board]`（永远至少一块）。"""
+        return list(self.boards) if self.boards else [self.board]
+
+    def is_multi_board(self) -> bool:
+        return len(self.board_list()) > 1
+
+    def board_of(self, part: Part) -> Board:
+        """元件所属的板。
+
+        `board_id` 空 → 主参考板；给了但找不到 → 也退主参考板
+        （`validate()` 会报这个悬空归属）。
+        """
+        wanted = part.placement.board_id
+        if wanted == "":
+            return self.board
+        for board in self.board_list():
+            if board.id == wanted:
+                return board
+        return self.board
+
+    def board_by_id(self, board_id: str) -> Board | None:
+        if board_id == "":
+            return self.board
+        return next((b for b in self.board_list() if b.id == board_id), None)
+
+    def parts_of(self, board: Board) -> list[Part]:
+        """某块板上的元件（按 `board_id` 分组，空归属算主板）。"""
+        return [p for p in self.parts if self.board_of(p) is board]
 
     # -- authoring --------------------------------------------------------
 
@@ -410,10 +634,15 @@ class DesignModel:
     # -- validation -------------------------------------------------------
 
     def validate(self) -> list[str]:
-        """返回问题列表（不抛异常，给面板一次显示全部）。"""
+        """返回问题列表（不抛异常，给面板一次显示全部）。
+
+        **边界检查必须按板分组**：多板设计的元件在各自板的局部坐标里，
+        拿全局 `design.board` 的尺寸去判，子板上的元件会集体"超界"。
+        """
         problems: list[str] = []
         seen: set[str] = set()
-        bw, bh = self.board.size_mm["w"], self.board.size_mm["h"]
+        boards = self.board_list()
+        known_board_ids = {b.id for b in boards if b.id}
         for part in self.parts:
             if part.ref in seen:
                 problems.append(f"元件 ref 重复：{part.ref}")
@@ -425,12 +654,21 @@ class DesignModel:
                 problems.append(f"{part.ref}: 高度未知（d=0），3D 面板按薄片显示")
             if part.physical_source == "estimated" and w > 0:
                 problems.append(f"{part.ref}: 尺寸为估算值，不可当精确值")
+            # 悬空归属：声明了 board_id 但没有这块板
+            if (part.placement.board_id
+                    and part.placement.board_id not in known_board_ids):
+                problems.append(
+                    f"{part.ref}: placement.board_id 指向不存在的板 "
+                    f"{part.placement.board_id!r}")
+            owner = self.board_of(part)
+            bw, bh = owner.size_mm["w"], owner.size_mm["h"]
             x0, y0, x1, y1 = part.footprint_mm()
             if part.placement.mount == "board" and (
                     x0 < -0.01 or y0 < -0.01 or x1 > bw + 0.01 or y1 > bh + 0.01):
+                where = f"板 {owner.id or owner.kind} " if self.is_multi_board() else "板 "
                 problems.append(
                     f"{part.ref}: 足迹超出板轮廓（x {x0:.1f}..{x1:.1f} / "
-                    f"y {y0:.1f}..{y1:.1f}，板 {bw:.1f}×{bh:.1f} mm）")
+                    f"y {y0:.1f}..{y1:.1f}，{where}{bw:.1f}×{bh:.1f} mm）")
         for entry in self.nets:
             for p in entry.get("pins", []):
                 ref = p.get("ref")
@@ -438,6 +676,12 @@ class DesignModel:
                     continue
                 if ref not in seen:
                     problems.append(f"net {entry.get('net')}: 引脚指向不存在的元件 {ref}")
+        # 引脚存在性：**能判断的才报错**，不能判断的留给 pins.audit() 报未验证。
+        # 这一条是"从 0 搭网表"能不能被信任的分水岭——在这之前
+        # `{"ref":"U1","pin":"NOT_A_PIN"}` 会静默通过。
+        from . import pins as _pins
+        for message in _pins.audit(self)["missing"]:
+            problems.append(f"引脚不存在：{message}")
         for wire in self.wires:
             if wire.net not in {e.get("net") for e in self.nets}:
                 problems.append(f"导线 {wire.net} 不在网表里")
@@ -452,6 +696,8 @@ class DesignModel:
             "id": self.id,
             "title": self.title,
             "board": self.board.to_dict(),
+            # 多板设计才写 `boards`：单板设计不写，旧文件读进来也不变。
+            **({"boards": [b.to_dict() for b in self.boards]} if self.boards else {}),
             "parts": [p.to_dict() for p in self.parts],
             "nets": [dict(n) for n in self.nets],
             "wires": [w.to_dict() for w in self.wires],
@@ -474,6 +720,8 @@ class DesignModel:
             id=str(data.get("id") or "untitled"),
             title=str(data.get("title") or ""),
             board=Board.from_dict(data.get("board") or {}),
+            # 旧文件没有 `boards`：空列表 = 单板，一切按 `board`。
+            boards=[Board.from_dict(b) for b in (data.get("boards") or [])],
             parts=[Part.from_dict(p) for p in (data.get("parts") or [])],
             nets=[dict(n) for n in (data.get("nets") or [])],
             wires=[Wire.from_dict(w) for w in (data.get("wires") or [])],

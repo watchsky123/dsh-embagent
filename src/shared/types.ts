@@ -85,7 +85,15 @@ export interface DesignSummary {
 export interface Projection2D {
   units: 'mm'
   px_per_mm: number
+  /** 拼板（多板时的总画布尺寸）。单板时等于那唯一一块板。 */
+  panel: {
+    size_mm: { w: number; h: number }
+    gap_mm: number
+    board_count: number
+  }
+  /** 主参考板（兼容旧字段）。多板时是 `boards[0]`。 */
   board: {
+    id: string
     kind: string
     name: string
     w_px: number
@@ -94,7 +102,29 @@ export interface Projection2D {
     px_per_mm: number
     size_mm: { w: number; h: number }
     outline_px: Array<[number, number]>
+    /** 拼板内的偏移（px）。单板恒为 0。 */
+    x_px?: number
+    y_px?: number
+    parts?: number
   }
+  /** 全部板（单板时长度 1）。 */
+  boards: Array<{
+    id: string
+    kind: string
+    name: string
+    x_mm: number
+    y_mm: number
+    w_mm: number
+    h_mm: number
+    w_px: number
+    h_px: number
+    x_px: number
+    y_px: number
+    thickness_mm: number
+    size_mm: { w: number; h: number }
+    outline_px: Array<[number, number]>
+    parts: number
+  }>
   parts: Array<{
     ref: string
     kind: string
@@ -108,8 +138,34 @@ export interface Projection2D {
     physical_source: PhysicalSource
     size_mm: { w: number; h: number; d: number }
     z_mm: number
+    side: string
+    pads: Array<{
+      num: string
+      x_px: number
+      y_px: number
+      w_px: number
+      h_px: number
+      shape: string
+      rotation_z: number
+      layer: number
+    }>
   }>
-  wires: Array<{ net: string; path_px: Array<[number, number]> }>
+  wires: Array<{
+    net: string
+    path_px: Array<[number, number]>
+    layer: number
+    width_px: number
+    routed: boolean
+  }>
+  /** 飞线：从网表推导，**不是铜线**（`routed` 恒为 false）。 */
+  ratlines: Array<{
+    net: string
+    path_px: Array<[number, number]>
+    length_mm: number
+    pins: string[]
+    routed: boolean
+    approximate: boolean
+  }>
   mount_holes: Array<{ x_px: number; y_px: number; d_px: number; source: string }>
   estimated_parts: string[]
   warnings: string[]
@@ -121,22 +177,71 @@ export interface Scene3DPart {
   kind: string
   role: string
   bbox_mm: [number, number, number, number, number, number]
+  /** 未旋转足迹（渲染层建几何用这个，再按 rotation_z 转一次）。 */
+  size_mm: { w: number; h: number; d: number }
   rotation_z: number
   physical_source: PhysicalSource
   mount: string
+  /** 安装面：`top` / `bottom` / 空。底层元件的 z 是负的（贴板底面）。 */
+  side: string
+  /** 焊盘（真实几何，mm 板坐标）。 */
+  pads: Array<{
+    num: string
+    x_mm: number
+    y_mm: number
+    w_mm: number
+    h_mm: number
+    shape: string
+    rotation_z: number
+    layer: number
+  }>
 }
 
 export interface Scene3D {
   units: 'mm'
+  /** 拼板（多板时的总尺寸）。 */
+  panel: {
+    size_mm: { w: number; h: number }
+    gap_mm: number
+    board_count: number
+  }
+  /** 主参考板（兼容旧字段）。 */
   board: {
     kind: string
-    name: string
+    id: string
     outline: Array<[number, number]>
     size_mm: { w: number; h: number }
     thickness_mm: number
   }
+  /** 全部板：**每块各自挤出**（轮廓已是拼板坐标）。 */
+  boards: Array<{
+    id: string
+    kind: string
+    name: string
+    x_mm: number
+    y_mm: number
+    outline: Array<[number, number]>
+    size_mm: { w: number; h: number }
+    thickness_mm: number
+    parts: number
+  }>
   parts: Scene3DPart[]
-  wires: Array<{ net: string; path_mm: Array<[number, number, number]> }>
+  wires: Array<{
+    net: string
+    path_mm: Array<[number, number, number]>
+    layer: number
+    width_mm: number
+    routed: boolean
+  }>
+  /** 飞线：从网表推导，**不是铜线**（`routed` 恒为 false）。 */
+  ratlines: Array<{
+    net: string
+    path_mm: Array<[number, number, number]>
+    length_mm: number
+    pins: string[]
+    routed: boolean
+    approximate: boolean
+  }>
   mount_holes: Array<{ x_mm: number; y_mm: number; diameter_mm: number; source: string }>
   enclosure: { inner_mm: { w: number; h: number; d: number }; wall_mm: number; openings: unknown[] } | null
 }
@@ -167,6 +272,12 @@ export interface ChecksPayload {
   not_verified: string[]
   unsized: string[]
   estimated: string[]
+  /**
+   * **假绿灯清单**：这些检查"通过"是因为没有可检查的对象（空集），
+   * 而不是真的核对过。必须与真通过分开显示——否则 `parts: []` 的工程
+   * 看起来像"9 项全部通过"。
+   */
+  vacuous?: string[]
   summary: {
     total: number
     failed: number
@@ -261,6 +372,25 @@ export interface SnapshotPayload {
   deferred: DeferredPayload
   crosscheck: CrosscheckPayload
   evidence: EvidencePayload
+  /**
+   * 阶段：**确定性推导**（`design/phase.py`），不是 AI 判断。
+   * 空设计的 9 条检查会全部"通过"，`phase=empty` 是唯一能揭穿这件事的信号。
+   */
+  phase?: PhasePayload
+}
+
+/** 项目阶段。`veto` 逐条说明为什么不是更高阶段（UI 直接显示）。 */
+export interface PhasePayload {
+  readonly phase: 'empty' | 'partial' | 'complete' | 'broken'
+  readonly reason: string
+  readonly veto: readonly string[]
+  readonly counts: {
+    readonly parts: number
+    readonly nets: number
+    readonly unsized: number
+    readonly estimated: number
+    readonly zero_height: number
+  }
 }
 
 export interface BoardPreset {

@@ -17,6 +17,7 @@ from typing import Any
 
 from .catalog import part_size
 from .model import Board, DesignError, DesignModel, Part, Placement, Wire
+from .ratlines import build_ratlines
 
 DEFAULT_PPM = 3.7795  # 96 dpi 的 px/mm，仅在没有板卡比例时兜底
 
@@ -29,63 +30,228 @@ def px_per_mm(design: DesignModel) -> float:
 # 正向：模型 -> 2D 载荷
 # ---------------------------------------------------------------------------
 
+#: 拼板里板与板之间的间距（mm）。留一点缝，否则相邻两块板的轮廓线会重叠，
+#: 看起来像一块板。
+PANEL_GAP_MM = 8.0
+
+
+def panel_layout(design: DesignModel) -> dict[str, Any]:
+    """计算**拼板**排布：每块板在拼板坐标系里的偏移。
+
+    ## 排布规则（确定性，不随字典序漂移）
+
+    1. 主板（`design.board`）固定放在 **(0, 0)**；
+    2. 其余板按 **元件数从多到少**、同数按 `id` 字典序，从左到右排在主板右侧；
+    3. 所有板**底边对齐**（y = 0），间距 `PANEL_GAP_MM`。
+
+    排不下就换行（很少发生，但拼板可能有十几块）。
+
+    ## 为什么用"偏移到拼板 + 全程一次 Y 翻转"
+
+    每块板**各自**做 Y 翻转是错的：翻转是相对各自板高的镜像，拼板时两块
+    板的相对位置就乱了（一块翻左、一块翻右）。
+
+    正确做法是：先把局部坐标**平移**到拼板坐标（这一步不翻转），
+    最后用**拼板总高度**做**一次**翻转。这样板和板之间的相对位置保持
+    导入时的意图，而且翻转只在一处发生（和单板时完全同一条代码路径）。
+
+    返回：
+
+        {
+          "boards": [{"board": Board, "x": ox, "y": oy, "w": .., "h": ..}],
+          "size_mm": {"w": 拼板宽, "h": 拼板高},
+        }
+    """
+    boards = design.board_list()
+    main = design.board
+    # 主板在前，其余按元件数降序、id 升序
+    others = [b for b in boards if b is not main]
+    counts = {id(b): len(design.parts_of(b)) for b in others}
+    others.sort(key=lambda b: (-counts[id(b)], b.id))
+
+    placed: list[dict[str, Any]] = []
+    cursor_x = 0.0
+    cursor_y = 0.0
+    row_height = 0.0
+    # 行宽上限 = 主板宽度的 1.6 倍（拼板通常围着一块主板摆）。
+    #
+    # 用 1.0 倍时实测 8 块板排成 96×288mm 的窄条，画面上大量空白；
+    # 1.6 倍刚好能让两块中等子板并排。这个系数是**显示偏好**，不影响
+    # 任何判定（判定按各自的板坐标系算）。
+    row_limit = float(main.size_mm["w"]) * 1.6 if main is not None else 120.0
+    panel_w = 0.0
+    for index, board in enumerate([main, *others]):
+        w = float(board.size_mm["w"])
+        h = float(board.size_mm["h"])
+        # 换行：只有"这一行已经有东西"且再放会超出行宽时才换。
+        # 之前用 `cursor_x + w > max(panel_w, w)`（跟着已用宽度走）会导致
+        # 永远只要放得下就往后排 —— 实测 8 块板排成一列 288mm 高的长条，
+        # 每块板都很小，画面上大片空。
+        if index > 0 and cursor_x > 0.0 and cursor_x + w > row_limit:
+            cursor_x = 0.0
+            cursor_y += row_height + PANEL_GAP_MM
+            row_height = 0.0
+        placed.append({"board": board, "x": round(cursor_x, 4),
+                       "y": round(cursor_y, 4), "w": w, "h": h})
+        cursor_x += w + PANEL_GAP_MM
+        row_height = max(row_height, h)
+        panel_w = max(panel_w, cursor_x - PANEL_GAP_MM)
+    panel_h = cursor_y + row_height if placed else 0.0
+    return {
+        "boards": placed,
+        "size_mm": {"w": round(panel_w, 4), "h": round(panel_h, 4)},
+    }
+
+
 def to_2d(design: DesignModel) -> dict[str, Any]:
-    """给 2D 画布的最小载荷。所有坐标都是**画布像素**（Y 向下）。"""
+    """给 2D 画布的最小载荷。所有坐标都是**画布像素**（Y 向下）。
+
+    ## 多板
+
+    投影先把每块板上的元件平移到**拼板坐标**，再用拼板总高度做**一次**
+    Y 翻转（见 `panel_layout` 的说明）。所以下面所有 `x_px`/`y_px`
+    接收的都是拼板坐标，不是某块板的局部坐标。
+
+    单板设计时拼板 = 那块板、偏移为 0，与旧行为**逐位一致**。
+    """
     ppm = px_per_mm(design)
-    bw_px = design.board.size_mm["w"] * ppm
-    bh_px = design.board.size_mm["h"] * ppm
+    panel = panel_layout(design)
+    panel_w = panel["size_mm"]["w"]
+    panel_h = panel["size_mm"]["h"]
+    bw_px = panel_w * ppm
+    bh_px = panel_h * ppm
+
+    # 板 id → 偏移（局部坐标 → 拼板坐标）
+    offset_of: dict[str, tuple[float, float]] = {}
+    board_payloads: list[dict[str, Any]] = []
+    for entry in panel["boards"]:
+        board = entry["board"]
+        key = board.id
+        offset_of[key] = (entry["x"], entry["y"])
+        board_payloads.append({
+            "id": board.id,
+            "kind": board.kind,
+            "name": board.name,
+            "x_mm": entry["x"],
+            "y_mm": entry["y"],
+            "w_mm": entry["w"],
+            "h_mm": entry["h"],
+            "w_px": round(entry["w"] * ppm, 3),
+            "h_px": round(entry["h"] * ppm, 3),
+            "x_px": round(entry["x"] * ppm, 3),
+            "y_px": round(entry["y"] * ppm, 3),
+            "thickness_mm": board.thickness_mm,
+            "size_mm": dict(board.size_mm),
+            "outline_px": [
+                [round((x + entry["x"]) * ppm, 3),
+                 round((panel_h - (y + entry["y"])) * ppm, 3)]
+                for x, y in board.outline],
+            "parts": len(design.parts_of(board)),
+        })
+
+    main_offset = offset_of.get(design.board.id, (0.0, 0.0))
 
     def x_px(x_mm: float) -> float:
         return round(x_mm * ppm, 3)
 
     def y_px(y_mm: float) -> float:
-        # 模型 Y 向上，画布 Y 向下
-        return round((design.board.size_mm["h"] - y_mm) * ppm, 3)
+        # 模型 Y 向上，画布 Y 向下（用**拼板**总高度，不是某块板的高度）
+        return round((panel_h - y_mm) * ppm, 3)
+
+    def to_panel(part: Part) -> tuple[float, float]:
+        """元件的局部坐标 → 拼板坐标。"""
+        owner = design.board_of(part)
+        ox, oy = offset_of.get(owner.id, (0.0, 0.0))
+        return (ox, oy)
 
     parts: list[dict[str, Any]] = []
     for part in design.parts:
+        ox, oy = to_panel(part)
         x0, y0, x1, y1 = part.footprint_mm()
         parts.append({
             "ref": part.ref,
             "kind": part.kind,
             "label": part.label,
             "role": part.role,
-            "x_px": x_px(x0),
-            "y_px": y_px(y1),
+            "board_id": design.board_of(part).id,
+            "x_px": x_px(x0 + ox),
+            "y_px": y_px(y1 + oy),
             "w_px": round((x1 - x0) * ppm, 3),
             "h_px": round((y1 - y0) * ppm, 3),
             "rotation_z": part.placement.rotation_z,
             "physical_source": part.physical_source,
             "size_mm": dict(part.size_mm),
             "z_mm": part.placement.z_mm,
+            "side": part.placement.side,
+            # 焊盘（真实几何）：画焊盘、连飞线都用它。
+            "pads": [{
+                "num": pad.num,
+                "x_px": x_px(pad.x_mm + ox),
+                "y_px": y_px(pad.y_mm + oy),
+                "w_px": round(pad.w_mm * ppm, 3),
+                "h_px": round(pad.h_mm * ppm, 3),
+                "shape": pad.shape,
+                "rotation_z": pad.rotation_z,
+                "layer": pad.layer,
+            } for pad in part.pads],
         })
 
+    # 走线：`Wire` 目前没有 board_id（导入器只取主板的铜线），
+    # 所以按主板的偏移平移。多板铜线要等 `Wire` 加 `board_id`（后续）。
     wires: list[dict[str, Any]] = []
     for wire in design.wires:
         wires.append({
             "net": wire.net,
-            "path_px": [[x_px(x), y_px(y)] for x, y, _z in wire.path_mm],
+            "path_px": [[x_px(x + main_offset[0]), y_px(y + main_offset[1])]
+                        for x, y, _z in wire.path_mm],
+            "layer": wire.layer,
+            "width_px": round(wire.width_mm * ppm, 3),
+            "routed": True,
+        })
+
+    # 飞线：跨板网络**不画**（板与板之间的连接不是 PCB 铜线，
+    # 画出来会是一条横穿拼板的假线）。如实计数。
+    ratlines: list[dict[str, Any]] = []
+    cross_board = 0
+    for line in build_ratlines(design):
+        if line.get("cross_board"):
+            cross_board += 1
+            continue
+        # 端点按**所属板**平移：飞线是板内几何，坐标是那块板的局部坐标。
+        ox, oy = offset_of.get(str(line.get("board_id") or ""), (0.0, 0.0))
+        ratlines.append({
+            "net": line["net"],
+            "path_px": [[x_px(x + ox), y_px(y + oy)]
+                        for x, y in line["segments"]],
+            "length_mm": line["length_mm"],
+            "pins": line["pins"],
+            "board_id": line.get("board_id", ""),
+            "routed": False,
+            "approximate": line["approximate"],
         })
 
     return {
         "units": "mm",
         "px_per_mm": ppm,
-        "board": {
-            "kind": design.board.kind,
-            "name": design.board.name,
-            "w_px": round(bw_px, 3),
-            "h_px": round(bh_px, 3),
-            "thickness_mm": design.board.thickness_mm,
-            "px_per_mm": ppm,
-            "size_mm": dict(design.board.size_mm),
-            "outline_px": [[x_px(x), y_px(y)] for x, y in design.board.outline],
+        "panel": {
+            "size_mm": {"w": round(panel_w, 4), "h": round(panel_h, 4)},
+            "gap_mm": PANEL_GAP_MM,
+            "board_count": len(panel["boards"]),
         },
+        # 主参考板（兼容旧字段：前端少量地方直接读 `board.size_mm`）
+        "board": board_payloads[0] if board_payloads else {},
+        "boards": board_payloads,
         "parts": parts,
         "wires": wires,
+        "ratlines": ratlines,
+        "cross_board_ratlines_skipped": cross_board,
         "mount_holes": [
-            {"x_px": x_px(h.x_mm), "y_px": y_px(h.y_mm),
+            {"board_id": entry["board"].id,
+             "x_px": x_px(h.x_mm + entry["x"]),
+             "y_px": y_px(h.y_mm + entry["y"]),
              "d_px": round(h.diameter_mm * ppm, 3), "source": h.source}
-            for h in design.board.mount_holes
+            for entry in panel["boards"]
+            for h in entry["board"].mount_holes
         ],
         "estimated_parts": [p.ref for p in design.parts
                             if p.physical_source == "estimated"],

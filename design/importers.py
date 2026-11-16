@@ -491,8 +491,14 @@ def load_diagram(path: str | Path) -> dict[str, Any]:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def import_any(path: str | Path, *, design_id: str | None = None) -> DesignModel:
-    """按扩展名分派：``.kicad_pcb`` / ``.json``（Wokwi 或 Velxio 工程）。"""
+def import_any(path: str | Path, *, design_id: str | None = None,
+               boards_mode: str = "main",
+               bom_path: str | Path | None = None) -> DesignModel:
+    """按扩展名分派：``.kicad_pcb`` / ``.json``（Wokwi 或 Velxio 工程）。
+
+    `boards_mode` / `bom_path` 只对立创 EDA 工程有意义（多板与 BOM 补全），
+    其它格式忽略 —— 它们的源文件本来就是整块板一张图。
+    """
     from .projection import from_legacy_canvas
 
     file = Path(path)
@@ -501,15 +507,35 @@ def import_any(path: str | Path, *, design_id: str | None = None) -> DesignModel
         return import_kicad_pcb(file, design_id=design_id)
     if suffix == ".json":
         data = load_diagram(file)
+        # **按内容分派**：hwforge 的 `scene.json` 与 Wokwi/Velxio 的
+        # `diagram.json` 都是 `.json`，靠扩展名分不开。
+        #
+        # `scene.json` 的判别特征是 `space.placements[]`（体素装配），
+        # 这是 hwforge 独有的形状；Wokwi 的顶层是 `parts`/`connections`。
+        if isinstance(data, dict) and isinstance(data.get("space"), dict) \
+                and isinstance((data.get("space") or {}).get("placements"), list):
+            from .scene_import import from_scene
+            return from_scene(data, design_id=design_id or file.stem)
         if "parts" in data and "connections" in data:
             data = wokwi_to_legacy(data)
         return from_legacy_canvas(data, design_id=design_id or file.stem)
+    if suffix in (".epro2", ".epro"):
+        # 立创 EDA 工程：唯一能同时给出元件清单与网络名的来源。
+        from .easyeda_import import import_epro2
+        return import_epro2(file, design_id=design_id or file.stem,
+                            board_filter=boards_mode, bom_path=bom_path)
     raise ImportError_(
-        f"不支持的导入格式 {suffix!r}；目前支持 .kicad_pcb 与 Wokwi/Velxio .json")
+        f"不支持的导入格式 {suffix!r}；"
+        f"目前支持 .kicad_pcb / .json（Wokwi·Velxio）/ .epro2（立创 EDA）")
 
 
 def supported_formats() -> list[dict[str, Any]]:
     return [
+        {"ext": ".epro2", "kind": "easyeda-pro",
+         "reads": ["元件标号/值", "网络名", "封装与 3D 模型引用", "工程标题"],
+         "missing": ["元件坐标（未解出，全部标 estimated）",
+                     "元件尺寸（封装是哈希 id）",
+                     "引脚→网络的精确归属（未解出）"]},
         {"ext": ".kicad_pcb", "kind": "kicad-pcb",
          "reads": ["Edge.Cuts 轮廓", "封装位置/旋转", "焊盘包围盒", "板厚"],
          "missing": ["元件高度（PCB 文件不含）", "网表（需原理图）"]},

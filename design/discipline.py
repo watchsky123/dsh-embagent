@@ -1,7 +1,7 @@
 """过程纪律：未决/不可逆决策闸门 + append-only 轨迹。
 
-复用 ``hwforge.deferred``（``DeferredSet`` / ``IRREVERSIBLE_DECISIONS``）与
-``hwforge.trace``（``Trace`` / ``Event``）。这里只做两件事：
+账本与轨迹在 ``design/ledger.py``（**本地实现**，不依赖 hwforge）。
+这里只做两件事：
 
 1. 把两个对象落盘/读回（JSON），让"打开工程"能恢复上一次的账本；
 2. 把闸门接到**导出**动作上：不可逆决策未闭合时，导出/交付必须失败，
@@ -20,53 +20,41 @@ from typing import Any
 from .model import DesignModel
 
 
-def _hwforge(module: str) -> Any:
-    try:
-        from ..bridge import hwforge_root
-        root = hwforge_root()
-        if root and root not in sys.path:
-            sys.path.insert(0, root)
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        return __import__(f"hwforge.{module}", fromlist=["*"])
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            f"过程纪律需要 hwforge.{module}；请把 hwforge checkout 放到 "
-            f"HWFORGE_ROOT（{type(exc).__name__}: {exc}）"
-        ) from exc
-
-
 # ---------------------------------------------------------------------------
-# 未决决策账本
+# 未决决策账本（本地实现）
 # ---------------------------------------------------------------------------
 
 def new_ledger() -> Any:
-    deferred = _hwforge("deferred")
-    return deferred.DeferredSet()
+    from .ledger import Ledger
+    return Ledger()
 
 
 def ledger_from_json(data: dict[str, Any] | None) -> Any:
-    deferred = _hwforge("deferred")
-    ledger = deferred.DeferredSet()
+    from .ledger import KINDS, Ledger
+    ledger = Ledger()
     if not data:
         return ledger
     for fact in data.get("deferred") or []:
-        ledger.defer(str(fact.get("kind")), str(fact.get("ref")),
-                     str(fact.get("why") or ""), str(fact.get("at") or "O4"))
+        try:
+            ledger.defer(str(fact.get("kind")), str(fact.get("ref")),
+                         str(fact.get("why") or ""), str(fact.get("at") or "O4"))
+        except Exception:  # noqa: BLE001 — 旧工程可能有不合法条目，跳过而不是崩
+            continue
     for lock in data.get("locked") or []:
-        ledger.lock(str(lock.get("name")), str(lock.get("value")),
-                    str(lock.get("at") or "L1"))
+        try:
+            ledger.lock(str(lock.get("name")), str(lock.get("value")),
+                        str(lock.get("at") or "L1"))
+        except Exception:  # noqa: BLE001
+            continue
     return ledger
 
 
 def ledger_to_json(ledger: Any) -> dict[str, Any]:
-    deferred = _hwforge("deferred")
-    report = ledger.report()
+    from .ledger import IRREVERSIBLE_DECISIONS, KINDS
     return {
-        **report,
-        "kinds": list(deferred.KINDS),
-        "irreversible": dict(deferred.IRREVERSIBLE_DECISIONS),
+        **ledger.report(),
+        "kinds": list(KINDS),
+        "irreversible": dict(IRREVERSIBLE_DECISIONS),
     }
 
 
@@ -76,7 +64,6 @@ def auto_lock(design: DesignModel, ledger: Any) -> list[str]:
     其余不可逆决策（封装族/连接器族/电源架构/启动分区）不替用户拍板——
     自动锁一个没有依据的值，等于伪造一个决策。
     """
-    deferred = _hwforge("deferred")
     locked: list[str] = []
     if "mcu_family" not in ledger.locked_names() and design.board.kind:
         ledger.lock("mcu_family", f"{design.board.name}（{design.board.kind}）", "L1")
@@ -92,10 +79,10 @@ def auto_lock(design: DesignModel, ledger: Any) -> list[str]:
 
 def gate(ledger: Any) -> dict[str, Any]:
     """交付闸门：不可逆决策未闭合 → 拒绝导出，并说明原因。"""
-    deferred = _hwforge("deferred")
+    from .ledger import IRREVERSIBLE_DECISIONS
     report = ledger.report()
     open_names = list(report["open_irreversible"])
-    reasons = {name: deferred.IRREVERSIBLE_DECISIONS[name] for name in open_names}
+    reasons = {name: IRREVERSIBLE_DECISIONS[name] for name in open_names}
     return {
         "deliverable": not open_names,
         "open_irreversible": open_names,
@@ -112,15 +99,15 @@ def gate(ledger: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def new_trace() -> Any:
-    trace = _hwforge("trace")
-    return trace.Trace()
+    from .ledger import Trace
+    return Trace()
 
 
 def trace_from_json(rows: list[dict[str, Any]] | None) -> Any:
-    trace_module = _hwforge("trace")
-    trace = trace_module.Trace()
+    from .ledger import Event, Trace
+    trace = Trace()
     for row in rows or []:
-        event = trace_module.Event(
+        event = Event(
             seq=int(row.get("seq") or len(trace.events) + 1),
             ts=str(row.get("ts") or ""),
             actor=str(row.get("actor") or ""),
@@ -153,33 +140,20 @@ def append(store: Any, actor: str, type_: str, payload: dict[str, Any]) -> dict[
 
 
 def verify(store: Any) -> dict[str, Any]:
-    """校验轨迹：既查链，也**重算每条 payload 的哈希**。
+    """校验轨迹：查链 + **重算每条 payload 的哈希**。
 
-    ``hwforge.trace`` 的 ``chain_ok`` 只校验相邻事件的 ``parent_hash`` 链接；
-    如果有人改了某条事件的 payload 而没改 ``payload_hash``，链仍然连续。
-    证据面板要发现这种情况，所以这里重新计算内容哈希逐条比对。
+    只查链是不够的：改了 payload 却没改 `payload_hash` 时，链仍然连续。
+    证据面板要能发现这种情况。
     """
+    from .ledger import verify_trace
     trace = trace_from_json(store.read("trace.json"))
-    chain_ok = trace.chain_ok()
-    tampered: list[int] = []
-    for event in trace.events:
-        blob = json.dumps(event.payload, sort_keys=True, default=str).encode()
-        fresh = hashlib.sha256(blob).hexdigest()[:16]
-        if fresh != event.payload_hash:
-            tampered.append(event.seq)
-    ok = chain_ok and not tampered
-    if not chain_ok:
-        message = "哈希链断裂：事件被删改或顺序被打乱"
-    elif tampered:
-        message = f"内容被改动：事件 {tampered} 的 payload 哈希对不上"
-    else:
-        message = "哈希链完整，内容未被改动"
+    verdict = verify_trace(trace)
     return {
-        "ok": ok,
-        "events": len(trace.events),
-        "chain_ok": chain_ok,
-        "tampered_seqs": tampered,
-        "message": message,
+        "ok": verdict["ok"],
+        "events": verdict["events"],
+        "chain_ok": verdict["chain_ok"],
+        "tampered_seqs": verdict["tampered"],
+        "message": verdict["message"],
         "head": trace.events[-1].payload_hash if trace.events else "genesis",
     }
 

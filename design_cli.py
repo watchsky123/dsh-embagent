@@ -9,7 +9,9 @@
     python -m hw_velxio.design_cli snapshot <id>
     python -m hw_velxio.design_cli get <id>
     python -m hw_velxio.design_cli put <id> <design.json|-> 
-    python -m hw_velxio.design_cli import <id> <path> [--bom <path>]
+    python -m hw_velxio.design_cli import <id> <path> [--bom <path>] [--boards all|main|<doc>]
+    python -m hw_velxio.design_cli bom <id> <bom-path> [--dry-run]
+    python -m hw_velxio.design_cli roles [--validate] [--roles a,b,c] [--goal "…"] [--assemble <id>]
     python -m hw_velxio.design_cli project2d <id>
     python -m hw_velxio.design_cli scene3d <id>
     python -m hw_velxio.design_cli check <id> [--pitch 0.5]
@@ -19,6 +21,7 @@
     python -m hw_velxio.design_cli crosscheck <id>
     python -m hw_velxio.design_cli export <id>
     python -m hw_velxio.design_cli evidence <id>
+    python -m hw_velxio.design_cli survey [--write] [--json]
 
 三种状态：``ok`` / ``not_ready``（前置缺失）/ ``failed``（跑了但出错）。
 """
@@ -27,6 +30,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 from . import __version__
@@ -56,41 +60,116 @@ def _load(project_id: str):
 # ---------------------------------------------------------------------------
 
 def scene3d(design) -> dict[str, Any]:
-    """3D 渲染层要的最小几何：全部是 mm 的 AABB / 轮廓 / 路径。"""
+    """3D 渲染层要的最小几何：全部是 mm 的 AABB / 轮廓 / 路径。
+
+    多板：元件坐标平移到**拼板坐标**（与 2D 同一套 `panel_layout` 偏移），
+    每块板各自挤出。渲染层拿到的是拼板坐标，不需要知道板的概念。
+    """
+    from .design.projection import PANEL_GAP_MM, panel_layout
+    from .design.ratlines import build_ratlines
+
+    panel = panel_layout(design)
+    offset_of = {entry["board"].id: (entry["x"], entry["y"])
+                 for entry in panel["boards"]}
+
+    def shift(part) -> tuple[float, float]:
+        return offset_of.get(design.board_of(part).id, (0.0, 0.0))
+
     parts = []
     for part in design.parts:
         x0, y0, z0, x1, y1, z1 = part.bbox_mm()
+        ox, oy = shift(part)
         parts.append({
             "ref": part.ref,
             "label": part.label,
             "kind": part.kind,
             "role": part.role,
-            "bbox_mm": [round(x0, 3), round(y0, 3), round(z0, 3),
-                        round(x1, 3), round(y1, 3), round(z1, 3)],
+            "board_id": design.board_of(part).id,
+            # bbox 与焊盘都平移到**拼板坐标**（渲染层不再关心板归属）
+            "bbox_mm": [round(x0 + ox, 3), round(y0 + oy, 3), round(z0, 3),
+                        round(x1 + ox, 3), round(y1 + oy, 3), round(z1, 3)],
+            # 未旋转的足迹尺寸：渲染层要用它建几何，再按 rotation_z 转。
+            # bbox_mm 是**旋转后**的 AABB，拿它建盒子再转一次就是转两遍。
+            "size_mm": dict(part.size_mm),
             "rotation_z": part.placement.rotation_z,
             "physical_source": part.physical_source,
             "mount": part.placement.mount,
+            "side": part.placement.side,
+            # 焊盘（3D 要有焊点：焊盘是真实的金属面）。
+            "pads": [{
+                "num": pad.num,
+                "x_mm": round(pad.x_mm + ox, 3),
+                "y_mm": round(pad.y_mm + oy, 3),
+                "w_mm": round(pad.w_mm, 3),
+                "h_mm": round(pad.h_mm, 3),
+                "shape": pad.shape,
+                "rotation_z": pad.rotation_z,
+                "layer": pad.layer,
+            } for pad in part.pads],
         })
+    # 铜线只属于主板（`Wire` 还没有 board_id），按主板偏移平移。
+    main_ox, main_oy = offset_of.get(design.board.id, (0.0, 0.0))
     return {
         "units": "mm",
+        "panel": {
+            "size_mm": dict(panel["size_mm"]),
+            "gap_mm": PANEL_GAP_MM,
+            "board_count": len(panel["boards"]),
+        },
+        # 主参考板（兼容旧字段）
         "board": {
             "kind": design.board.kind,
-            "name": design.board.name,
-            "outline": [[round(x, 3), round(y, 3)] for x, y in design.board.outline],
+            "id": design.board.id,
+            "outline": [[round(x + main_ox, 3), round(y + main_oy, 3)]
+                        for x, y in design.board.outline],
             "size_mm": dict(design.board.size_mm),
             "thickness_mm": design.board.thickness_mm,
         },
+        # 全部板：每块板各自挤出（拼板坐标）
+        "boards": [{
+            "id": entry["board"].id,
+            "kind": entry["board"].kind,
+            "name": entry["board"].name,
+            "x_mm": entry["x"],
+            "y_mm": entry["y"],
+            "outline": [[round(x + entry["x"], 3), round(y + entry["y"], 3)]
+                        for x, y in entry["board"].outline],
+            "size_mm": dict(entry["board"].size_mm),
+            "thickness_mm": entry["board"].thickness_mm,
+            "parts": len(design.parts_of(entry["board"])),
+        } for entry in panel["boards"]],
         "parts": parts,
         "wires": [
             {"net": w.net,
-             "path_mm": [[round(x, 3), round(y, 3), round(z, 3)]
-                         for x, y, z in w.path_mm]}
+             "path_mm": [[round(x + main_ox, 3), round(y + main_oy, 3),
+                          round(z, 3)] for x, y, z in w.path_mm],
+             "layer": w.layer,
+             "width_mm": round(w.width_mm, 4),
+             "routed": True}
             for w in design.wires
         ],
+        # 飞线：从网表推导，**不是铜线**（`routed: False`）。
+        # 端点按**所属板**平移；跨板飞线不画（不是 PCB 铜线）。
+        "ratlines": [{
+            "net": line["net"],
+            "path_mm": [[round(x + offset_of.get(str(line.get("board_id") or ""),
+                                                 (0.0, 0.0))[0], 3),
+                         round(y + offset_of.get(str(line.get("board_id") or ""),
+                                                 (0.0, 0.0))[1], 3), 0.0]
+                        for x, y in line["segments"]],
+            "length_mm": line["length_mm"],
+            "pins": line["pins"],
+            "routed": False,
+            "approximate": line["approximate"],
+        } for line in build_ratlines(design) if not line.get("cross_board")],
         "mount_holes": [
-            {"x_mm": h.x_mm, "y_mm": h.y_mm, "diameter_mm": h.diameter_mm,
+            {"board_id": entry["board"].id,
+             "x_mm": round(h.x_mm + entry["x"], 3),
+             "y_mm": round(h.y_mm + entry["y"], 3),
+             "diameter_mm": h.diameter_mm,
              "source": h.source}
-            for h in design.board.mount_holes
+            for entry in panel["boards"]
+            for h in entry["board"].mount_holes
         ],
         "enclosure": design.enclosure.to_dict() if design.enclosure else None,
     }
@@ -139,10 +218,77 @@ def snapshot(project_id: str, *, pitch_mm: float = 0.5) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         out["crosscheck"] = {"ok": None, "error": f"{type(exc).__name__}: {exc}"}
 
+    # **协同验证**：需求数值 vs 硬件能力（hwforge coverify 的 8 条 CV 检查）。
+    #
+    # 它回答的是**别的检查都不回答**的问题：需求里写的数字，硬件能否兑现。
+    # 之前的缺口是它只在 hwforge 的积木里跑过，需求→设计的自动链路
+    # 从来没跑过 —— 于是"检查全绿"不代表"需求被满足"。
+    try:
+        from .design import coverify as coverify_module
+        co = coverify_module.run(design)
+        out["coverify"] = {**co.to_dict(),
+                           "summary": coverify_module.summarise(co)}
+    except Exception as exc:  # noqa: BLE001
+        out["coverify"] = {"ok": None, "status": "not_ready",
+                           "error": f"{type(exc).__name__}: {exc}",
+                           "findings": [], "not_verified": [str(exc)]}
+
+    # **DC 电学**：压降 / 轨跌 / 结温（EL-01..05）。
+    #
+    # 它补的是降额表补不了的那一块：降额表能说"这颗 MOSFET 在 60% Vds"，
+    # 但说不出"5V 轨在堵转时跌到 4.4V，舵机褐变复位"。
+    try:
+        from .design import electrical as electrical_module
+        elec = electrical_module.run(design)
+        out["electrical"] = {**elec.to_dict(),
+                             "summary": {
+                                 "ok": elec.ok,
+                                 "wire_drops": len(elec.wires),
+                                 "rails": len(elec.rails),
+                                 "regulators": len(elec.regulators),
+                                 "failed": len([f for f in elec.findings()
+                                                if not f["ok"]]),
+                             }}
+    except Exception as exc:  # noqa: BLE001
+        out["electrical"] = {"ok": None, "status": "not_ready",
+                             "error": f"{type(exc).__name__}: {exc}",
+                             "wires": [], "rails": [], "regulators": [],
+                             "not_verified": [str(exc)]}
+
+    # **阶梯**：把上面这些检查映射到 hwforge 的 21 级 tier 上，
+    # 让"哪些层验过、哪些没有工具、哪些这次没跑"三者分开可见。
+    try:
+        from .design import tiers as tiers_module
+        tier_report = tiers_module.report(
+            checks=out.get("checks"),
+            coverify=out.get("coverify"),
+            budget=out.get("budget"),
+            electrical=out.get("electrical"))
+        out["tiers"] = {**tier_report.to_dict(),
+                        "counts": tier_report.counts(),
+                        "summary": tier_report.summary()}
+    except Exception as exc:  # noqa: BLE001
+        out["tiers"] = {"ok": None, "available": False,
+                        "error": f"{type(exc).__name__}: {exc}", "tiers": []}
+
     try:
         out["evidence"] = discipline.evidence(store, design)
     except RuntimeError as exc:
         out["evidence"] = {"status": "not_ready", "error": str(exc)}
+
+    # 阶段：确定性推导（空/半成品/成品）。UI 用它着色与挡导出，
+    # 不依赖任何 AI 判断——见 design/phase.py。
+    from .design import phase as phase_module
+    try:
+        ledger_json = out.get("deferred") or {}
+        open_list = ledger_json.get("open_irreversible")
+        out["phase"] = phase_module.evaluate(
+            design,
+            open_irreversible=list(open_list) if isinstance(open_list, list) else None)
+    except Exception as exc:  # noqa: BLE001
+        out["phase"] = {"phase": "partial",
+                        "reason": f"阶段推导失败：{type(exc).__name__}: {exc}",
+                        "veto": [], "counts": {}}
 
     return out
 
@@ -151,16 +297,104 @@ def snapshot(project_id: str, *, pitch_mm: float = 0.5) -> dict[str, Any]:
 # 命令
 # ---------------------------------------------------------------------------
 
+def cmd_workspace(args: list[str]) -> dict[str, Any]:
+    """``workspace [show|set <path>|default]`` —— 查看/切换工作区。
+
+    工作区是**用户资产目录**：工程全在里面，与本插件的安装位置无关。
+    """
+    from .design import workspace as ws
+
+    action = args[0] if args else "show"
+    if action == "set":
+        if len(args) < 2:
+            return {"status": "failed", "findings": ["workspace set 需要 <绝对路径>"]}
+        try:
+            config = ws.set_workspace(args[1])
+        except ValueError as exc:
+            return {"status": "failed", "findings": [str(exc)]}
+        root = ws.workspace_root()
+        root.mkdir(parents=True, exist_ok=True)
+        return {"status": "ok", "workspace": str(root), "config": config,
+                "projects": [p.name for p in sorted(root.iterdir())
+                             if p.is_dir() and (p / "design.json").is_file()]}
+    if action == "default":
+        target = ws.default_workspace()
+        target.mkdir(parents=True, exist_ok=True)
+        config = ws.save_config({"workspace": str(target)})
+        return {"status": "ok", "workspace": str(target), "config": config}
+    if action == "create":
+        # ``workspace create <parent> <name>``：在**用户指定的父目录**下建子目录
+        # 并切换过去。(3) 的语义：新建工程落在 DSH 当前工作区的子文件夹里。
+        if len(args) < 3:
+            return {"status": "failed",
+                    "findings": ["workspace create 需要 <父目录> <子目录名>"]}
+        parent, name = Path(args[1]), args[2].strip()
+        if not name or name in (".", "..") or "/" in name or "\\" in name:
+            return {"status": "failed", "findings": [f"目录名不合法：{name!r}"]}
+        if not parent.is_dir():
+            return {"status": "failed",
+                    "findings": [f"父目录不存在：{parent}（先选一个存在的文件夹）"]}
+        target = parent / name
+        if target.exists():
+            return {"status": "failed",
+                    "findings": [f"{target} 已存在；换一个名字，或直接"
+                                 "用「选择文件夹」打开它"]}
+        try:
+            target.mkdir(parents=True)
+        except OSError as exc:
+            return {"status": "failed", "findings": [f"无法创建 {target}：{exc}"]}
+        config = ws.save_config({"workspace": str(target)})
+        return {"status": "ok", "workspace": str(target), "created": True,
+                "config": config, "projects": []}
+    if action != "show":
+        return {"status": "failed",
+                "findings": [f"未知 workspace 动作 {action!r}（show/set/default）"]}
+
+    root = ws.workspace_root()
+    # `source` 说清这个根是怎么来的——用户/环境变量/默认，面板要能显示。
+    env = bool(__import__("os").environ.get("HWV_WORKSPACE", "").strip())
+    configured = isinstance(ws.load_config().get("workspace"), str)
+    return {
+        "status": "ok",
+        "workspace": str(root),
+        "exists": root.is_dir(),
+        "writable": _probe_writable(root),
+        "source": "env" if env else ("config" if configured else "default"),
+        "default": str(ws.default_workspace()),
+        "config_path": str(ws.config_path()),
+    }
+
+
+def _probe_writable(path) -> bool:
+    """写一次探针再删；只读目录/权限问题在这里暴露，而不是在保存时。"""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".hwv-write-probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def cmd_new(args: list[str]) -> dict[str, Any]:
     from .design.boards import board_preset
     from .design.model import DesignModel
-    from .design.store import DesignStore
+    from .design.store import DesignStore, project_root
 
     if not args:
         return {"status": "failed", "findings": ["new 需要 <id> [board-kind] [title]"]}
     project_id = args[0]
     board_kind = args[1] if len(args) > 1 else "arduino-uno"
     title = args[2] if len(args) > 2 else project_id
+
+    # 工作区不存在就建——"新建工程"的语义包含"把工作区准备好"。
+    root = project_root()
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return {"status": "failed",
+                "findings": [f"工作区无法创建：{root}（{exc}）"]}
 
     store = DesignStore(project_id)
     if store.exists():
@@ -177,6 +411,7 @@ def cmd_new(args: list[str]) -> dict[str, Any]:
     discipline.append(store, "cli", "design.created",
                       {"board": board_kind, "title": title})
     return {"status": "ok", "project": store.summary(),
+            "workspace": str(root),
             "design": design.to_dict(),
             "warnings": design.warnings}
 
@@ -219,8 +454,37 @@ def cmd_put(args: list[str]) -> dict[str, Any]:
     from .design import discipline
     discipline.append(store, "cli", "design.updated",
                       {"parts": len(design.parts), "nets": len(design.nets)})
+
+    # **`put` 也要跑 auto_lock**：`new`/`import` 都会锁 `mcu_family`（板卡
+    # 型号就是已定的决策），而 `put` 之前漏了这一步。后果是：用 put 建的设计
+    # 把四个决策都锁了，导出闸门仍然报「mcu_family 未闭合」——用户会以为
+    # 自己漏了什么，其实是这条路径少了一步。
+    ledger = discipline.ledger_from_json(store.read("deferred.json"))
+    auto_locked = discipline.auto_lock(design, ledger)
+    if auto_locked:
+        store.write("deferred.json", discipline.ledger_to_json(ledger))
     return {"status": "ok", "summary": design.summary(),
-            "problems": design.validate()}
+            "problems": design.validate(),
+            "auto_locked": auto_locked,
+            "deferred": {**discipline.ledger_to_json(ledger),
+                         **discipline.gate(ledger)}}
+
+
+def _resolve_input(path_text: str) -> Path:
+    """解析待导入文件：绝对路径原样；相对路径**相对当前工作区**再退回 CWD。
+
+    为什么要有这一步：工作台里的所有文件操作都在工作区内进行，用户粘一个
+    ``sources/board.kicad_pcb`` 时，它指的是工作区里的那个，不是进程 cwd 的。
+    """
+    from .design.store import project_root
+
+    candidate = Path(path_text).expanduser()
+    if candidate.is_absolute():
+        return candidate
+    in_workspace = project_root() / candidate
+    if in_workspace.exists():
+        return in_workspace
+    return candidate
 
 
 def cmd_import(args: list[str]) -> dict[str, Any]:
@@ -236,26 +500,51 @@ def cmd_import(args: list[str]) -> dict[str, Any]:
         index = args.index("--bom")
         if index + 1 < len(args):
             bom_path = args[index + 1]
+    # `--boards all` 导入全部板；`--boards main`（默认）只导主板；
+    # `--boards <doc>` 精确选一块。多板工程的元件不会被静默丢弃。
+    boards_mode = "main"
+    if "--boards" in args:
+        index = args.index("--boards")
+        if index + 1 < len(args):
+            boards_mode = args[index + 1]
+
+    source = _resolve_input(path)
+    if bom_path is not None:
+        bom_path = str(_resolve_input(bom_path))
 
     store = _store(project_id)
     try:
-        design = import_any(path, design_id=project_id)
+        design = import_any(source, design_id=project_id,
+                            boards_mode=boards_mode)
     except FileNotFoundError as exc:
-        return {"status": "not_ready", "findings": [str(exc)]}
+        return {"status": "not_ready",
+                "findings": [f"找不到文件：{source}（相对路径按工作区解析）", str(exc)]}
     except Exception as exc:  # noqa: BLE001
         return {"status": "failed", "findings": [f"{type(exc).__name__}: {exc}"]}
 
     unmatched: list[str] = []
+    bom_fill_note: dict[str, Any] | None = None
     if bom_path:
         try:
             bom = import_bom(bom_path)
+            # 第一步：给**已有**元件贴值/LCSC/封装（真实布局优先）。
             unmatched = apply_bom(design, bom)
+            # 第二步：把 BOM 里**PCB 没有的** ref 补进来。
+            # 只有一步的话，"空工程 + 完整 BOM"仍然显示 0 个元件 ——
+            # 而 `unmatched` 明明已经把缺的 ref 全列出来了。
+            #
+            # **BOM 补全只在这里做一次**：`import_any` 的 `bom_path` 参数
+            # 只用于 KiCad 等"导入器内部会用到 BOM"的格式，
+            # 立创路径不传（否则会补两遍，ref 重复）。
+            if bom:
+                from .design.bom_fill import fill_from_bom
+                bom_fill_note = fill_from_bom(design, bom)
         except Exception as exc:  # noqa: BLE001
             design.warnings.append(f"BOM 未应用：{type(exc).__name__}: {exc}")
 
     from .design.fabrication import copy_source
     try:
-        copy_source(design, path, store.dir)
+        copy_source(design, source, store.dir)
         if bom_path:
             copy_source(design, bom_path, store.dir)
     except Exception as exc:  # noqa: BLE001
@@ -274,8 +563,326 @@ def cmd_import(args: list[str]) -> dict[str, Any]:
         "problems": design.validate(),
         "warnings": design.warnings,
         "bom_unmatched": unmatched,
+        "bom_fill": bom_fill_note,
         "auto_locked": auto_locked,
     }
+
+
+def cmd_bom(args: list[str]) -> dict[str, Any]:
+    """``bom <id> <bom-path> [--dry-run]`` —— 用 BOM 补全**已有**工程的元件。
+
+    为什么需要这条命令：`import` 只能从源文件（`.epro2` / `.kicad_pcb` /
+    `.json`）建工程。而真实项目的常见形态是**工程已经有了、但内容不全**
+    ——比如 `示例-无人机` 的 `design.json` 里 `parts: []`，而工作区里躺着
+    一份 45 个设计号的 BOM。这时 `import` 帮不上，只能"往现有工程里补"。
+
+    `--dry-run` 只报告能补多少，不落盘（先看清再决定）。
+    """
+    from .design import discipline
+    from .design.bom_fill import fill_from_bom
+    from .design.importers import apply_bom, import_bom
+
+    if len(args) < 2:
+        return {"status": "failed",
+                "findings": ["bom 需要 <id> <bom-path> [--dry-run]"]}
+    project_id = args[0]
+    bom_path = str(_resolve_input(args[1]))
+    dry_run = "--dry-run" in args
+
+    store, design = _load(project_id)
+    try:
+        bom = import_bom(bom_path)
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "failed",
+                "findings": [f"读不了 BOM：{type(exc).__name__}: {exc}"]}
+    if not bom:
+        return {"status": "not_ready",
+                "findings": [f"BOM {bom_path} 没读出任何条目（列名不匹配？）"]}
+
+    before = len(design.parts)
+    # 先给已有元件贴值/LCSC/封装（真实布局优先，不覆盖坐标）
+    unmatched = apply_bom(design, bom)
+    note = fill_from_bom(design, bom)
+    after = len(design.parts)
+
+    if dry_run:
+        return {
+            "status": "ok", "dry_run": True,
+            "before": before, "would_add": after - before,
+            "bom_entries": len(bom),
+            "bom_fill": note,
+            "bom_matched_existing": sorted(set(bom) - set(unmatched)),
+        }
+
+    store.save(design)
+    ledger = discipline.ledger_from_json(store.read("deferred.json"))
+    auto_locked = discipline.auto_lock(design, ledger)
+    discipline.append(store, "cli", "bom.fill",
+                      {"before": before, "after": after,
+                       "source": str(bom_path)})
+    return {
+        "status": "ok", "before": before, "after": after,
+        "added": after - before,
+        "bom_entries": len(bom),
+        "bom_fill": note,
+        "bom_matched_existing": sorted(set(bom) - set(unmatched)),
+        "auto_locked": auto_locked,
+    }
+
+
+def cmd_roles(args: list[str]) -> dict[str, Any]:
+    """``roles [--validate] [--goal "<需求>"] [--roles a,b,c]`` —— 需求角色 → 装配计划。
+
+    这一层填的是"需求 → 装配"之间唯一缺失的一格：`spec` 产出**角色**
+    （camera / gimbal_pan…），`assemble` 需要**模板**（camera_module…），
+    本命令把它们对上，并把对不上的如实报出来。
+
+    三种用法：
+
+    * `roles --validate`：只校验映射表（表里写的模板在 hwforge 里真的存在吗）；
+    * `roles --roles camera,gimbal_pan`：给角色，输出装配计划；
+    * `roles --goal "壁挂云台相机"`：从自然语言需求出发（需要 hwforge 可导入）。
+    """
+    from .design import roles as roles_module
+
+    if "--validate" in args and "--roles" not in args and "--goal" not in args:
+        check = roles_module.validate()
+        return {"status": "ok" if check.ok else "failed",
+                **check.to_dict(), "summary": check.summary(),
+                "table": roles_module.describe(),
+                # 模板表是**本地**的（design/library.py），不再需要 hwforge
+                "template_source": "design/library.py"}
+
+    role_list: list[str] = []
+    reasons: dict[str, str] = {}
+    spec_digest = ""
+    unresolved: list[str] = []
+    goal = ""
+    goal_used = False
+    capability_hits: list[dict[str, Any]] = []
+
+    if "--roles" in args:
+        index = args.index("--roles")
+        if index + 1 < len(args):
+            role_list = [r.strip() for r in args[index + 1].split(",") if r.strip()]
+
+    if "--goal" in args:
+        index = args.index("--goal")
+        if index + 1 >= len(args):
+            return {"status": "failed", "findings": ["--goal 需要一个字符串"]}
+        goal = " ".join(args[index + 1:]).strip()
+        goal_used = True
+        # -- 需求分析（**本地能力表**，不依赖 hwforge）--------------------
+        #
+        # 早先这里跑两条路：hwforge `spec` + 本地能力表。现在只剩本地 ——
+        # 能力表认得的说法更多，且不需要外部 checkout。
+        #
+        # `spec` 独有的软件视图 / 跨域契约 / LookupRequest 目前没有对等
+        # 实现。它们不见了，**必须说出来**，而不是让调用方以为还在。
+        from .design import requirements as requirements_module
+        local = requirements_module.analyse(goal)
+        role_list = local.roles or role_list
+        capability_hits = [h.to_dict() for h in local.hits]
+        unresolved.extend(local.unresolved)
+        if not local.ok:
+            unresolved.append(
+                "需求没有命中任何能力 —— 请用 --roles 直接给角色，"
+                "或把说法补进 design/requirements.py 的能力表")
+
+    if not role_list:
+        return {"status": "failed",
+                "findings": ["需要 --validate、--roles a,b,c 或 --goal \"…\" 之一"]}
+
+    # **角色增强**：`spec` 不产出 `mcu`，这里按需求文本/依赖关系补。
+    # 不补的话"相机+云台+电源"没有主控，信号脚注定悬空。
+    enhancement = roles_module.enhance(role_list, goal if goal_used else "")
+    role_list = enhancement.roles if enhancement.added else role_list
+
+    check = roles_module.validate(role_list)
+    plan = roles_module.plan(role_list, reasons=reasons)
+
+    # `--assemble <id>`：把计划**装成设计**并落盘（R3）。
+    # 不给就只出计划 —— 计划和设计是两件事，默认不写盘。
+    if "--assemble" in args:
+        index = args.index("--assemble")
+        if index + 1 >= len(args):
+            return {"status": "failed", "findings": ["--assemble 需要一个工程 id"]}
+        project_id = args[index + 1]
+        from .design import assemble as assemble_module
+        from .design import discipline
+
+        title = ""
+        if "--title" in args:
+            title = " ".join(args[args.index("--title") + 1:]).strip()
+        store = _store(project_id)
+        result = assemble_module.assemble_plan(
+            plan, design_id=project_id, title=title or project_id)
+        if result.design is None:
+            return {"status": "failed", **result.to_dict(),
+                    "findings": result.problems}
+        store.save(result.design)
+        ledger = discipline.ledger_from_json(store.read("deferred.json"))
+        auto_locked = discipline.auto_lock(result.design, ledger)
+        discipline.append(store, "cli", "roles.assemble",
+                          {"project": project_id,
+                           "parts": len(result.design.parts),
+                           "nets": len(result.design.nets)})
+        return {"status": "ok" if result.ok else "not_ready",
+                **result.to_dict(),
+                "project": project_id,
+                "auto_locked": auto_locked,
+                "role_check": check.to_dict(),
+                "role_enhancement": enhancement.to_dict(),
+                "capability_hits": capability_hits,
+                "unresolved": unresolved}
+
+    status = "ok" if check.ok and not plan.unmatched else "not_ready"
+    out: dict[str, Any] = {
+        "status": status,
+        "roles": role_list,
+        "plan": plan.to_dict(),
+        "summary": plan.summary(),
+        "role_check": check.to_dict(),
+        "role_enhancement": enhancement.to_dict(),
+        "capability_hits": capability_hits,
+        "unresolved": unresolved,
+    }
+    if spec_digest:
+        out["spec_digest"] = spec_digest
+    if plan.unmatched:
+        out["findings"] = [
+            f"角色没有映射：{'、'.join(plan.unmatched)} —— "
+            f"这些需求会被丢掉，先在 design/roles.py 里补映射"]
+    return out
+
+
+def cmd_firmware(args: list[str]) -> dict[str, Any]:
+    """``firmware <源码目录> [--scope uncalled,timeout,...] [--vendor]``
+
+    固件源码的**文本/结构**检查（6 条）：未调用函数、失联处理、配置表
+    覆盖率、BOM 一致性、重复副本、调试残留。
+
+    这些检查**不生成代码、不改写文件**；每条 finding 都写明"看不见什么"。
+    """
+    from .design import firmware as firmware_module
+    from .design import importers as importers_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "failed",
+                "findings": ["需要源码目录；用 --scope 选检查项（默认全跑）"],
+                "available": list(firmware_module.ALL_CHECKS)}
+
+    root = args[0]
+    scope: list[str] | None = None
+    if "--scope" in args:
+        index = args.index("--scope")
+        if index + 1 < len(args):
+            scope = [s.strip() for s in args[index + 1].split(",") if s.strip()]
+    include_vendor = "--vendor" in args
+
+    bom_rows: list[dict[str, Any]] = []
+    if "--bom" in args:
+        index = args.index("--bom")
+        if index + 1 < len(args):
+            try:
+                from .design.bom import import_bom
+                bom = import_bom(args[index + 1])
+                bom_rows = [row.to_dict() if hasattr(row, "to_dict") else dict(row)
+                            for row in bom]
+            except Exception as exc:  # noqa: BLE001
+                return {"status": "failed",
+                        "findings": [f"读不到 BOM：{type(exc).__name__}: {exc}"]}
+
+    resolved = _resolve_input(root)
+    report = firmware_module.run(resolved, scope=scope,
+                                 include_vendor=include_vendor,
+                                 bom_rows=bom_rows)
+    return {"status": "ok" if report.ok else "failed", **report.to_dict()}
+
+
+def cmd_semantics(args: list[str]) -> dict[str, Any]:
+    """``semantics [--validate] [<template>]`` —— 语义树（元件内部结构）。
+
+    语义树是**判定链的解释层**，不是另一个判定器。它唯一的目的：
+    让 `coverify` 的失败项能说出"这个硬件下限由内部哪个子系统决定、
+    换什么能解决、**什么层面修不好**"。
+
+    * 不带参数：列覆盖率（哪些模板有树、哪些如实标未建模）；
+    * `--validate`：校验映射表；
+    * 给模板名：输出那棵树的 digest。
+    """
+    from .design import semantics as semantics_module
+
+    if "--validate" in args:
+        check = semantics_module.validate()
+        return {"status": "ok" if check.ok else "failed",
+                **check.to_dict(), "summary": check.summary(),
+                "coverage": semantics_module.coverage()}
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", "coverage": semantics_module.coverage(),
+                "trees": semantics_module.describe()}
+
+    template = args[0]
+    tree = semantics_module.tree_for_template(template)
+    if tree is None:
+        return {"status": "not_ready",
+                "findings": [
+                    f"模板 {template!r} 没有语义树。",
+                    "**未建模不等于该件简单，是未考证** —— "
+                    f"已建：{sorted(semantics_module.TREES)}",
+                ],
+                "coverage": semantics_module.coverage()}
+    return {"status": "ok", "template": template,
+            "tree": tree.to_dict(), "digest": tree.digest()}
+
+
+def cmd_tiers(args: list[str]) -> dict[str, Any]:
+    """``tiers [<id>]`` —— hwforge 的 21 级阶梯 + 这次运行到哪一级。
+
+    不带 id：只看阶梯本身（每级"能证明什么、有没有检查、需不需要人"）。
+    带 id：跑一次该工程的检查，把结果映射到阶梯上 —— **哪些层验过、
+    哪些有检查但没跑、哪些根本没有工具、哪些需要人**，四者分开。
+    """
+    from .design import tiers as tiers_module
+
+    table = tiers_module.describe()
+    if not table:
+        return {"status": "not_ready",
+                "findings": ["hwforge 不可用（HWFORGE_ROOT 未配置或未 clone）："
+                             "阶梯表取不到"],
+                "tiers": []}
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", "tiers": table,
+                "counts": {"total": len(table),
+                           "built": sum(1 for t in table if t.get("status") == "built"),
+                           "planned": sum(1 for t in table if t.get("status") == "planned"),
+                           "manual": sum(1 for t in table if t.get("status") == "manual")}}
+
+    project_id = args[0]
+    store = _store(project_id)
+    if not store.exists():
+        return {"status": "not_ready", "findings": [f"工程不存在：{project_id}"]}
+    design = store.load()
+    from .design import budgets, coverify as coverify_module, physical
+    try:
+        checks = physical.run_checks(design)
+    except RuntimeError as exc:
+        checks = {"ok": None, "findings": [], "error": str(exc)}
+    try:
+        co = coverify_module.run(design)
+        co_payload = {**co.to_dict(), "summary": coverify_module.summarise(co)}
+    except Exception as exc:  # noqa: BLE001
+        co_payload = {"ok": None, "findings": [], "not_verified": [str(exc)]}
+    try:
+        budget = budgets.evaluate(design)
+    except RuntimeError as exc:
+        budget = {"ok": None, "error": str(exc)}
+    report = tiers_module.report(checks=checks, coverify=co_payload,
+                                 budget=budget)
+    return {"status": "ok" if report.ok else "failed",
+            **report.to_dict(), "counts": report.counts(),
+            "summary": report.summary(), "project": project_id}
 
 
 def cmd_check(args: list[str]) -> dict[str, Any]:
@@ -623,15 +1230,188 @@ def cmd_snapshot(args: list[str]) -> dict[str, Any]:
     return snapshot(args[0], pitch_mm=pitch)
 
 
+def cmd_synth(args: list[str]) -> dict[str, Any]:
+    """``synth <id> <template> [--spec <json>] [--title ...]`` —— 按需求组装设计。
+
+    走**模板**而不是让调用方自由写 JSON：每条网表的引脚名都在引脚库里，
+    组装完还会自检一遍。这是"需求 → 元件+网表+板框"目前唯一有确定性保证的
+    路径（覆盖范围见 `design/synthesize.py` 的模板表）。
+    """
+    from .design import discipline, synthesize as synth_module
+
+    if len(args) < 2:
+        return {"status": "failed",
+                "findings": ["synth 需要 <id> <template> [--spec '<json>']"
+                             "；可用模板：" + "、".join(sorted(synth_module.TEMPLATES))]}
+    project_id, template = args[0], args[1]
+    spec: dict[str, Any] = {"template": template}
+    if "--spec" in args:
+        try:
+            extra = json.loads(args[args.index("--spec") + 1])
+        except (IndexError, ValueError) as exc:
+            return {"status": "failed", "findings": [f"--spec 需要 JSON：{exc}"]}
+        if not isinstance(extra, dict):
+            return {"status": "failed", "findings": ["--spec 必须是 JSON 对象"]}
+        spec.update(extra)
+    spec["template"] = template
+    title = ""
+    if "--title" in args:
+        title = " ".join(args[args.index("--title") + 1:]).strip()
+
+    store = _store(project_id)
+    if store.exists():
+        return {"status": "failed",
+                "findings": [f"工程 {project_id!r} 已存在；换一个 id 或先删除"]}
+    try:
+        design = synth_module.synthesize(spec, design_id=project_id, title=title)
+    except synth_module.SynthError as exc:
+        return {"status": "not_ready", "findings": [str(exc)]}
+    store.save(design)
+    discipline.append(store, "cli", "design.synthesized",
+                      {"template": template, "parts": len(design.parts)})
+    return {"status": "ok", "template": template,
+            "summary": design.summary(), "problems": design.validate(),
+            "board": {"name": design.board.name,
+                      "size_mm": dict(design.board.size_mm)}}
+
+
+def cmd_scene(args: list[str]) -> dict[str, Any]:
+    """``scene <id> [--pitch 0.5] [--out <path>]`` —— 转成 hwforge 的 scene.json。
+
+    工作台的 `design.json` 与 hwforge 的 `scene.json` 是两套形状（mm 模型 vs
+    体素场景），`simulate` / `electrical` / `coverify` 只认后者。本命令做
+    这个转换，让工作台里建的板子进得了仿真链。
+    """
+    from .design import scene as scene_module
+
+    if not args:
+        return {"status": "failed", "findings": ["scene 需要 <id>"]}
+    project_id = args[0]
+    pitch = 0.5
+    if "--pitch" in args:
+        try:
+            pitch = float(args[args.index("--pitch") + 1])
+        except (IndexError, ValueError):
+            return {"status": "failed", "findings": ["--pitch 需要一个数字"]}
+    store, design = _load(project_id)
+    payload = scene_module.to_scene(design, pitch_mm=pitch)
+    out_path = None
+    if "--out" in args:
+        try:
+            out_path = args[args.index("--out") + 1]
+        except IndexError:
+            return {"status": "failed", "findings": ["--out 需要一个路径"]}
+    if out_path is None:
+        store.write("scene.json", payload)
+        out_path = str(store.path("scene.json"))
+    else:
+        from pathlib import Path as _Path
+        written = _Path(out_path)
+        written.parent.mkdir(parents=True, exist_ok=True)
+        import json as _json
+        written.write_text(_json.dumps(payload, ensure_ascii=False, indent=2),
+                           encoding="utf-8")
+    return {"status": "ok", "scene": out_path,
+            "summary": scene_module.summary(payload),
+            "unverified": payload.get("unverified") or []}
+
+
+def cmd_survey(args: list[str]) -> dict[str, Any]:
+    """``survey [--write] [--json]`` —— 勘察工作区，生成/刷新初审.md 的事实段。
+
+    **事实**由本命令确定性生成；**判断**留给 AI（写在同一个文件的判据段）。
+    分开的理由见 ``design/survey.py`` 顶部：让 AI 一次写完整个文件，它会把
+    "我看到 N 个 .bin" 说成"完成度 70%"，而这句话落盘后下一轮会被当事实引用。
+    """
+    from .design import survey as survey_module
+
+    if "--read" in args:
+        return {"status": "ok", **survey_module.read_initial_review()}
+
+    write = "--write" in args
+    payload = survey_module.survey()
+    if write:
+        try:
+            path = survey_module.write_initial_review(payload)
+            payload["initial_review"] = str(path)
+            payload["written"] = True
+        except OSError as exc:
+            payload["status"] = "failed"
+            payload["findings"] = [f"写初审.md 失败：{exc}"]
+    else:
+        payload["initial_review"] = str(survey_module.initial_review_path())
+        payload["written"] = False
+    return payload
+
+
+def cmd_log(args: list[str]) -> dict[str, Any]:
+    """``log [list|read <name>|coverage|append <step> <outcome> <detail>]``。
+
+    工程式日志：写在 ``<工作区>/logs/``，**只追加**。
+    存在的首要原因是回答"哪些看了、哪些没看"——勘察器只报它数到的东西，
+    用户就以为"评审过了"；实际上源码与固件从未被读取。日志把这条边界
+    显式写出来，而不是让它作为一句无根据的形容词留在对话里。
+    """
+    from .design import log as log_module
+    from .design.store import project_root
+
+    base = project_root()
+    action = args[0] if args else "list"
+
+    if action == "append":
+        if len(args) < 3:
+            return {"status": "failed",
+                    "findings": ["log append 需要 <step> <outcome> [detail]"]}
+        detail = " ".join(args[3:]) if len(args) > 3 else ""
+        try:
+            path = log_module.append_activity(
+                base, step=args[1], outcome=args[2], detail=detail)
+        except OSError as exc:
+            return {"status": "failed", "findings": [f"写日志失败：{exc}"]}
+        return {"status": "ok", "path": str(path)}
+
+    if action == "read":
+        if len(args) < 2:
+            return {"status": "failed", "findings": ["log read 需要 <文件名>"]}
+        # 只允许读 logs/ 下的文件：拒绝任何带路径分隔符的名字。
+        name = args[1]
+        if "/" in name or "\\" in name or name.startswith(".."):
+            return {"status": "failed", "findings": [f"非法文件名：{name!r}"]}
+        path = log_module.logs_dir(base) / name
+        if not path.is_file():
+            return {"status": "not_ready", "findings": [f"没有日志 {name!r}"]}
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return {"status": "failed", "findings": [f"读不出：{exc}"]}
+        return {"status": "ok", "name": name, "path": str(path), "text": text}
+
+    if action == "coverage":
+        current = survey_client()
+        return {"status": "ok", **(current.get("coverage") or {})}
+
+    return {"status": "ok", "logs": log_module.list_reports(base),
+            "dir": str(log_module.logs_dir(base)),
+            "activity": log_module.read_activity(base, limit=30)}
+
+
+def survey_client() -> dict[str, Any]:
+    """勘察一次（不写盘）。给 ``log coverage`` 复用，避免重复实现。"""
+    from .design import survey as survey_module
+    return survey_module.survey()
+
+
 COMMANDS = {
     "boards": cmd_boards,
     "catalog": cmd_catalog,
     "formats": cmd_formats,
+    "workspace": cmd_workspace,
     "new": cmd_new,
     "list": cmd_list,
     "get": cmd_get,
     "put": cmd_put,
     "import": cmd_import,
+    "bom": cmd_bom,
     "snapshot": cmd_snapshot,
     "project2d": cmd_project2d,
     "scene3d": cmd_scene3d,
@@ -646,6 +1426,14 @@ COMMANDS = {
     "crosscheck": cmd_crosscheck,
     "export": cmd_export,
     "evidence": cmd_evidence,
+    "survey": cmd_survey,
+    "scene": cmd_scene,
+    "synth": cmd_synth,
+    "roles": cmd_roles,
+    "tiers": cmd_tiers,
+    "firmware": cmd_firmware,
+    "semantics": cmd_semantics,
+    "log": cmd_log,
 }
 
 

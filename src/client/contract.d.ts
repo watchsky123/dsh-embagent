@@ -75,6 +75,13 @@ export interface HwSessionPromptPart {
 export interface HwSessionBinding {
   session: {
     prompt(parts: readonly HwSessionPromptPart[], mode: 'queue' | 'interrupt'): Promise<unknown> | unknown
+    /**
+     * 会话投影：`faceOf('workingDirectory')` 返回 DSH 当前工作目录的快照。
+     * 形状取自 `@deepseek-ai/dsh-client-ui-chat` 的使用处（`client.js:184`）。
+     */
+    projections?: {
+      faceOf(name: string): { getSnapshot(): unknown } | undefined
+    }
   }
 }
 
@@ -82,10 +89,42 @@ export interface HwSessionsService {
   binding(sessionId: string): HwSessionBinding | undefined
 }
 
+/**
+ * 宿主侧的目录选择 seam（`ctx.directoryPicker`）。
+ *
+ * **这是宿主（node）上下文的服务，客户端上下文里 `ctx.get` 取不到**——
+ * 客户端要走 `uiWorkspace.pickDirectory()` 或桌面壳的
+ * `__DSH_DIRECTORY_PICKER__`（见 directoryPicker.ts）。这里保留类型只为
+ * 读代码时不再把两层接错。
+ *
+ * `capability()` 返回判别联合；`native` 是 **kind 字段**，不是服务上的属性
+ * ——hwforge 曾把 `picker.native?.pick` 当真，结果永远是 undefined。
+ */
+export interface HwDirectoryPicker {
+  capability(): {
+    readonly kind: 'native' | 'browse' | (string & {})
+    readonly pick?: (signal: AbortSignal) => Promise<string | null>
+    readonly list?: (path?: string, signal?: AbortSignal) => Promise<unknown>
+    readonly createDirectory?: (path: string, name: string) => Promise<string>
+  }
+}
+
+/**
+ * 宿主 ui-workspace 的**客户端**服务（`@deepseek-ai/dsh-client-ui-workspace`
+ * 里 `super(ctx, "uiWorkspace")` 注册的就是它）。它的 `pickDirectory()`
+ * 内部 RPC 到宿主 directoryPicker 并把失败信封抛成 Error——这正是我们在
+ * 浏览器上下文里能拿到的原生选择器入口。
+ */
+export interface HwUiWorkspace {
+  pickDirectory(): Promise<unknown>
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     slots: HwSlotsService
     uiConversation: HwUiConversation
     sessions: HwSessionsService
+    uiWorkspace: HwUiWorkspace
+    directoryPicker?: HwDirectoryPicker
   }
 }

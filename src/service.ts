@@ -33,6 +33,18 @@ import type {
 
 export const NS = 'hwvelxio'
 
+/**
+ * 默认体素间距（mm）。
+ *
+ * 为什么做成常量而不是参数默认值：Typert 网关在**注册期**用
+ * `Function.prototype.toString` 解析 `@Remote` 方法的参数表，源码里出现
+ * `pitchMm = 0.5` 这种默认值会直接抛
+ * `gateway/signature-invalid: SRC method must use unique identifier
+ * parameters without destructuring, defaults, or rest`。可选参数写
+ * `pitchMm?: number`，缺省值在**函数体内**兜底——wire 形状不变，行为不变。
+ */
+const DEFAULT_PITCH_MM = 0.5
+
 /** 最近一次工具/命令动作，客户端据此知道"该刷新哪个工程"（最便宜的通知）。 */
 interface HintState {
   project: string
@@ -129,8 +141,8 @@ export class HwVelxioGateway extends TypertRemoteService {
   // -- 设计 ---------------------------------------------------------------
 
   @Remote('snapshot')
-  async snapshot(project: string, pitchMm = 0.5): Promise<SnapshotPayload> {
-    const payload = await design('snapshot', project, '--pitch', String(pitchMm))
+  async snapshot(project: string, pitchMm?: number): Promise<SnapshotPayload> {
+    const payload = await design('snapshot', project, '--pitch', String(pitchMm ?? DEFAULT_PITCH_MM))
     if (statusOf(payload) !== 'ok') {
       return fail<SnapshotPayload>(
         `读不到工程 ${project}：${findingsOf(payload).join('；') || '未知原因'}`,
@@ -150,9 +162,9 @@ export class HwVelxioGateway extends TypertRemoteService {
   }
 
   @Remote('importProject')
-  async importProject(project: string, path: string, bomPath = ''): Promise<DesignDoc> {
+  async importProject(project: string, path: string, bomPath?: string): Promise<DesignDoc> {
     const args = ['import', project, path]
-    if (bomPath !== '') args.push('--bom', bomPath)
+    if (bomPath !== undefined && bomPath !== '') args.push('--bom', bomPath)
     const payload = await design(...args)
     if (statusOf(payload) !== 'ok') {
       return fail<DesignDoc>(
@@ -178,9 +190,9 @@ export class HwVelxioGateway extends TypertRemoteService {
 
   @Remote('movePart')
   async movePart(project: string, ref: string, xMm: number, yMm: number,
-                 rotationZ: number, zMm = 0): Promise<DesignDoc> {
+                 rotationZ: number, zMm?: number): Promise<DesignDoc> {
     const payload = await design('move', project, ref, String(xMm), String(yMm),
-                                 String(rotationZ), String(zMm))
+                                 String(rotationZ), String(zMm ?? 0))
     if (statusOf(payload) !== 'ok') {
       return fail<DesignDoc>(findingsOf(payload).join('；') || '移动失败')
     }
@@ -190,9 +202,9 @@ export class HwVelxioGateway extends TypertRemoteService {
 
   @Remote('addPart')
   async addPart(project: string, ref: string, kind: string, role: string,
-                xMm: number, yMm: number, rotationZ = 0): Promise<DesignDoc> {
+                xMm: number, yMm: number, rotationZ?: number): Promise<DesignDoc> {
     const payload = await design('addpart', project, ref, kind, role,
-                                 String(xMm), String(yMm), String(rotationZ))
+                                 String(xMm), String(yMm), String(rotationZ ?? 0))
     if (statusOf(payload) !== 'ok') {
       return fail<DesignDoc>(findingsOf(payload).join('；') || '添加失败')
     }
@@ -224,8 +236,8 @@ export class HwVelxioGateway extends TypertRemoteService {
   // -- 判定 ---------------------------------------------------------------
 
   @Remote('check')
-  async check(project: string, pitchMm = 0.5): Promise<ChecksPayload> {
-    const payload = await design('check', project, '--pitch', String(pitchMm))
+  async check(project: string, pitchMm?: number): Promise<ChecksPayload> {
+    const payload = await design('check', project, '--pitch', String(pitchMm ?? DEFAULT_PITCH_MM))
     if (statusOf(payload) !== 'ok') {
       return fail<ChecksPayload>(
         findingsOf(payload).join('；') || '检查无法运行',
@@ -271,11 +283,11 @@ export class HwVelxioGateway extends TypertRemoteService {
   // -- 过程纪律 -----------------------------------------------------------
 
   @Remote('deferred')
-  async deferred(project: string, action: string, name = '',
-                 value = ''): Promise<DeferredPayload> {
+  async deferred(project: string, action: string, name?: string,
+                 value?: string): Promise<DeferredPayload> {
     const args = ['deferred', project, action]
-    if (action === 'lock' && name !== '') args.push(name, value)
-    if (action === 'defer' && name !== '') args.push(name, value)
+    if (name !== undefined && name !== ''
+        && (action === 'lock' || action === 'defer')) args.push(name, value ?? '')
     const payload = await design(...args)
     noteHint(project, 'deferred')
     if (statusOf(payload) !== 'ok') {
@@ -287,8 +299,8 @@ export class HwVelxioGateway extends TypertRemoteService {
   }
 
   @Remote('trace')
-  async trace(project: string, action = 'list'): Promise<Record<string, unknown>> {
-    const payload = await design('trace', project, action)
+  async trace(project: string, action?: string): Promise<Record<string, unknown>> {
+    const payload = await design('trace', project, action ?? 'list')
     return statusOf(payload) === 'ok' ? payload : fail(payload.findings?.join('；') ?? '轨迹读取失败') as Record<string, unknown>
   }
 
@@ -320,6 +332,76 @@ export class HwVelxioGateway extends TypertRemoteService {
     return payload as unknown as ExportPayload
   }
 
+  // -- 工作区（用户资产目录）----------------------------------------------
+
+  /**
+   * 读当前工作区。`source` 说清它从哪来（env/config/default），
+   * `writable` 是**写探针**的结果而不是猜的——只读目录必须在保存前暴露。
+   */
+  @Remote('workspace')
+  async workspace(): Promise<Record<string, unknown>> {
+    const payload = await design('workspace', 'show')
+    if (statusOf(payload) !== 'ok') {
+      return fail(payload.findings?.join('；') ?? '读不到工作区') as Record<string, unknown>
+    }
+    return payload
+  }
+
+  /** 切换到已有文件夹（客户端选完目录后调用）。 */
+  @Remote('setWorkspace')
+  async setWorkspace(path: string): Promise<Record<string, unknown>> {
+    const payload = await design('workspace', 'set', path)
+    if (statusOf(payload) !== 'ok') {
+      return fail(payload.findings?.join('；') ?? '切换工作区失败') as Record<string, unknown>
+    }
+    noteHint('', 'workspace')
+    return payload
+  }
+
+  /**
+   * 在**指定父目录**下新建一个工作区子目录。
+   *
+   * 调用方（客户端）传入 DSH 当前工作目录：这样"新建工程"落在用户正在
+   * 用的项目里，而不是落到插件目录或家目录的隐藏位置。
+   */
+  @Remote('createWorkspace')
+  async createWorkspace(parent: string, name: string): Promise<Record<string, unknown>> {
+    if (parent.trim() === '') throw new Error('需要 parent（父目录绝对路径）')
+    if (name.trim() === '') throw new Error('需要 name（工作区目录名）')
+    const payload = await design('workspace', 'create', parent, name)
+    if (statusOf(payload) !== 'ok') {
+      return fail(payload.findings?.join('；') ?? '新建工作区失败') as Record<string, unknown>
+    }
+    noteHint('', 'workspace')
+    return payload
+  }
+
+  // -- 勘察（初审.md）------------------------------------------------------
+
+  /**
+   * 勘察工作区：工程清单 + 阶段 + 工程外的文件。
+   *
+   * **纯事实**：阶段来自 `design/phase.py` 的确定性推导，不含任何 AI 判断。
+   * `write=true` 时同时刷新 `初审.md` 的机器事实段（保留判断段原文）。
+   */
+  @Remote('survey')
+  async survey(write?: boolean): Promise<Record<string, unknown>> {
+    const payload = await design('survey', ...(write === true ? ['--write'] : []))
+    if (statusOf(payload) !== 'ok') {
+      return fail(payload.findings?.join('；') ?? '勘察失败') as Record<string, unknown>
+    }
+    return payload
+  }
+
+  /** 读回初审.md（含指纹比对：`stale=true` 说明工作区已经变了）。 */
+  @Remote('initialReview')
+  async initialReview(): Promise<Record<string, unknown>> {
+    return design('survey', '--read').then((payload) => (
+      statusOf(payload) === 'ok'
+        ? payload
+        : fail(payload.findings?.join('；') ?? '读不到初审.md') as Record<string, unknown>))
+  }
+
   // -- 外部引擎 -----------------------------------------------------------
 
   @Remote('velxioHealth')
@@ -334,8 +416,8 @@ export class HwVelxioGateway extends TypertRemoteService {
 
   @Remote('runBlock')
   async runBlock(project: string, block: string,
-                 params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
-    const payload = await bridge('run', project, block, JSON.stringify(params))
+                 params?: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const payload = await bridge('run', project, block, JSON.stringify(params ?? {}))
     noteHint(project, `block:${block}`)
     return payload
   }

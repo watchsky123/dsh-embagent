@@ -34,3 +34,11 @@ export function apply(ctx: Context): void {
       error instanceof Error ? error.message : error)
   }
 }
+
+/**
+ * 具名导出 store：宿主只读 `apply/inject/name`，多出来的导出不参与装载；
+ * 它们存在的理由是 `scripts/check_layout_runtime.mjs` 需要在**真实的模块
+ * 单例**上驱动布局状态做渲染断言（`display:none` 还是卸载，只有真 store
+ * + 真组件才验得出来，伪造一个 store 就等于什么都没测）。
+ */
+export { store, useHw } from './store.js'

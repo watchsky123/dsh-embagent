@@ -29,6 +29,63 @@ export type PanelId =
   | 'blocks'
 
 export type Layout = 'split' | '2d' | '3d'
+const LAYOUTS = ['split', '2d', '3d'] as const
+
+/**
+ * 可拖与持久化的布局尺寸（Velxio 纪律：每块面板 MIN/MAX/DEFAULT 三件套）。
+ * 值存 localStorage；存储被禁就静默用默认（编辑器记忆是 nicety，不是崩溃理由）。
+ */
+export const SPLIT_MIN = 20
+export const SPLIT_MAX = 80
+export const SPLIT_DEFAULT = 50
+
+export const INSPECTOR_MIN = 200
+export const INSPECTOR_MAX = 420
+export const INSPECTOR_DEFAULT = 268
+
+export const BOTTOM_MIN = 90
+export const BOTTOM_MAX = 600
+export const BOTTOM_DEFAULT = 200
+
+const STORAGE_PREFIX = 'dsh-hwv.'
+
+function readStored(key: string, fallback: number, min: number, max: number): number {
+  try {
+    const raw = globalThis.localStorage?.getItem(STORAGE_PREFIX + key)
+    if (raw === null || raw === '') return fallback
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return fallback
+    return Math.max(min, Math.min(max, parsed))
+  } catch {
+    return fallback
+  }
+}
+
+function writeStored(key: string, value: number): void {
+  try {
+    globalThis.localStorage?.setItem(STORAGE_PREFIX + key, String(value))
+  } catch { /* private mode / disabled storage：记忆是 nicety */ }
+}
+
+function readStoredString(key: string, fallback: string): string {
+  try {
+    return globalThis.localStorage?.getItem(STORAGE_PREFIX + key) ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
+/** 枚举值的读回校验：坏值（手改存储/旧版本残留）退回默认，不污染布局判断。 */
+function readStoredEnum<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  const raw = readStoredString(key, fallback)
+  return (allowed as readonly string[]).includes(raw) ? (raw as T) : fallback
+}
+
+function writeStoredString(key: string, value: string): void {
+  try {
+    globalThis.localStorage?.setItem(STORAGE_PREFIX + key, value)
+  } catch { /* 同上 */ }
+}
 
 export interface HwState {
   readonly ready: boolean
@@ -45,6 +102,50 @@ export interface HwState {
   readonly panel: PanelId
   readonly hintSeq: number
   readonly lastExport: ExportPayload | null
+  /** 2D|3D 分栏中 2D 的百分比（split 布局下生效）。 */
+  readonly splitPct: number
+  /** 检查器列宽 px。 */
+  readonly inspectorWidth: number
+  /** 底部面板高 px。 */
+  readonly bottomHeight: number
+  /**
+   * 3D 视图工具态。**存在 store 而不是组件里**：布局改为隐藏即卸载后，
+   * 组件的内部 state 会随卸载消失——爆炸/剖面/网格必须活过切视图。
+   */
+  readonly explode: boolean
+  readonly section: boolean
+  readonly grid3d: boolean
+  /** 当前工作区（用户资产目录）。null = 还没读过。 */
+  readonly workspace: string
+  readonly workspaceSource: 'env' | 'config' | 'default' | ''
+  readonly workspaceWritable: boolean
+  /**
+   * 工作区设置块是否展开。**一处状态、两个入口**：有工程时入口在工具栏，
+   * 没工程时在空态右上角——两处读同一个值，任一时刻只渲染其中一个，
+   * 因此不会出现两份同时打开。
+   */
+  readonly workspaceOpen: boolean
+  /** DSH 当前工作目录（由会话注入）："新建工作区"默认落在它下面。 */
+  readonly dshCwd: string
+  /**
+   * 工作区勘察摘要（条目数 / 未接入 / MCU / 读取覆盖度）。
+   * 评审 prompt 用它解决"2085 个文件的工作区被当成空板子"的问题。
+   */
+  readonly survey: SurveySummary | null
+}
+
+/** 勘察摘要：只保留 prompt 与界面需要的那几项。 */
+export interface SurveySummary {
+  readonly workspace: string
+  readonly entries: number
+  readonly notAdopted: number
+  readonly kinds: readonly string[]
+  readonly mcus: readonly string[]
+  readonly readFiles: number
+  readonly totalFiles: number
+  readonly fingerprint: string
+  /** 日志目录（`<工作区>/logs/`）。 */
+  readonly logsDir: string
 }
 
 const INITIAL: HwState = {
@@ -57,11 +158,23 @@ const INITIAL: HwState = {
   bootstrap: null,
   project: '',
   snapshot: null,
-  layout: 'split',
+  layout: readStoredEnum('layout', LAYOUTS, 'split'),
   selectedRef: '',
   panel: 'checks',
   hintSeq: 0,
   lastExport: null,
+  splitPct: readStored('splitPct', SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX),
+  inspectorWidth: readStored('inspectorWidth', INSPECTOR_DEFAULT, INSPECTOR_MIN, INSPECTOR_MAX),
+  bottomHeight: readStored('bottomHeight', BOTTOM_DEFAULT, BOTTOM_MIN, BOTTOM_MAX),
+  explode: readStoredString('view3d.explode', '0') === '1',
+  section: readStoredString('view3d.section', '0') === '1',
+  grid3d: readStoredString('view3d.grid', '1') === '1',
+  workspace: '',
+  workspaceSource: '',
+  workspaceWritable: true,
+  workspaceOpen: false,
+  dshCwd: '',
+  survey: null,
 }
 
 type Listener = () => void
@@ -156,6 +269,9 @@ export class HwStore {
         ? this.state.project
         : (projects[0]?.id ?? '')
       this.set({ bootstrap, loading: false, ready: true })
+      void this.loadWorkspace()
+      // 勘察摘要与工作区一起拉：它决定评审 prompt 里"这里到底有什么"。
+      void this.loadSurvey()
       if (keep !== '') await this.open(keep)
       else this.set({ snapshot: null, project: '' })
     } catch (error) {
@@ -163,8 +279,79 @@ export class HwStore {
     }
   }
 
-  async reloadProjects(): Promise<void> {
+  /** 由会话注入 DSH 当前工作目录（`workingDirectory` projection 的快照）。 */
+  setDshCwd(cwd: string): void {
+    if (cwd !== this.state.dshCwd) this.set({ dshCwd: cwd })
+  }
+
+  // -- 工作区 -------------------------------------------------------------
+
+  /** 读当前工作区（工程住的目录，与插件安装位置无关）。 */
+  async loadWorkspace(): Promise<void> {
     const face = this.state.face
+    if (face === null) return
+    try {
+      const payload = await face.workspace()
+      this.set({
+        workspace: payload.workspace,
+        workspaceSource: payload.source ?? '',
+        workspaceWritable: payload.writable !== false,
+      })
+    } catch (error) {
+      this.set({ error: message(error) })
+    }
+  }
+
+  /** 切换工作区（客户端已用原生选择器选好目录）。成功后重载工程列表。 */
+  async chooseWorkspace(path: string): Promise<void> {
+    const face = this.state.face
+    if (face === null || path === '') return
+    this.set({ busy: '切换工作区', error: null })
+    try {
+      const payload = await face.setWorkspace(path)
+      this.set({
+        busy: '',
+        workspace: payload.workspace,
+        workspaceSource: payload.source ?? 'config',
+        workspaceWritable: payload.writable !== false,
+        project: '',
+        snapshot: null,
+        selectedRef: '',
+      })
+      await this.reload()
+    } catch (error) {
+      this.set({ busy: '', error: message(error) })
+    }
+  }
+
+  /**
+   * 在 parent 下新建工作区子目录并切过去。
+   *
+   * parent 由调用方给出 **DSH 当前工作目录**：这样工作区落在用户正在用的
+   * 项目里，而不是插件目录或家目录的隐藏位置。
+   */
+  async createWorkspace(parent: string, name: string): Promise<void> {
+    const face = this.state.face
+    if (face === null) return
+    this.set({ busy: '新建工作区', error: null })
+    try {
+      const payload = await face.createWorkspace(parent, name)
+      this.set({
+        busy: '',
+        workspace: payload.workspace,
+        workspaceSource: 'config',
+        workspaceWritable: true,
+        project: '',
+        snapshot: null,
+        selectedRef: '',
+      })
+      await this.reload()
+    } catch (error) {
+      this.set({ busy: '', error: message(error) })
+    }
+  }
+
+  async reloadProjects(): Promise<void> {    const face = this.state.face
     if (face === null) return
     try {
       const projects: ProjectSummary[] = await face.projects()
@@ -209,8 +396,84 @@ export class HwStore {
 
   // -- 交互 ---------------------------------------------------------------
 
-  setLayout(layout: Layout): void { this.set({ layout }) }
+  setLayout(layout: Layout): void {
+    writeStoredString('layout', layout)
+    this.set({ layout })
+  }
   setPanel(panel: PanelId): void { this.set({ panel }) }
+
+  /** 展开/收起工作区设置块（工具栏与空态共用这一个状态）。 */
+  setWorkspaceOpen(open: boolean): void { this.set({ workspaceOpen: open }) }
+
+  /**
+   * 拉一次勘察摘要。**只读**（不传 write），不写初审.md、不写日志——
+   * 界面刷新不该产生文件。用户点「初审工作区」才走 `hw_survey(write=true)`。
+   */
+  async loadSurvey(): Promise<void> {
+    const face = this.state.face
+    if (face === null) return
+    try {
+      const payload = await face.survey(false)
+      const entries = (payload.entries ?? []) as Array<Record<string, unknown>>
+      const counts = (payload.counts ?? {}) as Record<string, unknown>
+      const coverage = (payload.coverage ?? {}) as Record<string, unknown>
+      const mcus = Array.from(new Set(entries
+        .map((row) => String(row.mcu ?? ''))
+        .filter((name) => name !== '')))
+        .slice(0, 6)
+      this.set({
+        survey: {
+          workspace: String(payload.workspace ?? ''),
+          entries: Number(counts.entries ?? entries.length),
+          notAdopted: Number(counts.entries_not_adopted ?? 0),
+          kinds: Object.keys((payload.entries_by_kind ?? {}) as Record<string, unknown>),
+          mcus,
+          readFiles: Number(coverage.read_files ?? 0),
+          totalFiles: Number(coverage.total_files ?? 0),
+          fingerprint: String(payload.fingerprint ?? ''),
+          logsDir: `${String(payload.workspace ?? '')}\\logs`,
+        },
+      })
+    } catch {
+      // 勘察失败不打扰用户：评审仍可进行，只是少了工作区摘要。
+      this.set({ survey: null })
+    }
+  }
+
+  /**
+   * 尺寸 setter 自己 clamp：把手也 clamp，但面板/工具/AI 走的是 store，
+   * 只信调用方就等于把 -50px 或 9999px 写进 localStorage（下次启动读到它，
+   * 界面就烂在一个没人负责的值上）。
+   */
+  setSplitPct(value: number): void {
+    const clamped = Math.max(SPLIT_MIN, Math.min(SPLIT_MAX, value))
+    writeStored('splitPct', clamped)
+    this.set({ splitPct: clamped })
+  }
+  setInspectorWidth(value: number): void {
+    const clamped = Math.max(INSPECTOR_MIN, Math.min(INSPECTOR_MAX, value))
+    writeStored('inspectorWidth', clamped)
+    this.set({ inspectorWidth: clamped })
+  }
+  setBottomHeight(value: number): void {
+    const clamped = Math.max(BOTTOM_MIN, Math.min(BOTTOM_MAX, value))
+    writeStored('bottomHeight', clamped)
+    this.set({ bottomHeight: clamped })
+  }
+
+  /** 3D 视图三工具：state 住这里，组件卸载/重挂不丢（见 HwState 注释）。 */
+  setExplode(value: boolean): void {
+    writeStoredString('view3d.explode', value ? '1' : '0')
+    this.set({ explode: value })
+  }
+  setSection(value: boolean): void {
+    writeStoredString('view3d.section', value ? '1' : '0')
+    this.set({ section: value })
+  }
+  setGrid3d(value: boolean): void {
+    writeStoredString('view3d.grid', value ? '1' : '0')
+    this.set({ grid3d: value })
+  }
 
   select(ref: string): void {
     this.set({ selectedRef: ref === this.state.selectedRef ? '' : ref })

@@ -12,7 +12,7 @@
     README.txt       包内容 + 缺项 + 下一步
 
 若项目里已经有 tscircuit 源（``sources/circuit.tsx``）且 CLI 可用，则调用
-``hwforge.downstream`` 真跑；否则如实报 ``not_ready``。
+``design/toolchain`` 真跑；否则如实报 ``not_ready``。
 """
 
 from __future__ import annotations
@@ -28,50 +28,25 @@ from typing import Any
 from .model import DesignModel
 
 
-def _downstream() -> Any:
-    try:
-        from ..bridge import hwforge_root
-        root = hwforge_root()
-        if root and root not in sys.path:
-            sys.path.insert(0, root)
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        from hwforge import downstream as downstream_module  # type: ignore
-        return downstream_module
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            "制造交接需要 hwforge.downstream；请把 hwforge checkout 放到 "
-            f"HWFORGE_ROOT（{type(exc).__name__}: {exc}）"
-        ) from exc
+def _toolchain() -> Any:
+    """外部工具探测（本地实现，不再依赖 hwforge.downstream）。"""
+    from . import toolchain
+    return toolchain
 
 
 def probe() -> dict[str, Any]:
     """探测外部工具；缺失就如实报，绝不假装可用。"""
-    try:
-        downstream = _downstream()
-    except RuntimeError as exc:
-        return {"available": False, "error": str(exc), "tools": {}}
+    toolchain = _toolchain()
+    found = toolchain.discover()
     tools: dict[str, Any] = {}
-    try:
-        status = downstream.probe_tscircuit()
-        tools["tscircuit"] = {
-            "available": bool(getattr(status, "available", False)),
-            "detail": str(getattr(status, "detail", "")),
-            "path": getattr(status, "path", None),
+    for name, status in (found.get("tools") or {}).items():
+        tools[name] = {
+            "available": bool(status.get("available")),
+            "detail": str(status.get("reason") or status.get("version") or ""),
+            "path": (status.get("command") or [None])[0],
         }
-    except Exception as exc:  # noqa: BLE001
-        tools["tscircuit"] = {"available": False, "detail": f"{type(exc).__name__}: {exc}"}
-    try:
-        status = downstream.probe_renode()
-        tools["renode"] = {
-            "available": bool(getattr(status, "available", False)),
-            "detail": str(getattr(status, "detail", "")),
-        }
-    except Exception as exc:  # noqa: BLE001
-        tools["renode"] = {"available": False, "detail": f"{type(exc).__name__}: {exc}"}
-    return {"available": tools.get("tscircuit", {}).get("available", False),
-            "tools": tools}
+    return {"available": bool(found.get("available")), "tools": tools,
+            "note": found.get("note", "")}
 
 
 def _bom_csv(design: DesignModel) -> str:
@@ -190,11 +165,11 @@ def export_bundle(design: DesignModel, out_dir: str | Path,
     if tscircuit_source.is_file() and probe_result["tools"].get(
             "tscircuit", {}).get("available"):
         try:
-            downstream = _downstream()
-            result = downstream.export_fabrication(tscircuit_source, target / "fab")
+            toolchain = _toolchain()
+            result = toolchain.export_fabrication(tscircuit_source, target / "fab")
             tscircuit = {"ran": True,
                          "ok": bool(getattr(result, "ok", False)),
-                         "detail": str(getattr(result, "detail", "")),
+                         "detail": str(getattr(result, "error", "")),
                          "files": list(getattr(result, "files", []) or [])}
             written.extend(tscircuit.get("files") or [])
         except Exception as exc:  # noqa: BLE001

@@ -48,7 +48,7 @@ function FindingRow(props: {
       <Mark severity={severity as 'error' | 'warning' | 'info' | 'ok'} />
       <span className="msg">{finding.message}</span>
       {finding.refs.map((ref) => (
-        <span key={ref} className="hwv-row refs hwv-mono" style={{ flex: '0 0 auto' }}
+        <span key={ref} className="hwv-refs"
               onClick={() => { onSelect(ref) }}>{ref}</span>
       ))}
     </div>
@@ -62,7 +62,7 @@ export function ChecksPanel(props: PanelProps): JSX.Element {
       <div className="hwv-body">
         <div className="hwv-row err"><Mark severity="error" />
           <span className="msg">检查无法运行：{checks.error}</span></div>
-        <div className="hwv-dim" style={{ marginTop: 8 }}>
+        <div className="hwv-dim hwv-block-tight">
           这是前置缺失，不是"通过"。修好环境后点「检查」重跑。
         </div>
       </div>
@@ -72,10 +72,10 @@ export function ChecksPanel(props: PanelProps): JSX.Element {
   const passed = checks.findings.filter((f) => f.ok)
   return (
     <div className="hwv-body">
-      <div className="hwv-dim" style={{ marginBottom: 6 }}>
+      <div className="hwv-summary">
         体素 {checks.space?.dims_voxels?.join('×') ?? '—'}，
         间距 {checks.pitch_mm}mm，占用 {checks.space?.occupied_voxels ?? 0} 体素 ·
-        <button className="hwv-btn" style={{ marginLeft: 8 }} onClick={props.onCheck}>重跑</button>
+        <button className="hwv-btn" onClick={() => { props.onCheck() }}>重跑</button>
       </div>
       {failed.map((finding) => (
         <FindingRow key={finding.check + finding.message} finding={finding}
@@ -85,7 +85,7 @@ export function ChecksPanel(props: PanelProps): JSX.Element {
         <div className="hwv-row ok"><Mark severity="ok" /><span className="msg">全部检查通过</span></div>
       )}
       {passed.length > 0 && (
-        <details style={{ marginTop: 8 }}>
+        <details className="hwv-block-tight">
           <summary className="hwv-dim">通过的 {passed.length} 项</summary>
           {passed.map((finding) => (
             <FindingRow key={finding.check + finding.message} finding={finding}
@@ -94,7 +94,7 @@ export function ChecksPanel(props: PanelProps): JSX.Element {
         </details>
       )}
       {checks.not_verified.length > 0 && (
-        <div style={{ marginTop: 10 }}>
+        <div className="hwv-block">
           <div className="hwv-dim">未验证（不是通过）：</div>
           {checks.not_verified.map((line) => (
             <div key={line} className="hwv-row info"><Mark severity="info" />
@@ -130,27 +130,27 @@ export function BudgetPanel(props: PanelProps): JSX.Element {
   const confidence = budget.confidence ?? 'none'
   return (
     <div className="hwv-body">
-      <div className="hwv-dim" style={{ marginBottom: 6 }}>
+      <div className="hwv-summary">
         覆盖率 {budget.coverage?.claimed_parts ?? 0}/{budget.coverage?.total_parts ?? 0} 件 ·
         仲裁顺序 {(budget.resolution_order ?? []).join(' > ')} ·
         状态 {confidence === 'none' ? '无可评估数据' : confidence === 'partial' ? '部分覆盖' : '全覆盖'}
-        <button className="hwv-btn" style={{ marginLeft: 8 }} onClick={props.onBudget}>重算</button>
+        <button className="hwv-btn" onClick={() => { props.onBudget() }}>重算</button>
       </div>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+      <table className="hwv-tbl">
         <thead>
-          <tr className="hwv-dim" style={{ textAlign: 'left' }}>
+          <tr>
             <th>货币</th><th>已用</th><th>上限</th><th>占用</th><th />
           </tr>
         </thead>
         <tbody>
           {Object.entries(budget.by_currency ?? {}).map(([currency, row]) => (
-            <tr key={currency} style={{ borderTop: '1px dashed rgba(255,255,255,.08)' }}>
+            <tr key={currency}>
               <td>{CURRENCY_LABEL[currency] ?? currency}</td>
               <td className="hwv-mono">{row.used}</td>
               <td className="hwv-mono">
                 {row.limit ?? '—'}
-                {row.default_limit && <span className="hwv-chip" style={{ marginLeft: 4 }}>默认</span>}
+                {row.default_limit && <span className="hwv-chip" style={{ marginLeft: 'var(--hwv-space-2)' }}>默认</span>}
               </td>
               <td style={{ color: row.over ? 'var(--hwv-err)' : 'var(--hwv-dim)' }}>
                 {row.ratio === null ? '—' : `${Math.round(row.ratio * 100)}%`}
@@ -167,9 +167,9 @@ export function BudgetPanel(props: PanelProps): JSX.Element {
       </table>
 
       {editing !== '' && (
-        <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div className="hwv-inline hwv-block-tight">
           <span className="hwv-dim">{CURRENCY_LABEL[editing] ?? editing} 新上限</span>
-          <input className="hwv-input" style={{ width: 90 }} value={value}
+          <input className="hwv-input" style={{ width: 90, flex: '0 0 auto' }} value={value}
                  onChange={(event) => { setValue(event.target.value) }} />
           <button className="hwv-btn primary" onClick={() => {
             const parsed = Number(value)
@@ -181,7 +181,7 @@ export function BudgetPanel(props: PanelProps): JSX.Element {
       )}
 
       {(budget.violations ?? []).length > 0 && (
-        <div style={{ marginTop: 10 }}>
+        <div className="hwv-block">
           <div className="hwv-dim">超限项：</div>
           {(budget.violations ?? []).map((violation, index) => (
             <div key={index} className="hwv-row err"><Mark severity="error" />
@@ -190,7 +190,7 @@ export function BudgetPanel(props: PanelProps): JSX.Element {
         </div>
       )}
 
-      <div className="hwv-dim" style={{ marginTop: 10 }}>
+      <div className="hwv-dim hwv-block">
         {budget.coverage?.note}
       </div>
       {(budget.coverage?.uncovered ?? []).length > 0 && (
@@ -224,7 +224,7 @@ export function DeferredPanel(props: PanelProps): JSX.Element {
       </div>
 
       {open.length > 0 && (
-        <div style={{ marginTop: 8 }}>
+        <div className="hwv-block-tight">
           <div className="hwv-dim">未闭合的不可逆决策（不闭合不能导出）：</div>
           {open.map((item) => (
             <div key={item} className="hwv-row warn">
@@ -241,9 +241,9 @@ export function DeferredPanel(props: PanelProps): JSX.Element {
       )}
 
       {name !== '' && (
-        <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div className="hwv-inline hwv-block-tight">
           <span className="hwv-dim">{name} 的取值</span>
-          <input className="hwv-input" style={{ flex: 1 }} value={value}
+          <input className="hwv-input hwv-inline-stretch" value={value}
                  placeholder="例如 SMD 0603 / JST-PH / 5V USB / 单 app 无 OTA"
                  onChange={(event) => { setValue(event.target.value) }} />
           <button className="hwv-btn primary" onClick={() => {
@@ -254,7 +254,7 @@ export function DeferredPanel(props: PanelProps): JSX.Element {
       )}
 
       {(deferred.locked ?? []).length > 0 && (
-        <div style={{ marginTop: 10 }}>
+        <div className="hwv-block">
           <div className="hwv-dim">已闭合：</div>
           {(deferred.locked ?? []).map((lock) => (
             <div key={lock.name} className="hwv-row ok">
@@ -267,7 +267,7 @@ export function DeferredPanel(props: PanelProps): JSX.Element {
       )}
 
       {(deferred.deferred ?? []).length > 0 && (
-        <details style={{ marginTop: 8 }}>
+        <details className="hwv-block-tight">
           <summary className="hwv-dim">可延后的 {deferred.deferred?.length} 项</summary>
           {(deferred.deferred ?? []).map((fact) => (
             <div key={fact.kind + fact.ref} className="hwv-row info">
@@ -294,17 +294,17 @@ export function CrosscheckPanel(props: PanelProps): JSX.Element {
   }
   return (
     <div className="hwv-body">
-      <div className="hwv-dim" style={{ marginBottom: 6 }}>
+      <div className="hwv-summary">
         {cross.summary.mismatches} 处差异 · {cross.summary.unverified} 项未验证 ·
         {cross.px_per_mm.toFixed(4)} px/mm
-        <button className="hwv-btn" style={{ marginLeft: 8 }} onClick={props.onCrosscheck}>重跑</button>
+        <button className="hwv-btn" onClick={() => { props.onCrosscheck() }}>重跑</button>
       </div>
       {cross.mismatches.map((mismatch, index) => (
         <div key={index} className={`hwv-row ${mismatch.severity === 'error' ? 'err' : 'warn'}`}>
           <Mark severity={mismatch.severity === 'error' ? 'error' : 'warning'} />
           <span className="msg">{mismatch.message}</span>
           {mismatch.refs.map((ref) => (
-            <span key={ref} className="hwv-row refs hwv-mono" style={{ flex: '0 0 auto' }}
+            <span key={ref} className="hwv-refs"
                   onClick={() => { props.onSelect(ref) }}>{ref}</span>
           ))}
         </div>
@@ -313,7 +313,7 @@ export function CrosscheckPanel(props: PanelProps): JSX.Element {
         <div className="hwv-row ok"><Mark severity="ok" /><span className="msg">没有矛盾</span></div>
       )}
       {cross.not_verified.length > 0 && (
-        <details style={{ marginTop: 8 }}>
+        <details className="hwv-block-tight">
           <summary className="hwv-dim">未验证的 {cross.not_verified.length} 项</summary>
           {cross.not_verified.map((line) => (
             <div key={line} className="hwv-row info"><Mark severity="info" />
@@ -355,7 +355,7 @@ export function EvidencePanel(props: PanelProps): JSX.Element {
         </dd>
         <dt>核对时间</dt><dd className="hwv-mono">{evidence.checked_at}</dd>
       </dl>
-      <div className="hwv-dim" style={{ marginTop: 8 }}>
+      <div className="hwv-dim hwv-block-tight">
         轨迹是 append-only 的哈希链：每次改模型都会追加一条事件。
         「被改动」表示有事件的 payload 与其哈希对不上——这时任何"已完成"的说法都不可信。
       </div>
@@ -375,14 +375,14 @@ export function ExportPanel(props: PanelProps): JSX.Element {
             : `导出被闸门拦住：${(deferred.open_irreversible ?? []).join(', ')} 未闭合`}
         </span>
       </div>
-      <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+      <div className="hwv-inline hwv-block-tight">
         <button className="hwv-btn primary" disabled={!deliverable}
                 onClick={props.onExport}>导出制造包</button>
         <span className="hwv-dim">
           含 BOM / 贴片坐标 / 板轮廓 DXF / 规范模型 / README；不伪造 Gerber
         </span>
       </div>
-      <div className="hwv-dim" style={{ marginTop: 8 }}>
+      <div className="hwv-dim hwv-block-tight">
         {props.snapshot.project.artifacts['export.json'] === true
           ? '已导出过，产物在 project 目录的 fab/ 下'
           : '尚未导出'}
@@ -406,15 +406,15 @@ export function BlocksPanel(props: PanelProps & {
           <span className="hwv-dim"> · {props.hwforge.root || '未解析到 checkout'}</span>
         </span>
       </div>
-      <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
-        <input className="hwv-input" style={{ width: 140 }} value={block}
+      <div className="hwv-inline hwv-block-tight">
+        <input className="hwv-input" style={{ width: 140, flex: '0 0 auto' }} value={block}
                onChange={(event) => { setBlock(event.target.value) }} />
-        <input className="hwv-input" style={{ flex: 1 }} value={params}
+        <input className="hwv-input hwv-inline-stretch" value={params}
                onChange={(event) => { setParams(event.target.value) }} />
         <button className="hwv-btn" disabled={!props.hwforge.available}
                 onClick={() => { props.onRunBlock(block, params) }}>运行</button>
       </div>
-      <div className="hwv-dim" style={{ marginTop: 8 }}>
+      <div className="hwv-dim hwv-block-tight">
         积木跑在工程的 project/&lt;id&gt;/ 目录里，产物与判定由 hwforge 写。
         这里是跨层判定，不替代本工程自己的物理检查。
       </div>

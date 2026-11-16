@@ -1,4 +1,8 @@
-"""工程存储：``project/<id>/`` 下的产物布局。
+"""工程存储：``<workspace>/<id>/`` 下的产物布局。
+
+**工作区由用户决定**（见 ``design/workspace.py``）：可以是任意文件夹，
+默认 ``~/.dsh/hw_velxio/workspace/``。工程不再住在插件目录里——那是安装
+位置，升级会覆盖、npm 打包会连带，也不该承载用户资产。
 
 一个工程的磁盘形状（全部 UTF-8 JSON，人类可读、可 diff）：
 
@@ -25,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from .model import DesignModel
+from .workspace import workspace_root
 
 ARTIFACTS = (
     "design.json",
@@ -37,13 +42,9 @@ ARTIFACTS = (
 )
 
 
-def plugin_root() -> Path:
-    """``hw_velxio/`` 目录本身。"""
-    return Path(__file__).resolve().parent.parent
-
-
 def project_root() -> Path:
-    return plugin_root() / "project"
+    """工程根 = 当前工作区。**每次调用都重新解析**，切换工作区立即生效。"""
+    return workspace_root()
 
 
 def project_dir(project_id: str) -> Path:

@@ -72,9 +72,17 @@ def hwforge_root() -> str:
 
 
 def project_root() -> Path:
-    """插件自己的项目产物目录 ``hw_velxio/project``。"""
-    here = _module_dir()
-    return (here / "project") if here is not None else Path.cwd() / "hw_velxio" / "project"
+    """工程住的目录 —— **委托给 `design.store.project_root()`**。
+
+    这里曾经自己算一份（`<插件目录>/project`），而工程在 `store.py` 迁到
+    工作区之后没有跟着改：于是 `hw_block` 一直在**插件目录里的一个空文件夹**
+    上跑 hwforge 积木，读不到任何 `scene.json`，而错误信息说的是"先跑会产出
+    它们的块"——把路径错位伪装成了执行顺序问题。
+
+    单一事实源：工作区只有 `design/workspace.py` 一处解析。
+    """
+    from .design.store import project_root as _design_project_root
+    return _design_project_root()
 
 
 # ---------------------------------------------------------------------------
@@ -251,11 +259,19 @@ def _circuit(params: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run(project: str, name: str, params: dict[str, Any]) -> dict[str, Any]:
-    entry = next(
-        (c for c in [*_hwforge_catalogue(), *VELXIO_CAPABILITIES] if c.get("name") == name),
-        None,
-    )
+    catalogue = [*_hwforge_catalogue(), *VELXIO_CAPABILITIES]
+    entry = next((c for c in catalogue if c.get("name") == name), None)
     if entry is None:
+        # **hwforge 不可用时要说清楚是"缺 hwforge"还是"名字写错了"**。
+        # 两者都报"未知能力"会让人去查代码，而问题在环境。
+        if any(c.get("name") == "__unavailable__" for c in catalogue):
+            return {"status": "not_ready", "block": name,
+                    "findings": [
+                        f"hwforge 不可用，无法运行它的积木 {name}。",
+                        "hw_velxio 自己的能力不受影响（design_cli 的全部命令都可用）；"
+                        "hwforge 积木是**可选增强**，需要单独 clone hwforge 并设 "
+                        "HWFORGE_ROOT。",
+                    ]}
         return {"status": "failed", "block": name,
                 "findings": [f"未知能力：{name}；用 catalog 查看可用能力"]}
     if entry.get("engine") == "hwforge":

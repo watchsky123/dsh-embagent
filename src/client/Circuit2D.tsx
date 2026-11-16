@@ -15,6 +15,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Finding, SnapshotPayload } from '../shared/types.js'
+import { partFill, readPalette, useThemeRevision } from './theme.js'
+import type { Palette } from './theme.js'
 
 interface View {
   scale: number
@@ -43,13 +45,6 @@ export interface Circuit2DProps {
   readonly findings: readonly Finding[]
   readonly onSelect: (ref: string) => void
   readonly onMove: (ref: string, xMm: number, yMm: number, rotationZ: number) => void
-}
-
-const SOURCE_FILL: Record<string, string> = {
-  datasheet: '#21517a',
-  measured: '#1f5c40',
-  derived: '#3a4a6b',
-  estimated: '#4a3a6b',
 }
 
 function hueOf(text: string): number {
@@ -111,27 +106,34 @@ export function Circuit2D(props: Circuit2DProps): JSX.Element {
   }, [])
 
   // 首次拿到板子时缩放到合适大小
+  //
+  // **按拼板尺寸**适配，不是按主板：多板工程里只适配主板会让其余板
+  // 全部落在画布外（看起来像"只导了一块板"）。
   const fittedRef = useRef<string>('')
   useEffect(() => {
     if (size.w === 0 || size.h === 0) return
-    const key = `${projection.board.kind}:${size.w}x${size.h}`
+    const panelW = projection.panel.size_mm.w * projection.px_per_mm
+    const panelH = projection.panel.size_mm.h * projection.px_per_mm
+    const key = `${projection.panel.board_count}:${panelW.toFixed(0)}x${panelH.toFixed(0)}:${size.w}x${size.h}`
     if (fittedRef.current === key) return
     fittedRef.current = key
     const padding = 36
     const scale = Math.min(
-      (size.w - padding * 2) / Math.max(projection.board.w_px, 1),
-      (size.h - padding * 2) / Math.max(projection.board.h_px, 1),
+      (size.w - padding * 2) / Math.max(panelW, 1),
+      (size.h - padding * 2) / Math.max(panelH, 1),
     )
     const next = Math.max(0.05, Math.min(scale, 8))
     setView({
       scale: next,
-      ox: (size.w - projection.board.w_px * next) / 2,
-      oy: (size.h - projection.board.h_px * next) / 2,
+      ox: (size.w - panelW * next) / 2,
+      oy: (size.h - panelH * next) / 2,
     })
-  }, [projection.board.kind, projection.board.w_px, projection.board.h_px, size])
+  }, [projection.panel.board_count, projection.panel.size_mm.w,
+      projection.panel.size_mm.h, projection.px_per_mm, size])
 
   // -- 绘制 ---------------------------------------------------------------
 
+  const themeRev = useThemeRevision()
   useEffect(() => {
     const canvas = canvasRef.current
     if (canvas === null || size.w === 0 || size.h === 0) return
@@ -141,11 +143,14 @@ export function Circuit2D(props: Circuit2DProps): JSX.Element {
     const ctx = canvas.getContext('2d')
     if (ctx === null) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    // 主题颜色必须命令式读：canvas 不跟 CSS 变量。宿主主题翻转会触发
+    // themeRev 自增，本 effect 随之重绘。
     draw(ctx, {
       projection, view, size, selectedRef, findings,
       drag: dragRef.current, placementOf,
+      palette: readPalette(wrapRef.current),
     })
-  }, [projection, view, size, selectedRef, findings, drag, placementOf])
+  }, [projection, view, size, selectedRef, findings, drag, placementOf, themeRev])
 
   const toBoard = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current
@@ -258,14 +263,26 @@ export function Circuit2D(props: Circuit2DProps): JSX.Element {
         onContextMenu={(event) => { event.preventDefault() }}
       />
       <div className="hwv-legend">
-        <span><i style={{ background: SOURCE_FILL.datasheet }} />数据手册</span>
-        <span><i style={{ background: SOURCE_FILL.derived }} />推导</span>
-        <span><i style={{ background: SOURCE_FILL.estimated }} />估算</span>
+        <span><i className="src-datasheet" />数据手册</span>
+        <span><i className="src-measured" />实测</span>
+        <span><i className="src-derived" />推导</span>
+        <span><i className="src-estimated" />估算</span>
+        <span><i className="wire-copper" />铜线（已布线）</span>
+        <span><i className="wire-ratline" />飞线（未布线）</span>
         <span className="hwv-dim">
-          {projection.px_per_mm.toFixed(4)} px/mm · {projection.board.size_mm.w.toFixed(2)}×
-          {projection.board.size_mm.h.toFixed(2)} mm
+          {projection.px_per_mm.toFixed(4)} px/mm · {projection.panel.size_mm.w.toFixed(2)}×
+          {projection.panel.size_mm.h.toFixed(2)} mm
+          {projection.panel.board_count > 1
+            ? ` · ${projection.panel.board_count} 块板拼板`
+            : ''}
         </span>
       </div>
+      {projection.parts.length === 0 && (
+        <div className="hwv-canvas-empty">
+          <strong>这个工程有 0 个元件</strong>
+          <span>板框画出来了，但上面是空的 —— 不是渲染坏了</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -282,73 +299,137 @@ interface DrawInput {
   findings: readonly Finding[]
   drag: DragState | null
   placementOf: Map<string, { x: number; y: number; rot: number }>
+  palette: Palette
 }
 
 function draw(ctx: CanvasRenderingContext2D, input: DrawInput): void {
-  const { projection, view, size, selectedRef, findings, drag } = input
+  const { projection, view, size, selectedRef, findings, drag, palette } = input
   ctx.clearRect(0, 0, size.w, size.h)
 
-  // 背景
-  ctx.fillStyle = '#0f1115'
+  // 背景（主题色，命令式读取）
+  ctx.fillStyle = palette.canvasBg
   ctx.fillRect(0, 0, size.w, size.h)
 
   ctx.save()
   ctx.translate(view.ox, view.oy)
   ctx.scale(view.scale, view.scale)
 
-  const board = projection.board
-
-  // 1mm 网格（只在板内画，避免整屏噪点）
+  // 1mm 网格：覆盖**整张拼板**（多板时所有板都要有网格）
   const step = projection.px_per_mm
+  const panelW = projection.panel.size_mm.w * projection.px_per_mm
+  const panelH = projection.panel.size_mm.h * projection.px_per_mm
   ctx.lineWidth = 1 / view.scale
-  ctx.strokeStyle = 'rgba(255,255,255,0.045)'
+  ctx.strokeStyle = palette.grid
   ctx.beginPath()
-  for (let x = 0; x <= board.w_px; x += step) {
+  for (let x = 0; x <= panelW; x += step) {
     ctx.moveTo(x, 0)
-    ctx.lineTo(x, board.h_px)
+    ctx.lineTo(x, panelH)
   }
-  for (let y = 0; y <= board.h_px; y += step) {
+  for (let y = 0; y <= panelH; y += step) {
     ctx.moveTo(0, y)
-    ctx.lineTo(board.w_px, y)
+    ctx.lineTo(panelW, y)
   }
   ctx.stroke()
 
-  // 板轮廓
-  ctx.beginPath()
-  board.outline_px.forEach(([x, y], index) => {
-    if (index === 0) ctx.moveTo(x, y)
-    else ctx.lineTo(x, y)
-  })
-  ctx.closePath()
-  ctx.fillStyle = '#17202b'
-  ctx.fill()
-  ctx.strokeStyle = '#3d5a75'
-  ctx.lineWidth = 1.5 / view.scale
-  ctx.stroke()
+  // 板轮廓：**每块板各画一块**。
+  // 多板时按拼板偏移画，单板时 `boards` 长度 1、偏移 0 —— 同一条代码路径。
+  const boardsToDraw = projection.boards.length > 0
+    ? projection.boards
+    : [{ ...projection.board, id: '', parts: projection.parts.length,
+         x_mm: 0, y_mm: 0, w_mm: projection.board.size_mm.w,
+         h_mm: projection.board.size_mm.h, x_px: 0, y_px: 0 }]
+  for (const board of boardsToDraw) {
+    ctx.beginPath()
+    board.outline_px.forEach(([x, y], index) => {
+      // `outline_px` 已经是**拼板坐标**（Python 侧加过偏移），不再平移
+      if (index === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    })
+    ctx.closePath()
+    ctx.fillStyle = palette.boardFill
+    ctx.fill()
+    ctx.strokeStyle = palette.boardStroke
+    ctx.lineWidth = 1.5 / view.scale
+    ctx.stroke()
+  }
+
+  // 板名（多板时才有意义；缩得太小就不画，避免糊成一团）
+  if (boardsToDraw.length > 1) {
+    ctx.fillStyle = palette.label
+    const fontPx = Math.max(9, Math.min(13, 11 / view.scale))
+    ctx.font = `${fontPx}px ui-monospace, Consolas, monospace`
+    ctx.textBaseline = 'top'
+    for (const board of boardsToDraw) {
+      const xs = board.outline_px.map(([x]) => x)
+      const ys = board.outline_px.map(([, y]) => y)
+      if (xs.length === 0) continue
+      const minX = Math.min(...xs)
+      const minY = Math.min(...ys)
+      const label = board.id ? board.id.slice(-8) : board.kind
+      ctx.globalAlpha = 0.75
+      ctx.fillText(`${label} · ${board.parts ?? 0}`, minX + 4 / view.scale,
+        minY + 4 / view.scale)
+      ctx.globalAlpha = 1
+    }
+  }
 
   // 安装孔
   for (const hole of projection.mount_holes) {
     ctx.beginPath()
     ctx.arc(hole.x_px, hole.y_px, Math.max(hole.d_px / 2, 1), 0, Math.PI * 2)
-    ctx.fillStyle = '#0f1115'
+    ctx.fillStyle = palette.holeFill
     ctx.fill()
-    ctx.strokeStyle = '#6e7c8c'
+    ctx.strokeStyle = palette.holeStroke
     ctx.lineWidth = 1 / view.scale
     ctx.stroke()
   }
 
-  // 导线（语义：网表）
+  // 导线（**铜线**：真实走线几何）
+  //
+  // 用统一的**铜色**而不是每网一个色相：真实 PCB 的铜就是铜色，按网络分
+  // 彩虹色会让人以为那是"逻辑连接"而不是"物理铜"。网络名在检查器里看。
   for (const wire of projection.wires) {
     if (wire.path_px.length < 2) continue
-    const hue = hueOf(wire.net)
     ctx.beginPath()
     wire.path_px.forEach(([x, y], index) => {
       if (index === 0) ctx.moveTo(x, y)
       else ctx.lineTo(x, y)
     })
-    ctx.strokeStyle = `hsl(${hue} 70% 58%)`
-    ctx.lineWidth = Math.max(1.2, 1.4 / view.scale)
+    ctx.strokeStyle = palette.trace
+    ctx.globalAlpha = 0.9
+    ctx.lineWidth = Math.max(1.0, 1.3 / view.scale)
     ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+
+  // 飞线（**不是铜线**）：从网表推导的"应该连成什么样"。
+  // 画成细虚线 + 端点小圆点，视觉上明确区别于铜线。
+  if (projection.ratlines.length > 0) {
+    ctx.save()
+    ctx.setLineDash([4 / view.scale, 3 / view.scale])
+    for (const line of projection.ratlines) {
+      if (line.path_px.length < 2) continue
+      const hue = hueOf(line.net)
+      ctx.beginPath()
+      line.path_px.forEach(([x, y], index) => {
+        if (index === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      })
+      ctx.strokeStyle = `hsl(${hue} 55% ${palette.wireLightness})`
+      ctx.globalAlpha = 0.55
+      ctx.lineWidth = Math.max(0.8, 0.9 / view.scale)
+      ctx.stroke()
+      // 端点：焊盘位置的小圆点
+      ctx.globalAlpha = 0.85
+      ctx.fillStyle = `hsl(${hue} 60% ${palette.wireLightness})`
+      for (const [x, y] of line.path_px) {
+        ctx.beginPath()
+        ctx.arc(x, y, Math.max(1.2, 1.6 / view.scale), 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+    ctx.restore()
+    ctx.globalAlpha = 1
   }
 
   // 元件
@@ -361,31 +442,82 @@ function draw(ctx: CanvasRenderingContext2D, input: DrawInput): void {
     const y = part.y_px + offsetY
     const severity = severityOf(part.ref, findings)
 
-    ctx.fillStyle = SOURCE_FILL[part.physical_source] ?? '#3a3f4a'
-    ctx.globalAlpha = 0.92
+    // 底层的元件画在顶层**下面**（半透明），一眼能看出是双面板。
+    const isBottom = part.side === 'bottom'
+
+    ctx.fillStyle = partFill(palette, part.physical_source)
+    ctx.globalAlpha = isBottom ? 0.45 : 0.92
     ctx.fillRect(x, y, part.w_px, part.h_px)
     ctx.globalAlpha = 1
 
     ctx.lineWidth = (isSelected ? 2.2 : 1.2) / view.scale
-    ctx.strokeStyle = isSelected ? '#7cc4ff'
-      : severity === 'error' ? '#f85149'
-        : severity === 'warning' ? '#d29922'
-          : 'rgba(255,255,255,0.35)'
+    ctx.strokeStyle = isSelected ? palette.selStroke
+      : severity === 'error' ? palette.errStroke
+        : severity === 'warning' ? palette.warnStroke
+          : palette.plainStroke
     ctx.strokeRect(x, y, part.w_px, part.h_px)
+
+    // 焊盘（真实几何）。焊盘是**金属**，用高亮色画，比元件本体更醒目。
+    if (part.pads.length > 0) {
+      for (const pad of part.pads) {
+        const px = pad.x_px + offsetX
+        const py = pad.y_px + offsetY
+        ctx.fillStyle = palette.padFill
+        drawPad(ctx, pad.shape, px, py, pad.w_px, pad.h_px, pad.rotation_z)
+        ctx.strokeStyle = palette.padStroke
+        ctx.lineWidth = Math.max(0.6, 0.7 / view.scale)
+        ctx.stroke()
+      }
+    }
 
     // 参考号：缩放太小时不画，避免糊成一团
     if (part.w_px * view.scale > 26 && part.h_px * view.scale > 12) {
-      ctx.fillStyle = '#e6edf3'
+      ctx.fillStyle = palette.label
       const px = Math.max(9, Math.min(13, 11 / view.scale))
       ctx.font = `${px}px ui-monospace, Consolas, monospace`
       ctx.textBaseline = 'middle'
       ctx.fillText(part.ref, x + 3 / view.scale, y + 8 / view.scale)
       if (part.physical_source === 'estimated') {
-        ctx.fillStyle = '#c8a6ff'
+        ctx.fillStyle = palette.estMark
         ctx.fillText('?', x + part.w_px - 8 / view.scale, y + 8 / view.scale)
+      }
+      // 底层标记
+      if (isBottom) {
+        ctx.fillStyle = palette.plainStroke
+        ctx.fillText('B', x + part.w_px - 14 / view.scale, y + 8 / view.scale)
       }
     }
   }
 
   ctx.restore()
+}
+
+/**
+ * 焊盘形状：`RECT` / `OVAL` / `ELLIPSE` / `CIRCLE`。
+ *
+ * 形状来自立创 EDA 的 `PAD.defaultPad.padType`（实测 RECT 196 / OVAL 78 /
+ * ELLIPSE 18）。画成真实形状比一律画方块有用得多 —— 引脚间距一眼可辨。
+ */
+function drawPad(ctx: CanvasRenderingContext2D, shape: string,
+                 x: number, y: number, w: number, h: number,
+                 rotationZ: number): void {
+  const rx = Math.max(w / 2, 0.4)
+  const ry = Math.max(h / 2, 0.4)
+  ctx.beginPath()
+  if (shape === 'OVAL') {
+    // 椭圆 + 两端半圆：标准"跑道形"焊盘
+    const r = Math.min(rx, ry)
+    ctx.moveTo(x - rx + r, y - ry)
+    ctx.lineTo(x + rx - r, y - ry)
+    ctx.arc(x + rx - r, y, r, -Math.PI / 2, Math.PI / 2)
+    ctx.lineTo(x - rx + r, y + ry)
+    ctx.arc(x - rx + r, y, r, Math.PI / 2, -Math.PI / 2)
+    ctx.closePath()
+  } else if (shape === 'ELLIPSE') {
+    ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2)
+  } else if (shape === 'CIRCLE') {
+    ctx.arc(x, y, Math.max(rx, ry), 0, Math.PI * 2)
+  } else {
+    ctx.rect(x - rx, y - ry, rx * 2, ry * 2)
+  }
 }
