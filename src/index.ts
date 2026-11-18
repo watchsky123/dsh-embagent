@@ -47,4 +47,16 @@ export function apply(ctx: Context): void {
     console.error('[dsh-hw-velxio] 工具注册失败（面板仍可用）：',
       error instanceof Error ? error.message : error)
   }
+
+  // 仿真会话是**宿主进程内的状态**（avr8js 的 CPU/内存）。
+  // 插件卸载或热重载时必须释放，否则旧会话的 CPU 对象会一直占着内存，
+  // 而新会话用同一个工程名又建一份——两个都在，没人知道哪个是活的。
+  ctx.effect(() => {
+    return () => {
+      void import('./velxio/sim.js').then((sim) => {
+        const count = sim.disposeAll()
+        if (count > 0) console.info(`[dsh-hw-velxio] 已释放 ${count} 个仿真会话`)
+      }).catch(() => { /* 加载失败说明从没起过会话 */ })
+    }
+  }, 'dsh-hw-velxio: sim sessions')
 }

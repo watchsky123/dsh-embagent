@@ -179,6 +179,24 @@ def _run_hwforge(project: str, name: str, params: dict[str, Any]) -> dict[str, A
         return {"status": "not_ready", "block": name, "findings": [str(exc)]}
     except BlockError as exc:
         return {"status": "failed", "block": name, "findings": [str(exc)]}
+    except Exception as exc:  # noqa: BLE001
+        # **hwforge 会抛非 BlockError 的异常**，而这里此前只接两种，于是
+        # `hw_block(assemble, {"spec": {...}})`（spec 该是路径，给了 dict）
+        # 直接把 `TypeError: expected str, bytes or os.PathLike object, not
+        # dict` 的 traceback 甩到 stdout —— Node 侧只拿到一坨 Python 堆栈，
+        # 既不是结构化结论，也没有"参数类型不对"的提示。
+        #
+        # 这里兜住全部：保留类型与首行消息（这是最有信息量的部分），
+        # 再给一条**针对参数类型的**提示——因为绝大多数这类崩溃都是参数形状错。
+        detail = f"{type(exc).__name__}: {exc}"
+        findings = [detail[:800]]
+        if isinstance(exc, (TypeError, AttributeError, KeyError, ValueError)):
+            findings.append(
+                "参数形状不对：hwforge 积木的参数由 catalog 声明，"
+                "例如 assemble 的 spec 是**文件路径字符串**，不是 JSON 对象；"
+                "用 python -m hw_velxio.bridge catalog 查每个积木的 params。")
+        return {"status": "failed", "engine": "hwforge", "block": name,
+                "findings": findings}
     return {
         "status": "ok" if result.ok else "failed",
         "engine": "hwforge", "block": result.block,
@@ -188,74 +206,192 @@ def _run_hwforge(project: str, name: str, params: dict[str, Any]) -> dict[str, A
 
 
 def _run_velxio(name: str, params: dict[str, Any]) -> dict[str, Any]:
-    """执行一个 velxio 能力，把返回原样落盘为 JSON 产物。"""
+    """执行一个 velxio 能力。
+
+    **纯计算能力排在健康检查之前**：`velxio_circuit` 只读 checkout 里的
+    `app/mcp/wokwi.py`，不需要后端在线。把它也拦在 health 后面，等于
+    因为"服务没起"而拒绝一个本来就不用服务的操作——缺失被当成了失败。
+    """
+    if name == "velxio_circuit":
+        out = _circuit(params)
+        if out.get("status") != "ok":
+            out.setdefault("engine", "velxio")
+            out.setdefault("block", name)
+            return out
+        return _save_velxio_artifact(name, params, out)
+
     health = velxio_client.health()
     if not health.get("reachable"):
         return {
             "status": "not_ready", "engine": "velxio", "block": name,
-            "findings": [f"Velxio 后端不可达（{health.get('url')}）：{health.get('error')}"],
+            "findings": [
+                f"Velxio 后端不可达（{health.get('url')}）：{health.get('error')}",
+                "用 hw_velxio action=start 启动本机后端；"
+                "纯电路的 velxio_circuit 不需要后端。",
+            ],
         }
     try:
         if name == "velxio_compile":
-            out = velxio_client.compile_start(
-                params["files"], params.get("board", "arduino:avr:uno"))
+            board_fqbn = str(params.get("board") or params.get("board_fqbn")
+                             or "arduino:avr:uno")
+            started = velxio_client.compile_start(params["files"], board_fqbn)
+            job_id = started.get("job_id") if isinstance(started, dict) else None
+            # **异步作业必须等完**。`/compile/start` 只回一个 job_id，
+            # 结果（success/hex_content/stderr）在 `/compile/status/{id}`
+            # 的 `result` 子对象里。此前这里直接把 `{job_id: ...}` 当成
+            # 编译结果返回，于是"编译成功但没有固件"——一个只完成了第一步
+            # 却被当作完成了的动作。
+            if isinstance(job_id, str) and job_id:
+                out = velxio_client.compile_wait(
+                    job_id, timeout_s=float(params.get("wait_s") or 300.0))
+            else:
+                out = started
         elif name == "velxio_chip":
             out = velxio_client.compile_chip(params["files"])
         elif name == "velxio_rom":
             out = velxio_client.compile_rom(params["files"])
         elif name == "velxio_libs":
-            if params.get("query"):
-                out = velxio_client.lib_search(params["query"])
-            elif params.get("name"):
-                out = velxio_client.lib_install(params["name"], params.get("version"))
-            else:
-                out = velxio_client.lib_list()
-        elif name == "velxio_circuit":
-            out = _circuit(params)
+            out = _libs(params)
         else:
             return {"status": "failed", "engine": "velxio", "block": name,
                     "findings": [f"未知 velxio 能力：{name}"]}
     except Exception as exc:  # noqa: BLE001
         return {"status": "failed", "engine": "velxio", "block": name,
                 "findings": [f"{type(exc).__name__}: {exc}"[:800]]}
+    return _save_velxio_artifact(name, params, out)
+
+
+def _libs(params: dict[str, Any]) -> dict[str, Any]:
+    """库能力：Arduino 与 MicroPython 双通道。
+
+    `kind` 决定走哪一族接口（`arduino` 默认 / `micropython`）。此前
+    `velxio_client` 里写好了 `micropython_search` / `micropython_fetch`，
+    但 `bridge.py` 从不调用，等于那两条链是死代码；这里把它们接上。
+
+    action 由参数推断，不额外加一个必填项：
+      query → 搜索；name → 安装/获取；都没有 → 列已装。
+    """
+    kind = str(params.get("kind") or "arduino").strip().lower()
+    if kind in ("micropython", "mpy", "python"):
+        if params.get("query"):
+            return velxio_client.micropython_search(str(params["query"]))
+        if params.get("name"):
+            return velxio_client.micropython_fetch(
+                str(params["name"]), **({"version": params["version"]}
+                                        if params.get("version") else {}))
+        # MicroPython 没有"列出已装"的接口——如实说，不假装空列表就是全部。
+        raise RuntimeError(
+            "MicroPython 通道只支持 query（搜索）或 name（获取包）；"
+            "没有 list 接口。要列 Arduino 库请用 kind=arduino。")
+    if params.get("query"):
+        return velxio_client.lib_search(str(params["query"]))
+    if params.get("name"):
+        return velxio_client.lib_install(str(params["name"]), params.get("version"))
+    return velxio_client.lib_list()
+
+
+def _save_velxio_artifact(name: str, params: dict[str, Any],
+                          out: dict[str, Any]) -> dict[str, Any]:
+    """把能力输出原样落盘成 `<project>/<name>.json`。
+
+    工程目录不存在时**报 failed 而不是静默建**：`_run_velxio` 拿到的 project
+    来自 `hw_block` 的参数，写错名字应当被看见，而不是在工作区里多一个空目录。
+    """
+    project = str(params.get("project") or "").strip()
+    if not project:
+        return {"status": "ok", "engine": "velxio", "block": name,
+                "wrote": [], "findings": ["没有 project 参数，结果只在本次返回里，未落盘"],
+                "data": out}
+    target_dir = project_root() / project
     wrote = f"{name}.json"
-    Path(project_root() / params.get("project", "_shared")).mkdir(parents=True, exist_ok=True)
-    (project_root() / params.get("project", "_shared") / wrote).write_text(
-        json.dumps(out, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        (target_dir / wrote).write_text(
+            json.dumps(out, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    except OSError as exc:
+        return {"status": "failed", "engine": "velxio", "block": name,
+                "findings": [f"结果写不进 {target_dir}：{exc}"], "data": out}
     return {
         "status": "ok", "engine": "velxio", "block": name,
         "wrote": [wrote], "findings": [], "data": out,
     }
 
 
+def _velxio_package_root() -> str:
+    """Velxio 的**包根**（`import app` 能成功的那一层）。
+
+    这里曾经把 checkout 根塞进 `sys.path`，但真正的包在 `backend/` 下：
+    `<root>/backend/app/mcp/wokwi.py`。于是 `import app.mcp.wokwi` 在根目录
+    必然 ModuleNotFoundError，而这个失败被 catch 成一句"velxio_root 未设置"，
+    把路径错位伪装成了环境变量没配。
+
+    两级候选，`backend/` 优先；两级都不对时返回空串，让调用方如实报 not_ready。
+    """
+    from .serve import velxio_root  # 单一事实源：根只由 serve 解析
+
+    root = velxio_root()
+    if not root:
+        return ""
+    for candidate in (Path(root) / "backend", Path(root)):
+        if (candidate / "app" / "__init__.py").is_file() or \
+                (candidate / "app" / "mcp" / "wokwi.py").is_file():
+            return str(candidate)
+    return ""
+
+
 def _circuit(params: dict[str, Any]) -> dict[str, Any]:
     """电路 JSON ↔ Wokwi diagram.json。
 
-    优先复用 Velxio 的 ``app.mcp.wokwi`` 纯计算（如果 velxio checkout 在
-    ``HW_VELXIO_VELXIO_ROOT`` 上）；否则把 action 原样透传给一个可选的
-    velxio 侧 helper，最后才如实报 not_ready——**不重实现 diagram 解析**。
+    这是**纯计算**（不需要 Velxio 后端在线），只依赖 checkout 里的
+    ``app/mcp/wokwi.py`` 三个纯函数。因此它在 `_run` 里排在健康检查**之前**
+    ——"后端没起"不该让一个本地 JSON 转换失败。
+
+    **不重实现 diagram 解析**：格式会漂移，复制一份就是第二个事实源。
     """
-    velxio_root = os.environ.get("HW_VELXIO_VELXIO_ROOT", "").strip()
-    if velxio_root and velxio_root not in sys.path:
-        sys.path.insert(0, velxio_root)
+    package_root = _velxio_package_root()
+    if not package_root:
+        return {
+            "status": "not_ready",
+            "findings": [
+                "找不到 Velxio checkout 的 app 包（需要 <root>/backend/app/mcp/wokwi.py）。",
+                "设 HW_VELXIO_VELXIO_ROOT 指向 velxio 仓库根，或配置 velxio_root。",
+                "注意：电路转换不需要后端在线，只需要源码在盘上。",
+            ],
+        }
+    if package_root not in sys.path:
+        sys.path.insert(0, package_root)
     try:
         from app.mcp.wokwi import (  # type: ignore
             format_wokwi_diagram, generate_arduino_sketch, parse_wokwi_diagram,
         )
-        action = params.get("action", "export")
-        if action == "import" and params.get("diagram"):
-            return {"action": action, "circuit": parse_wokwi_diagram(params["diagram"])}
-        if action == "export" and params.get("diagram"):
-            return {"action": action, "wokwi": format_wokwi_diagram(params["diagram"])}
-        if action == "sketch" and params.get("diagram"):
-            return {"action": action, "sketch": generate_arduino_sketch(params["diagram"])}
-        return {"action": action, "error": "需要 action 与 diagram 参数"}
     except Exception as exc:  # noqa: BLE001
         return {
             "status": "not_ready",
             "findings": [
-                f"无法复用 Velxio 的 wokwi 计算（velxio_root={velxio_root or '未设置'}）：{exc}"],
+                f"能定位到 {package_root} 但 import app.mcp.wokwi 失败："
+                f"{type(exc).__name__}: {exc}"[:600],
+            ],
         }
+    action = params.get("action", "export")
+    diagram = params.get("diagram")
+    if not isinstance(diagram, dict) or not diagram:
+        return {"status": "failed", "findings": [
+            f"action={action} 需要 diagram（一个 Wokwi diagram JSON 对象）"]}
+    try:
+        if action == "import":
+            return {"status": "ok", "action": action,
+                    "circuit": parse_wokwi_diagram(diagram)}
+        if action == "export":
+            return {"status": "ok", "action": action,
+                    "wokwi": format_wokwi_diagram(diagram)}
+        if action == "sketch":
+            return {"status": "ok", "action": action,
+                    "sketch": generate_arduino_sketch(diagram)}
+        return {"status": "failed", "findings": [
+            f"未知 action：{action}；可用 import / export / sketch"]}
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "failed", "findings": [
+            f"wokwi 计算失败：{type(exc).__name__}: {exc}"[:800]]}
 
 
 def _run(project: str, name: str, params: dict[str, Any]) -> dict[str, Any]:

@@ -1,0 +1,22 @@
+# 示例需求：带图传与云台的四旋翼
+# 用法：python -m hw_velxio.design_cli generate --requirement <本文件> --max-candidates 20
+id: qdrone
+title: 带图传的四旋翼
+roles:
+  - mcu
+  - radio
+  - camera
+  - gimbal_pan
+  - gimbal_tilt
+  - servo_power
+  - power_in
+interfaces:
+  - {a: mcu, b: radio, protocol: spi, level_v: 3.3}
+  - {a: mcu, b: sensor, protocol: i2c, level_v: 3.3}
+  - {a: mcu, b: motor, protocol: pwm, level_v: 5.0}
+constraints:
+  area_mm2: 400
+numbers:
+  pointing_accuracy_deg: 1.0
+  link_bandwidth_mbps: 8.0
+notes: 生成器只对新工程有效；不为导入的哈希 kind 补映射

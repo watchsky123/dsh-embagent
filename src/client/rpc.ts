@@ -97,6 +97,16 @@ export interface WorkbenchFace {
   exportBundle(project: string): Promise<ExportPayload>
   trace(project: string, action?: string): Promise<Record<string, unknown>>
   velxioHealth(): Promise<Record<string, unknown>>
+  /** 启动/停止 Velxio 后端（委托 Python 侧的 serve 子命令）。 */
+  velxioControl(action: 'start' | 'stop' | 'status'): Promise<Record<string, unknown>>
+  /** AVR 仿真：起会话（宿主 Node 内的 avr8js，不经过后端）。 */
+  simStart(project: string, board: string, hex: string): Promise<Record<string, unknown>>
+  /** AVR 仿真：推进并取串口增量。 */
+  simRun(project: string, maxInstructions?: number, maxBytes?: number): Promise<Record<string, unknown>>
+  simStop(project: string): Promise<Record<string, unknown>>
+  simStatus(project: string): Promise<Record<string, unknown>>
+  /** 只读串口（不推进 CPU）。 */
+  serialRead(project: string): Promise<Record<string, unknown>>
   runBlock(project: string, block: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>
   hint(): Promise<HintPayload>
   /** 勘察工作区（P2）。write=true 会刷新初审.md 的事实段。 */
@@ -174,6 +184,16 @@ export function createFace(
       call<Record<string, unknown>>(handle, 'trace',
         action === undefined ? { project } : { project, action }),
     velxioHealth: () => call<Record<string, unknown>>(handle, 'velxioHealth'),
+    velxioControl: (action) =>
+      call<Record<string, unknown>>(handle, 'velxioControl', { action }),
+    simStart: (project, board, hex) =>
+      call<Record<string, unknown>>(handle, 'simStart', { project, board, hex }),
+    simRun: (project, maxInstructions, maxBytes) =>
+      call<Record<string, unknown>>(handle, 'simRun',
+        maxInstructions === undefined ? { project } : { project, maxInstructions, maxBytes }),
+    simStop: (project) => call<Record<string, unknown>>(handle, 'simStop', { project }),
+    simStatus: (project) => call<Record<string, unknown>>(handle, 'simStatus', { project }),
+    serialRead: (project) => call<Record<string, unknown>>(handle, 'serialRead', { project }),
     runBlock: (project, block, params) =>
       call<Record<string, unknown>>(handle, 'runBlock',
         params === undefined ? { project, block } : { project, block, params }),

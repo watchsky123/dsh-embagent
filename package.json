@@ -25,8 +25,12 @@
     "__init__.py",
     "examples",
     "scripts",
+    "DESIGN.md",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "serve.py",
+    "patch.py",
+    "docs"
   ],
   "dsh": {
     "bundle": {
@@ -43,7 +47,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsdown",
     "check": "tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "test": "python -m unittest hw_velxio.tests.test_design"
+    "test": "python -m unittest hw_velxio.tests.test_design",
+    "verify": "python -m hw_velxio.scripts.check_m1",
+    "verify:justify": "python -m hw_velxio.scripts.check_justify",
+    "verify:handoff": "python -m hw_velxio.scripts.check_handoff",
+    "verify:ladder": "python -m hw_velxio.scripts.check_ladder",
+    "verify:units": "python -m hw_velxio.scripts.check_units_links",
+    "verify:generate": "python -m hw_velxio.scripts.check_generate",
+    "verify:m2": "python -m hw_velxio.scripts.check_units_links && python -m hw_velxio.scripts.check_generate"
   },
   "license": "MIT",
   "peerDependencies": {
@@ -78,5 +89,8 @@
     "three": "^0.170.0",
     "tsdown": "^0.22.14",
     "typescript": "^5.7"
+  },
+  "dependencies": {
+    "avr8js": "^0.21.1"
   }
 }

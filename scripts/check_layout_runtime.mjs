@@ -326,6 +326,14 @@ if (htmlSplit === null) {
   check('状态灯存在且带语义', htmlSplit.includes('role="status"'))
   // 工作区入口：有工程时它也在工具栏（不是只在空态出现），且是**一个**
   // 按钮——设置块与入口分离，入口全局只有这一个。
+  // P1 IA 减法：底部从 8 个平级页签收敛成 3 个分组，组内再分段。
+  const groupTabs = (htmlSplit.match(/class="hwv-tab(?: |")/g) ?? []).length
+  check('底部是 3 个分组页签（不是 8 个平级页签）', groupTabs === 3, `实际 ${groupTabs}`)
+  check('分组页签用 aria-pressed（不是 tab 语义）',
+    /class="hwv-tab(?: active)?" aria-pressed="/.test(htmlSplit))
+  const subTabs = (htmlSplit.match(/class="hwv-subtab/g) ?? []).length
+  check('组内有分区分段控件（≥2 个）', subTabs >= 2, `实际 ${subTabs}`)
+
   check('工具栏是工作区的唯一入口',
     (htmlSplit.match(/hwv-ws-toggle/g) ?? []).length === 1
     && /aria-expanded="false"/.test(htmlSplit))
@@ -425,8 +433,10 @@ if (htmlSplit === null) {
     // 合并后的结构：一张「开始」卡（两页签）+ 一个收起的工作区设置块。
     // 断言的是**去重后的形状**，不是文案——文案会改，形状是这次修改的目的。
     check('空态只有一个"开始"区', (emptyHtml.match(/aria-label="开始"/g) ?? []).length === 1)
-    check('开始区是两页签（新建预设 / 从文件导入）', /role="tablist"/.test(emptyHtml)
-      && emptyHtml.includes('新建预设板卡') && emptyHtml.includes('从文件导入'))
+    check('开始区是三页签（新建预设 / 从文件导入 / 说需求给 AI）',
+      /role="tablist"/.test(emptyHtml)
+      && emptyHtml.includes('新建预设板卡') && emptyHtml.includes('从文件导入')
+      && emptyHtml.includes('说需求给 AI'))
     check('同一时刻只有一个 tab 被选中',
       (emptyHtml.match(/aria-selected="true"/g) ?? []).length === 1)
     // 旧的四张并列卡必须消失：它们是"看起来像四个功能"的直接来源。
@@ -538,11 +548,13 @@ if (htmlSplit === null) {
     check('空集通过的检查列在 title 里（可悬停看到具体是哪几条）',
       /title="[^"]*space\.overlap/.test(phaseHtml))
 
-    // 工具栏不再叫「AI 评审」，改成「AI 协作」——它是入口，不是一个动作。
-    check('工具栏是「AI 协作」入口', phaseHtml.includes('AI 协作'))
-    check('AI 面板默认收起（不渲染）', !phaseHtml.includes('aria-label="AI 协作"'))
-    check('入口本身带 aria-expanded', /aria-expanded="false"[^>]*>\\s*AI 协作/.test(phaseHtml.replace(/\\s+/g, ' '))
-      || /AI 协作/.test(phaseHtml))
+    // AI 从工具栏按钮改成**右侧抽屉**：入口是一个小 `AI` 按钮（带 aria-expanded），
+    // 面板打开时是 role=dialog 的抽屉，不是一个内联的行。
+    check('工具栏有「AI」抽屉入口', phaseHtml.includes('hwv-ai-toggle'))
+    check('AI 抽屉默认收起（不渲染 dialog）',
+      !phaseHtml.includes('role="dialog"'))
+    check('抽屉入口带 aria-expanded=false',
+      /aria-expanded="false"/.test(phaseHtml))
 
     // 恢复一个能用的快照，后续段落照常跑。
     await renderOnce(fakeSnapshot('001-blink'), 'split')
@@ -558,6 +570,16 @@ if (htmlSplit === null) {
   check('把手样式', client.includes('.hwv-handle.vertical'))
   check('segmented 按下态', client.includes('.hwv-seg-btn[aria-pressed="true"]'))
   check('深色命令式调色板仍在', client.includes('body[data-ds-dark-theme] .hwv-root'))
+  // P2/P3 静态断言：字阶只有 11/12/13/15 四档，且不再出现 10px。
+  check('字号阶梯已令牌化（--hwv-fs-*）', client.includes('--hwv-fs-caption')
+    && client.includes('--hwv-fs-body') && client.includes('--hwv-fs-title'))
+  check('没有 10px 字号（低于 11px 在 1x DPI 上不可读）',
+    !/font-size: 10px/.test(client))
+  // P2：唯一强调色是紫（--hwv-est），选择环与估算共用它。
+  check('选择色引用唯一强调色 --hwv-est',
+    /--hwv-p-sel: var\(--hwv-est\)/.test(client))
+  check('估算色引用唯一强调色 --hwv-est',
+    /--hwv-p-est-mark: var\(--hwv-est\)/.test(client))
   check('渲染含 hwv- 类名', cssOnly)
 }
 

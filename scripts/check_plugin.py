@@ -70,12 +70,17 @@ def check_artifacts() -> None:
     # 少任何一套，"背景跟随系统"都会静默失效（表现为永远深色）。
     check("client 含宿主深色信号选择器",
           "data-ds-dark-theme] .hwv-root" in client_text)
-    check("client 含浅色字面调色板",
-          "--hwv-p-canvas-bg: #f7f8fa" in client_text.replace("  ", " ")
-          or "--hwv-p-canvas-bg:#f7f8fa" in client_text
-          or "--hwv-p-canvas-bg: #f7f8fa" in client_text)
-    check("client 含深色字面调色板",
-          "#101216" in client_text and "#15171c" in client_text)
+    # P2 之后调色板分两层：材质层写 hex（一处），引用层用 var()。
+    # 断言的是**这个结构**，不是某个具体色值——色值会调，结构不能塌。
+    flat = client_text.replace("  ", " ")
+    check("client 含浅色材质层（画布颜色只有一处取值）",
+          "--hwv-m-board: #e9f2ec" in flat or "--hwv-m-board:#e9f2ec" in flat)
+    check("client 深色块只覆盖材质层",
+          "--hwv-m-board: #1d3a2a" in flat or "--hwv-m-board:#1d3a2a" in flat)
+    check("引用层用 var() 指向材质层",
+          "var(--hwv-m-board)" in client_text)
+    check("唯一强调色是紫（--hwv-est）",
+          "var(--hwv-est)" in client_text)
     check("client 监听主题翻转",
           "data-ds-dark-theme" in client_text and "MutationObserver" in client_text)
 

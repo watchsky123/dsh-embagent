@@ -15,9 +15,43 @@
 │ 2D 电路 · 电气权威    │ 3D 装配 · 物理权威    │ 检查器                    │
 │ 拖拽移动 / 右键旋转   │ 轨道 / 爆炸 / 剖面    │ 尺寸/来源/位置/该件判定    │
 ├──────────────────────┴──────────────────────┴──────────────────────────┤
-│ [判定] [预算] [未决] [核对] [证据/轨迹] [制造] [积木]                    │
+│ [判定] [预算] [未决] [核对] [证据/轨迹] [制造] [积木] [Velxio]            │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+## Velxio 能力（编译 / 电路 / 库 / 仿真）
+
+四类能力，**全部在 DSH 内跑，不需要浏览器、不需要 Docker**：
+
+| 工具 | 做什么 | 需要后端？ |
+|---|---|---|
+| `hw_compile` | 真实编译 Arduino/ESP-IDF → hex（arduino-cli） | ✅ 需要 |
+| `hw_circuit` | Wokwi diagram ↔ 电路 JSON（复用 Velxio 的 `app/mcp/wokwi`） | ❌ 纯计算 |
+| `hw_libs` | Arduino + MicroPython 库搜索/安装 | ✅ 需要 |
+| `hw_sim` / `hw_serial` | **真跑固件**（avr8js）并读串口 | ❌ 不需要 |
+| `hw_velxio` | 后端生命周期：status/start/stop/logs | — |
+
+后端管理（**不需要 Docker**，用本机 venv 跑 uvicorn）：
+
+```bash
+python -m hw_velxio.serve prepare   # 建 venv + 装依赖
+python -m hw_velxio.serve arduino   # 预置 arduino-cli + AVR core
+python -m hw_velxio.serve start     # 启动（计划任务托管，跨工具调用存活）
+python -m hw_velxio.serve status    # 三态 + 工具链 + 补丁状态
+python -m hw_velxio.serve stop
+```
+
+场景补丁（让后端启动从 76 秒降到 0.5 秒）：
+
+```bash
+python -m hw_velxio.patch status|install|remove
+```
+
+**详细说明**：[docs/p4-simulation.md](docs/p4-simulation.md)（含 AVR 可直接跑的
+实测证据、ESP32 为什么不可用的三重约束、补丁改了什么）。
+
+**明确的边界**：AVR 仿真支持 ATmega328p 家族（Uno/Nano/Mini/Pro Mini），
+**不提供元件动画**（那需要浏览器）；Mega2560 与 ESP32 会如实拒绝，不硬套。
 
 ## 工作区（工程住哪）
 

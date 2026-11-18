@@ -31,15 +31,16 @@ import { Circuit2D } from './Circuit2D.js'
 import { Inspector } from './Inspector.js'
 import {
   BlocksPanel, BudgetPanel, ChecksPanel, CrosscheckPanel, DeferredPanel,
-  EvidencePanel, ExportPanel, ExportResult,
+  EvidencePanel, ExportPanel, ExportResult, SimPanel, VelxioPanel,
 } from './panels.js'
+import type { AvrSimStatus, VelxioStatus } from './panels.js'
 import type { WorkbenchFace } from './rpc.js'
 import { ResizeHandle } from './ResizeHandle.js'
 import {
-  BOTTOM_MAX, BOTTOM_MIN, INSPECTOR_MAX, INSPECTOR_MIN,
-  SPLIT_MAX, SPLIT_MIN, store, useHw,
+  BOTTOM_MAX, BOTTOM_MIN, DEFAULT_SECTION, GROUP_LABEL, INSPECTOR_MAX, INSPECTOR_MIN,
+  SECTIONS, SECTION_LABEL, SPLIT_MAX, SPLIT_MIN, store, useHw,
 } from './store.js'
-import type { Layout, PanelId } from './store.js'
+import type { Layout, PanelId, SectionId } from './store.js'
 import { composeReviewPrompt } from './view.js'
 
 export interface HwIdeViewProps {
@@ -50,14 +51,18 @@ export interface HwIdeViewProps {
   readonly cwd: string
 }
 
-const PANELS: Array<{ id: PanelId; label: string }> = [
-  { id: 'checks', label: '判定' },
-  { id: 'budget', label: '预算' },
-  { id: 'deferred', label: '未决' },
-  { id: 'crosscheck', label: '核对' },
-  { id: 'evidence', label: '证据/轨迹' },
-  { id: 'export', label: '制造' },
-  { id: 'blocks', label: '积木' },
+/**
+ * 底部面板的**三个分组**。原来这里是 8 个平级页签。
+ *
+ * 合并逻辑：判定/预算/未决/核对/积木 都回答"这东西有没有毛病"→ 体检；
+ * 制造/证据 是"交给别人"→ 交付；Velxio 是运行态 → 单独一组。
+ * 组内再用分段控件切分区（见下方渲染），所以**功能一个没少**，
+ * 只是顶部从"8 选 1"降到"3 选 1"。
+ */
+const PANELS: Array<{ id: PanelId; label: string; sections: readonly SectionId[] }> = [
+  { id: 'health', label: GROUP_LABEL.health, sections: SECTIONS.health },
+  { id: 'delivery', label: GROUP_LABEL.delivery, sections: SECTIONS.delivery },
+  { id: 'velxio', label: GROUP_LABEL.velxio, sections: SECTIONS.velxio },
 ]
 
 /** 工作区来源的可读标签（RPC 的 source 枚举 → 人话）。 */
@@ -99,6 +104,17 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
     void store.init(props.face)
     return () => { store.dispose() }
   }, [props.face])
+
+  // 切到 Velxio 页签时读一次后端状态。
+  //
+  // **只在打开时读，不轮询**：后端启动要几秒到十几秒，轮询会让面板不停
+  // 发 RPC；而用户想知道的"现在通不通"点一下"刷新"就够了。依赖里放
+  // `state.panel` 而不是 `state.velxio`，避免刷新后自己再触发一次。
+  useEffect(() => {
+    if (state.panel === 'velxio' && state.velxio === null) {
+      void store.refreshVelxio()
+    }
+  }, [state.panel, state.velxio])
 
   // DSH 当前工作目录随会话变化（用户切了项目文件夹）。**渲染期同步**，
   // 不等 effect：这个值决定"新建工作区"落在哪，首帧点"新建"就必须已经就位。
@@ -176,7 +192,14 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
     setAiSent(true)
   }
 
-  const panelCount = (id: PanelId): { text: string; cls: string } | null => {
+  /**
+   * 分区级计数（数字只在**分段控件**上显示）。
+   *
+   * 为什么数字不放在分组页签上：一个分组里有 5 个分区，"3" 究竟是 3 个错误
+   * 还是 3 个未决？聚合数字必然含混。分组层只给一颗红/黄点表示"这组里有
+   * 问题"，具体数字给到分区。
+   */
+  const sectionCount = (id: SectionId): { text: string; cls: string } | null => {
     if (id === 'checks' && errors.length + warnings.length > 0) {
       return {
         text: String(errors.length + warnings.length),
@@ -189,6 +212,18 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
     }
     if (id === 'crosscheck' && mismatches > 0) return { text: String(mismatches), cls: 'warn' }
     return null
+  }
+
+  /** 分组级：组内任一分区有问题就给一颗点（取最严重的颜色）。 */
+  const groupIssue = (group: PanelId): 'err' | 'warn' | null => {
+    let worst: 'err' | 'warn' | null = null
+    for (const section of SECTIONS[group]) {
+      const count = sectionCount(section)
+      if (count === null) continue
+      if (count.cls === 'err') return 'err'
+      worst = 'warn'
+    }
+    return worst
   }
 
   // 状态灯：一眼回答"能不能交付"。红=错误，黄=警告/未决，绿=可交付。
@@ -246,28 +281,30 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
           </select>
         </div>
 
+        {/* 工具栏只有两个动作：**跑体检**（一次跑完检查/预算/核对）与**导出**。
+            「检查/预算/核对」原本是三个平排按钮，但它们回答同一个问题，
+            分开摆只是让人多点两次。AI 协作移到右侧抽屉（见 `aiOpen`）。 */}
         <div className="hwv-tb-actions">
           <button className="hwv-btn" disabled={snapshot === null || state.busy !== ''}
-                  onClick={() => { void store.runCheck() }}>检查</button>
-          <button className="hwv-btn" disabled={snapshot === null || state.busy !== ''}
-                  onClick={() => { void store.runBudget() }}>预算</button>
-          <button className="hwv-btn" disabled={snapshot === null || state.busy !== ''}
-                  onClick={() => { void store.runCrosscheck() }}>核对</button>
+                  title="一次跑完：物理检查 + 五轨预算 + 交叉核对"
+                  onClick={() => { void store.runHealth() }}>跑体检</button>
           <button className="hwv-btn primary"
                   disabled={snapshot === null || state.busy !== '' || openDecisions.length > 0}
                   title={openDecisions.length > 0 ? '不可逆决策未闭合，导出被闸门拦住' : '导出制造包'}
                   onClick={() => { void store.exportBundle() }}>导出</button>
-          <button className={`hwv-btn${aiOpen ? ' on' : ''}`}
-                  aria-expanded={aiOpen}
-                  title="AI：评审 / 初审工作区 / 描述你想改什么"
-                  onClick={() => { setAiOpen(!aiOpen); setAiSent(false) }}>
-            AI 协作
-          </button>
         </div>
 
         <span className="hwv-spacer" />
 
         <div className="hwv-tb-right">
+          {/* AI 协作：**抽屉**，不再是和"导出"同一排的按钮。
+              它是"问一个问题"的入口，和"执行一个动作"不同级；平排会误触。 */}
+          <button className={`hwv-btn hwv-ai-toggle${aiOpen ? ' on' : ''}`}
+                  aria-expanded={aiOpen}
+                  title="AI：评审 / 初审工作区 / 描述你想改什么"
+                  onClick={() => { setAiOpen(!aiOpen); setAiSent(false) }}>
+            AI
+          </button>
           {/* 工作区：**唯一的入口**，两种状态下都在这里。已设时它就是一条
               可点的路径（点击展开设置块）；设置块本身在主区上方渲染一份，
               不随状态改变位置——"同一个东西在两种状态下长得不一样"是
@@ -339,7 +376,12 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
           三者都往会话里发，初审.md 是它们之间的接力棒。
           收起时**不渲染**（与工作区设置同一条规则）。 */}
       {aiOpen && (
-        <section className="hwv-ai" aria-label="AI 协作">
+        <>
+          {/* 抽屉遮罩：点外面关掉。没有它，抽屉打开后主区仍然可交互，
+              容易在"我到底在操作哪一层"上迷失。 */}
+          <div className="hwv-drawer-scrim" role="presentation"
+               onClick={() => { setAiOpen(false) }} />
+          <section className="hwv-ai hwv-drawer" role="dialog" aria-label="AI 协作">
           <div className="hwv-ai-row">
             <span className="hwv-field-label">AI 协作</span>
             <button className="hwv-btn" onClick={() => { ask(); setAiOpen(false) }}>
@@ -406,7 +448,8 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
               发送
             </button>
           </div>
-        </section>
+          </section>
+        </>
       )}
 
       {/* ── 工作区设置块：唯一实现，主区上方一份；收起时**不渲染** ─────── */}
@@ -420,7 +463,7 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
             // "下拉显示 示例-无人机、正文说还没有工程"的自相矛盾。
             ? <Unavailable project={state.project} error={state.error}
                            onRetry={() => { void store.open(state.project) }} />
-            : <EmptyState />)
+            : <EmptyState ai={props.ai} />)
         : (
           <div className="hwv-main">
             <div className="hwv-panes" ref={panesRef}>
@@ -513,17 +556,38 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
       <div className="hwv-bottom" style={{ height: snapshot !== null ? bottomHeight : undefined, flexBasis: snapshot !== null ? bottomHeight : undefined }}>
         <div className="hwv-tabs">
           {PANELS.map((panel) => {
-            const count = panelCount(panel.id)
+            const issue = groupIssue(panel.id)
             return (
               <button key={panel.id}
                       className={`hwv-tab${state.panel === panel.id ? ' active' : ''}`}
+                      aria-pressed={state.panel === panel.id}
                       onClick={() => { store.setPanel(panel.id) }}>
                 {panel.label}
-                {count !== null && <span className={`count ${count.cls}`}>{count.text}</span>}
+                {issue !== null && <span className={`hwv-tab-dot ${issue}`} />}
               </button>
             )
           })}
         </div>
+        {/* 组内分区：只有 2 个及以上时才显示分段控件（单分区分组不摆一排只有一项的按钮）。
+            **没有工程时不渲染**：那时没有分区内容可切，多一排空按钮只会添乱，
+            而且会和空态的「开始卡」页签争同一份 aria-selected 语义。 */}
+        {snapshot !== null
+          && (PANELS.find((p) => p.id === state.panel)?.sections.length ?? 0) > 1 && (
+          <div className="hwv-subtabs" role="tablist" aria-label="分区">
+            {(PANELS.find((p) => p.id === state.panel)?.sections ?? []).map((section) => {
+              const count = sectionCount(section)
+              return (
+                <button key={section} role="tab"
+                        aria-selected={state.panelSection === section}
+                        className={`hwv-subtab${state.panelSection === section ? ' active' : ''}`}
+                        onClick={() => { store.setPanelSection(section) }}>
+                  {SECTION_LABEL[section]}
+                  {count !== null && <span className={`count ${count.cls}`}>{count.text}</span>}
+                </button>
+              )
+            })}
+          </div>
+        )}
         {snapshot === null
           ? <div className="hwv-body hwv-dim">先新建或导入一个工程。</div>
           : (
@@ -580,7 +644,8 @@ function PanelBody(props: {
     onExport: props.onExport,
     onLimit: (currency: string, value: number) => { void store.setBudgetLimit(currency, value) },
   }
-  switch (props.state.panel) {
+  // 按**分区**渲染（不是分组）：分组只是导航，分区才是内容。
+  switch (props.state.panelSection) {
     case 'checks': return <ChecksPanel {...common} />
     case 'budget': return <BudgetPanel {...common} />
     case 'deferred': return <DeferredPanel {...common} />
@@ -597,6 +662,28 @@ function PanelBody(props: {
             const project = store.getSnapshot().project
             void store.runBlock(project, block, params)
           }}
+        />
+      )
+    case 'velxio':
+      return (
+        <VelxioPanel
+          {...common}
+          status={(props.state.velxio as unknown as VelxioStatus | null) ?? null}
+          onRefresh={() => { void store.refreshVelxio() }}
+          onStart={() => { void store.controlVelxio('start') }}
+          onStop={() => { void store.controlVelxio('stop') }}
+        />
+      )
+    case 'sim':
+      return (
+        <SimPanel
+          {...common}
+          sim={(props.state.sim as unknown as AvrSimStatus | null) ?? null}
+          serial={props.state.serial}
+          onStart={() => { void store.startSim() }}
+          onRun={() => { void store.runSim() }}
+          onRead={() => { void store.readSerial() }}
+          onStop={() => { void store.stopSim() }}
         />
       )
     default: return <ChecksPanel {...common} />
@@ -659,7 +746,7 @@ function Unavailable(props: {
   )
 }
 
-function EmptyState(): JSX.Element {
+function EmptyState(props: { ai: { send: (text: string) => void } }): JSX.Element {
   const state = useHw()
   const boards = state.bootstrap?.boards ?? []
   const formats = state.bootstrap?.formats ?? []
@@ -668,8 +755,16 @@ function EmptyState(): JSX.Element {
   const [title, setTitle] = useState('Blink')
   const [importPath, setImportPath] = useState('')
   const [bomPath, setBomPath] = useState('')
-  /** 开始卡的两个页签：新建预设 vs 从文件导入。 */
-  const [mode, setMode] = useState<'new' | 'import'>('new')
+  /**
+   * 开始卡的三条路：新建预设 / 从文件导入 / **说需求给 AI**。
+   *
+   * 第三条是后加的：前两条都要求用户"已经知道要建什么、用哪块板"，
+   * 而第一次打开时最真实的处境是"我想做个东西，但不知道从哪下手"。
+   * 让 AI 走同一套工具链，比让人先猜一个板卡预设更诚实。
+   */
+  const [mode, setMode] = useState<'new' | 'import' | 'ask'>('new')
+  const [askText, setAskText] = useState('')
+  const [sent, setSent] = useState(false)
 
   const busy = state.busy !== ''
 
@@ -695,7 +790,41 @@ function EmptyState(): JSX.Element {
                   onClick={() => { setMode('import') }}>
             从文件导入
           </button>
+          {/* 第三条路：**不知道从哪开始**时，直接把需求说给 AI。
+              空态原本只有"新建/导入"两条，都需要用户先知道要建什么；
+              而多数人第一次打开是"我想做个东西，但不知道选哪块板"。 */}
+          <button role="tab" aria-selected={mode === 'ask'}
+                  className={`hwv-start-tab${mode === 'ask' ? ' on' : ''}`}
+                  onClick={() => { setMode('ask') }}>
+            说需求给 AI
+          </button>
         </div>
+
+        {mode === 'ask' && (
+          <div className="hwv-start-body">
+            <p className="hwv-dim" style={{ margin: 0 }}>
+              用一句话描述你要做的东西，AI 会按需要调工具（建工程 / 选板 / 加件 / 跑检查）。
+              它改设计**只能**走 hw_put / hw_setpart，会过模型校验。
+            </p>
+            <textarea className="hwv-input" rows={3}
+                      placeholder="例如：做一个壁挂云台相机，手机能看实时视频，5V 供电"
+                      aria-label="需求"
+                      value={askText}
+                      onChange={(event) => { setAskText(event.target.value) }} />
+            <div className="hwv-btn-row">
+              <button className="hwv-btn primary"
+                      disabled={askText.trim() === ''}
+                      onClick={() => {
+                        props.ai.send(askText.trim())
+                        setAskText('')
+                        setSent(true)
+                      }}>
+                发到会话
+              </button>
+              {sent && <span className="hwv-dim" role="status">✓ 已发，切回「对话」看进展</span>}
+            </div>
+          </div>
+        )}
 
         {mode === 'new'
           ? (

@@ -162,6 +162,96 @@ class Placement:
         )
 
 
+#: 归因的可信度来源。**顺序就是可信度顺序**（高的在前）。
+#:
+#: `asserted` 是人/AI 明确写下的；`backfill` 是从已有工程反推出来的；
+#: `inferred_by_topology` 是从网表拓扑算出来的；`unknown` 是判不出。
+#:
+#: 为什么要分这么细而不是一个 bool：`handoff.md` 要按它分表——
+#: 人声明的进"已确认"，拓扑推的进"AI 推的待核"，unknown 进"空白"。
+#: 混在一起的话，从拓扑推出来的 1kΩ 上拉电阻会被当成人的决定。
+JUSTIFICATION_CONFIDENCE = (
+    "asserted",              # 人明确声明（或 AI 声明并已人工确认）
+    "backfill",              # 从现有工程反推（有依据，但没人签字）
+    "inferred_by_topology",  # 纯结构推导（只说得出"看起来是干什么的"）
+    "unknown",               # 判不出
+)
+
+#: 归因的来源方。
+JUSTIFICATION_SOURCES = ("human", "ai", "import")
+
+
+@dataclass
+class Justification:
+    """元件/单元**为什么在**。这是 S2/S3 判据的载体。
+
+    为什么独立成类型而不是塞进 `notes`：`notes` 是自由文本，写什么都行，
+    没有任何消费者；而这里的每个字段都要被 `handoff.md` 消费、被断言引用、
+    被"删除即失败"验证。**能被消费的字段才会被认真填。**
+
+    `why` 必须含**具体网名/元件名**（由 `justify.py` 强制拼接）。
+    没有具体指称的理由是套话，套话无法被证伪，也就无法被审查。
+    """
+
+    #: 服务的需求 id（对应 `requirements.py` 的条目）
+    requirement: list[str] = field(default_factory=list)
+    #: 人话理由。**必须含具体指称**（网名 / 元件号 / 数值）
+    why: str = ""
+    #: 删掉它会怎样。空字符串表示"没想过"——不允许
+    effect_if_removed: str = ""
+    #: 便于换料：同类可替代件的说明
+    alternatives: list[str] = field(default_factory=list)
+    #: 见 `JUSTIFICATION_CONFIDENCE`
+    confidence: str = "asserted"
+    #: 见 `JUSTIFICATION_SOURCES`
+    source: str = "human"
+    #: 归因依据的可读形式（网表路径 / 角色表条目 / 申报字段）
+    evidence: str = ""
+
+    def __post_init__(self) -> None:
+        if self.confidence not in JUSTIFICATION_CONFIDENCE:
+            raise DesignError(
+                f"justification.confidence 非法：{self.confidence!r}"
+                f"（允许 {', '.join(JUSTIFICATION_CONFIDENCE)}）")
+        if self.source not in JUSTIFICATION_SOURCES:
+            raise DesignError(
+                f"justification.source 非法：{self.source!r}"
+                f"（允许 {', '.join(JUSTIFICATION_SOURCES)}）")
+
+    #: 这条理由是否"算数"——只有 asserted / backfill 算人确认过。
+    @property
+    def signed(self) -> bool:
+        return self.confidence in ("asserted", "backfill")
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "why": self.why,
+            "effect_if_removed": self.effect_if_removed,
+            "confidence": self.confidence,
+            "source": self.source,
+        }
+        if self.requirement:
+            out["requirement"] = list(self.requirement)
+        if self.alternatives:
+            out["alternatives"] = list(self.alternatives)
+        if self.evidence:
+            out["evidence"] = self.evidence
+        return out
+
+    @staticmethod
+    def from_dict(data: dict[str, Any] | None) -> "Justification":
+        data = data or {}
+        return Justification(
+            requirement=[str(x) for x in (data.get("requirement") or [])],
+            why=str(data.get("why") or ""),
+            effect_if_removed=str(data.get("effect_if_removed") or ""),
+            alternatives=[str(x) for x in (data.get("alternatives") or [])],
+            confidence=str(data.get("confidence") or "asserted"),
+            source=str(data.get("source") or "human"),
+            evidence=str(data.get("evidence") or ""),
+        )
+
+
 @dataclass
 class Part:
     """一个物理/电气对象。`ref` 是 2D、3D、判定共用的稳定 id。"""
@@ -184,6 +274,11 @@ class Part:
     # 焊盘**几何**（板坐标系）。有它，2D 能画焊盘、飞线能连到真实引脚、
     # 3D 有焊点；没有它，网表引脚只是名字（仍可校验存在性）。
     pads: list[Pad] = field(default_factory=list)
+    #: 这个元件为什么在板上。**None 表示没人说过**——不是"不需要理由"。
+    #: 旧文件没有这个键 → None；`to_dict` 时省略，所以旧文件往返不变。
+    justification: Justification | None = None
+    #: 所属功能单元 id（对应 `DesignModel.units` 里的项）。空 = 未归属。
+    unit: str = ""
 
     def __post_init__(self) -> None:
         if not self.ref.strip():
@@ -270,6 +365,12 @@ class Part:
             out["pins"] = list(self.pins)
         if self.pads:
             out["pads"] = [p.to_dict() for p in self.pads]
+        # 只有填了才写：旧文件读进来没有这两个键，写回去也不新增，
+        # 于是"读-改-写"不会把 141 个元件全变成带 justification 的文件。
+        if self.justification is not None:
+            out["justification"] = self.justification.to_dict()
+        if self.unit:
+            out["unit"] = self.unit
         return out
 
     @staticmethod
@@ -287,6 +388,10 @@ class Part:
             notes=[str(x) for x in (data.get("notes") or [])],
             pins=[str(x) for x in (data.get("pins") or [])],
             pads=[Pad.from_dict(p) for p in (data.get("pads") or [])],
+            # 旧文件没有这两个键：justification=None / unit=""，行为不变。
+            justification=(Justification.from_dict(data["justification"])
+                           if data.get("justification") else None),
+            unit=str(data.get("unit") or ""),
         )
 
     def pad_of(self, num: str) -> Pad | None:
@@ -529,6 +634,10 @@ class DesignModel:
     parts: list[Part] = field(default_factory=list)
     nets: list[dict[str, Any]] = field(default_factory=list)
     wires: list[Wire] = field(default_factory=list)
+    #: 功能单元表（P5 落地）。**空 = 没有单元概念**，旧行为不变。
+    units_list: list[dict[str, Any]] = field(default_factory=list)
+    #: 板间链路表（P5 落地）。**空 = 单板**，旧行为不变。
+    links_list: list[dict[str, Any]] = field(default_factory=list)
     enclosure: Enclosure | None = None
     meta: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
@@ -705,6 +814,10 @@ class DesignModel:
         }
         if self.enclosure is not None:
             out["enclosure"] = self.enclosure.to_dict()
+        if self.units_list:
+            out["units_list"] = [dict(u) for u in self.units_list]
+        if self.links_list:
+            out["links_list"] = [dict(l) for l in self.links_list]
         if self.warnings:
             out["warnings"] = list(self.warnings)
         return out
@@ -727,6 +840,11 @@ class DesignModel:
             wires=[Wire.from_dict(w) for w in (data.get("wires") or [])],
             enclosure=(Enclosure.from_dict(data["enclosure"])
                        if data.get("enclosure") else None),
+            # 旧文件没有这两个键：空列表，行为不变。
+            units_list=[dict(u) for u in (data.get("units_list") or [])
+                        if isinstance(u, dict)],
+            links_list=[dict(l) for l in (data.get("links_list") or [])
+                        if isinstance(l, dict)],
             meta=dict(data.get("meta") or {}),
             warnings=[str(w) for w in (data.get("warnings") or [])],
         )

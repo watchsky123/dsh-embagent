@@ -2088,6 +2088,79 @@ class TestElectrical(unittest.TestCase):
         # 完全没输入 → 没有 findings，也不该说 ok
         self.assertFalse(report.ok, "没有可评估的数据时 ok 必须为 False")
 
+    def test_zero_load_is_not_a_pass(self) -> None:
+        """**零负载不是"负载很轻"** —— 它是"没申报"，必须判不通过。
+
+        这是空过的原始现场：`load_a = total_load` 在没有任何元件申报电流时
+        等于 `0.0`，而 `0.0 is None` 为假，于是"没数据"分支永远进不去，
+        `5.0 >= 4.8` 直接算出 `ok=True`。整个 141 元件的工程因此拿到
+        一条绿色 5V 轨。
+        """
+        from hw_velxio.design import electrical
+
+        got = electrical.rail_under_load("5V", 5.0, 0.0, 90.0, 4.8,
+                                         rated_a=2.0)
+        self.assertFalse(got.ok, "没申报电流不能判通过")
+        self.assertIn("未申报", got.note)
+        self.assertFalse(got.over_rated, "零负载谈不上过载")
+
+    def test_zero_load_design_reports_not_verified(self) -> None:
+        """整条 `run()` 路径上零负载也要落到 `not_verified`，不只是单元函数。"""
+        from hw_velxio.design import electrical
+        from hw_velxio.design.model import Board, DesignModel, Part, Placement
+
+        design = DesignModel(
+            id="t", board=Board(kind="x", size_mm={"w": 80, "h": 60}),
+            parts=[Part(ref=f"R{i}", kind="k",
+                        size_mm={"w": 2, "h": 1, "d": 1},
+                        placement=Placement(x_mm=1 + i * 3, y_mm=1))
+                   for i in range(10)])
+        report = electrical.run(design)
+        self.assertFalse(report.ok)
+        self.assertEqual(report.rails, [], "零负载不该产出 rails 条目")
+        self.assertTrue(any("负载电流" in m for m in report.not_verified),
+                        f"必须说明缺的是负载电流：{report.not_verified}")
+
+    def test_regulator_default_input_is_not_assumed(self) -> None:
+        """工程没申报稳压器时**不拿 `DEFAULT_INPUTS` 顶**，报未验证。
+
+        `DEFAULT_INPUTS` 里那条 SOT-223 是示例数字。先前无条件用它算，
+        任何工程都会得到一个 `Tj=82.7°C → ok:true` 的热结论 ——
+        而这个工程里可能一颗稳压器都没有。
+        """
+        from hw_velxio.design import electrical
+        from hw_velxio.design.model import Board, DesignModel
+
+        design = DesignModel(id="t", board=Board(kind="x",
+                                                 size_mm={"w": 40, "h": 30}),
+                             parts=[])
+        report = electrical.run(design)
+        self.assertEqual(report.regulators, [], "没申报就不该有稳压器结论")
+        self.assertEqual(report.provenance.get("regulators"), "未申报")
+        self.assertTrue(any("稳压器" in m for m in report.not_verified),
+                        f"必须说明缺的是稳压器申报：{report.not_verified}")
+
+    def test_declared_electrical_still_passes(self) -> None:
+        """补上数据之后必须能真的通过 —— 否则这个修法只是把绿灯换成红灯。"""
+        from hw_velxio.design import electrical
+        from hw_velxio.design.model import Board, DesignModel, Part, Placement
+
+        design = DesignModel(
+            id="t", board=Board(kind="x", size_mm={"w": 80, "h": 60}),
+            parts=[Part(ref=f"SV{i}", kind="gimbal_servo",
+                        size_mm={"w": 20, "h": 20, "d": 20},
+                        placement=Placement(x_mm=1 + i * 22, y_mm=1),
+                        electrical={"stall_current_a": 0.2})
+                   for i in range(2)])
+        report = electrical.run(design, inputs={
+            "rails": [{"name": "5V", "nominal_v": 5.0, "source_r_mohm": 90.0,
+                       "min_required_v": 4.8, "rated_a": 2.0}],
+            "regulators": [], "wires": []})
+        self.assertTrue(report.rails, "有负载就该有一条轨结论")
+        self.assertTrue(report.rails[0].ok, "0.4A@2A 轨不该被判失败")
+        self.assertEqual(report.not_verified, [])
+        self.assertTrue(report.ok)
+
 
 class TestFirmware(unittest.TestCase):
     """固件源码检查：文本与结构，不是语义分析。"""
@@ -3293,6 +3366,573 @@ class TestSynthesize(unittest.TestCase):
                                         "sensor": "bme280"}, design_id="e")
         sensor = next(p for p in design.parts if p.ref == "U2")
         self.assertEqual(sensor.physical_source, "estimated")
+
+
+def _claims_design() -> DesignModel:
+    """最小可判设计：MCU + 上拉 + LED，三个元件身份都清楚。"""
+    from hw_velxio.design.model import Part, Placement, Wire
+
+    design = DesignModel(id="_claims", title="claims",
+                         board=board_preset("arduino-uno"))
+    design.parts = [
+        Part(ref="U1", kind="arduino-uno", role="mcu", label="Uno",
+             size_mm={"w": 68.6, "h": 53.4, "d": 1.6},
+             physical_source="datasheet",
+             placement=Placement(x_mm=0, y_mm=0, rotation_z=0, board_id=""),
+             electrical={"max_v": 5.5, "v_in": 5.0},
+             pins=["D2", "5V", "GND"]),
+        Part(ref="R1", kind="resistor", role="pullup", label="10k",
+             size_mm={"w": 2.0, "h": 1.25, "d": 0.5},
+             physical_source="datasheet",
+             placement=Placement(x_mm=20, y_mm=20, rotation_z=0, board_id=""),
+             electrical={"max_v": 50}, pins=["1", "2"]),
+        Part(ref="D1", kind="led", role="indicator", label="LED",
+             size_mm={"w": 3.2, "h": 1.6, "d": 1.0},
+             physical_source="datasheet",
+             placement=Placement(x_mm=30, y_mm=20, rotation_z=0, board_id=""),
+             electrical={"max_v": 5.0}, pins=["A", "K"]),
+    ]
+    design.nets = [
+        {"net": "5V", "pins": [{"ref": "U1", "pin": "5V"},
+                               {"ref": "R1", "pin": "1"}]},
+        {"net": "D2", "pins": [{"ref": "U1", "pin": "D2"},
+                               {"ref": "R1", "pin": "2"},
+                               {"ref": "D1", "pin": "A"}]},
+        {"net": "GND", "pins": [{"ref": "U1", "pin": "GND"},
+                                {"ref": "D1", "pin": "K"}]},
+    ]
+    return design
+
+
+class TestClaims(unittest.TestCase):
+    """断言层：**删除即失败**。这是整个审查机的支点。"""
+
+    def test_requires_missing_is_fail_not_unknown(self) -> None:
+        """依赖缺失必须是 **fail**，不能是 unknown。
+
+        这条是全部机制的要害：如果删掉元件后断言变成"没法判断"，
+        那"删除即失败"就不成立，系统只是变安静。
+        """
+        from hw_velxio.design import claims
+
+        claim = claims.Claim(
+            id="claim.X.powered", type="capability",
+            requires=["part.NOPE"], check={"kind": "powered"})
+        outcome = claims.evaluate(claim, _claims_design())
+        self.assertEqual(outcome.status, claims.FAIL)
+        self.assertIn("part.NOPE", outcome.missing)
+        self.assertIn("不存在", outcome.basis)
+
+    def test_removal_reddens_exactly_its_own_claims(self) -> None:
+        """删 R1 → 只有 R1 的断言变红，别人的不受影响。"""
+        from hw_velxio.design import claims
+
+        impact = claims.removal_impact(_claims_design(), "R1")
+        self.assertIsNotNone(impact)
+        self.assertGreater(impact["count"], 0, "删元件必须至少红一条")
+        self.assertTrue(impact["reddened"])
+        for cid in impact["reddened"]:
+            self.assertIn("R1", cid, f"{cid} 不该因 R1 缺失而红")
+        self.assertNotIn("claim.U1.powered", impact["reddened"])
+        self.assertNotIn("claim.D1.connected", impact["reddened"])
+
+    def test_removal_does_not_mutate_the_original(self) -> None:
+        """`removal_impact` 在内存副本上做，原设计一个字节都不改。"""
+        from hw_velxio.design import claims
+
+        design = _claims_design()
+        before = len(design.parts)
+        claims.removal_impact(design, "R1")
+        self.assertEqual(len(design.parts), before)
+        self.assertIsNotNone(design.part("R1"))
+
+    def test_removing_unknown_ref_returns_none(self) -> None:
+        from hw_velxio.design import claims
+        self.assertIsNone(claims.removal_impact(_claims_design(), "NOPE"))
+
+    def test_missing_data_is_unknown_never_pass(self) -> None:
+        """元件没申报 max_v → rated 断言是 unknown，不是 pass。
+
+        这正是 `budgets.py:149` 那条纪律：缺失的值不许渲染成通过。
+        """
+        from hw_velxio.design import claims
+
+        claim = claims.Claim(
+            id="claim.R1.rated_voltage", type="numeric",
+            requires=["part.R1"],
+            check={"kind": "numeric", "subject": "part.R1",
+                   "param": "min_v", "op": ">", "value": 0})
+        outcome = claims.evaluate(claim, _claims_design())
+        self.assertEqual(outcome.status, claims.UNKNOWN)
+        self.assertIn("缺数据", outcome.basis)
+
+    def test_numeric_failure_is_fail(self) -> None:
+        from hw_velxio.design import claims
+
+        claim = claims.Claim(
+            id="claim.U1.rated", type="numeric", requires=["part.U1"],
+            check={"kind": "numeric", "subject": "part.U1",
+                   "param": "max_v", "op": ">", "value": 99.0})
+        self.assertEqual(claims.evaluate(claim, _claims_design()).status,
+                         claims.FAIL)
+
+    def test_isolated_part_fails_attached(self) -> None:
+        """存在但不接任何网络的元件必须红——物理检查不会点名它。"""
+        from hw_velxio.design import claims
+        from hw_velxio.design.model import Part, Placement
+
+        design = _claims_design()
+        design.parts.append(Part(
+            ref="FL1", kind="led", role="indicator",
+            size_mm={"w": 1.0, "h": 1.0, "d": 1.0},
+            physical_source="estimated",
+            placement=Placement(x_mm=40, y_mm=40, rotation_z=0, board_id="")))
+
+        claim = claims.Claim(
+            id="claim.FL1.connected", type="presence",
+            requires=["part.FL1"],
+            check={"kind": "attached", "subject": "part.FL1"})
+        outcome = claims.evaluate(claim, design)
+        self.assertEqual(outcome.status, claims.FAIL)
+        self.assertIn("孤立元件", outcome.basis)
+
+    def test_unknown_ref_prefix_is_false_not_lenient(self) -> None:
+        """写错前缀（`par.R1`）必须算不存在，否则拼错会让断言静默失效。"""
+        from hw_velxio.design import claims
+
+        design = _claims_design()
+        self.assertTrue(claims.exists(design, "part.R1"))
+        self.assertFalse(claims.exists(design, "par.R1"))
+        self.assertFalse(claims.exists(design, "part."))
+        self.assertFalse(claims.exists(design, "part.NOPE"))
+        self.assertTrue(claims.exists(design, "net.D2"))
+
+    def test_default_role_is_not_identity(self) -> None:
+        """导入器的兜底角色不算语义身份 —— 否则会拿默认值冒充知识。
+
+        实测背景：`示例-单板` 141 个元件 role 全是 component/module/connector，
+        3 个按钮模块因此被误判成"没接电源"。
+        """
+        from hw_velxio.design import claims
+        from hw_velxio.design.model import Part
+
+        blob = Part(ref="U9", kind="015c378003ee92b1", role="module",
+                    size_mm={"w": 5.0, "h": 5.0, "d": 1.0},
+                    physical_source="estimated")
+        self.assertFalse(claims.identifiable(blob)[0])
+
+        known = Part(ref="U8", kind="arduino-nano", role="mcu",
+                     size_mm={"w": 18.0, "h": 43.0, "d": 1.6},
+                     physical_source="datasheet")
+        self.assertTrue(claims.identifiable(known)[0])
+
+    def test_coverage_exposes_green_but_empty(self) -> None:
+        """全绿但零语义断言时，覆盖率必须把这件事说出来。"""
+        from hw_velxio.design import claims
+        from hw_velxio.design.model import Part, Placement
+
+        design = DesignModel(id="_cov", title="cov",
+                             board=board_preset("arduino-uno"))
+        design.parts = [Part(
+            ref="U1", kind="6949c283c434a76e", role="component",
+            size_mm={"w": 5.0, "h": 5.0, "d": 1.0},
+            physical_source="estimated",
+            placement=Placement(x_mm=10, y_mm=10, rotation_z=0, board_id=""))]
+        design.nets = [{"net": "GND", "pins": [{"ref": "U1", "pin": "1"}]},
+                       {"net": "SIG", "pins": [{"ref": "U1", "pin": "2"}]}]
+
+        report = claims.check(design)
+        cov = report.coverage()
+        self.assertEqual(cov["semantic"], 0, "身份不可判就不该有语义断言")
+        self.assertGreater(cov["structural"], 0)
+        self.assertEqual(cov["semantic_ratio"], 0.0)
+        self.assertIn("不代表功能正确", cov["note"])
+
+    def test_claims_are_deterministic(self) -> None:
+        """同输入必须同输出 —— 断言顺序变了 diff 就没法比。"""
+        from hw_velxio.design import claims
+
+        first = [c.to_dict() for c in claims.derive(_claims_design())]
+        second = [c.to_dict() for c in claims.derive(_claims_design())]
+        self.assertEqual(first, second)
+
+    def test_derive_binds_every_claim_to_its_part(self) -> None:
+        """每条断言的第一条 requires 必须是它自己 —— 机制的结构保证。"""
+        from hw_velxio.design import claims
+
+        for claim in claims.derive(_claims_design()):
+            self.assertTrue(claim.requires, f"{claim.id} 没有 requires")
+            self.assertTrue(claim.requires[0].startswith("part."),
+                            f"{claim.id} 首条 requires 不是元件引用")
+            self.assertIn(claim.scope.get("part"),
+                          claim.requires[0],
+                          f"{claim.id} 的 requires 与 scope 不自洽")
+
+    def test_derive_consumes_justification(self) -> None:
+        """归因判出的作用必须变成断言 —— 否则"删除即失败"是假的。
+
+        ## 这条测试防的具体退化
+
+        第一版 `derive()` 只给每个元件一条 `connected`。那是真的
+        "删掉 R1，`claim.R1.connected` 变红"，但那条断言说的是
+        "R1 还在网表里"，不是"R1 是 D2 的上拉"。后果是：
+        **删掉上拉电阻，系统只是变安静，没有变红**——没有任何一条
+        断言说"D2 现在悬空了"。
+
+        `justify` 从拓扑算出"R1 是 5V 到 D2 的上拉"，这是真知识。
+        这条测试要求它被 `derive()` 消费，出现在 `requires` 里
+        （`part.R1` + `net.D2` 同时出现才算真消费了）。
+        """
+        from hw_velxio.design import claims, justify
+
+        design = _claims_design()
+        report = justify.run(design)
+        kinds = {}
+        for row in report["parts"]:
+            j = row["justification"]
+            if j["confidence"] != "unknown":
+                kinds[row["ref"]] = row["group"]["kind"]
+        self.assertTrue(kinds, "夹具里没有任何元件被判出作用")
+
+        derived = claims.derive(design)
+        ids = {c.id for c in derived}
+
+        # 判成上拉的元件，必须有一条不是 `connected` 的断言
+        for ref, kind in kinds.items():
+            extra = [i for i in ids
+                     if i.startswith(f"claim.{ref}.")
+                     and not i.endswith(".connected")
+                     and not i.endswith(".rated_voltage")]
+            self.assertTrue(
+                extra,
+                f"{ref} 被判为 {kind}，但 derive() 只给了它 connected —— "
+                f"归因结论没有被断言消费，「删除即失败」对它是假的")
+
+        # 并且那条断言要同时绑定元件与信号网
+        #
+        # 只查**归因驱动**的那批（上一步算出的 `extra` 里的），
+        # 不查全部非 connected 断言：`claim.U1.powered` 是原来就有的
+        # 能力断言，它只绑 `part.U1`、不绑任何网——那是正确的，
+        # 因为"U1 得到供电"这件事跟某一条具体网络无关。
+        # 把规则套到它身上是测试写过头了。
+        checked = 0
+        for claim in derived:
+            if claim.id.endswith((".connected", ".rated_voltage",
+                                  ".powered")):
+                continue
+            checked += 1
+            self.assertTrue(
+                any(r.startswith("part.") for r in claim.requires)
+                and any(r.startswith("net.") for r in claim.requires),
+                f"{claim.id} 没有同时绑定元件与网络：{claim.requires}")
+        self.assertGreater(checked, 0, "没有检查到任何归因驱动的断言")
+
+    def test_remove_reddens_a_functional_claim(self) -> None:
+        """删掉元件后，变红的不该只有 `connected`。
+
+        这是上面那条的**行为级**版本：不检查推导结果，而是直接看
+        `removal_impact` 报了什么。只断言 `connected` 的话，
+        `hw_assert` 的输出对人几乎没有信息量。
+        """
+        from hw_velxio.design import claims
+
+        design = _claims_design()
+        for ref in ("R1", "D1"):
+            impact = claims.removal_impact(design, ref)
+            self.assertIsNotNone(impact, f"{ref} 不在设计里")
+            reddened = impact["reddened"]
+            self.assertTrue(reddened, f"删掉 {ref} 没有任何断言变红")
+            functional = [i for i in reddened if not i.endswith(".connected")]
+            self.assertTrue(
+                functional,
+                f"删掉 {ref} 只让 connected 变红（{reddened}）—— "
+                f"断言机制退化成了「还在不在」检查")
+
+
+class TestUnits(unittest.TestCase):
+    """P5 单元层：分组必须来自 board_id，角色必须给证据。"""
+
+    @staticmethod
+    def _multi() -> DesignModel:
+        from hw_velxio.design.model import Board, Part, Placement
+
+        boards = [
+            Board(kind="custom", name="主板", size_mm={"w": 60, "h": 60},
+                  id="PCB#main"),
+            Board(kind="custom", name="子板", size_mm={"w": 40, "h": 40},
+                  id="PCB#sub"),
+        ]
+        design = DesignModel(id="_units", title="units",
+                             board=boards[0], boards=boards)
+        design.parts = [
+            Part(ref="U1", kind="mcu", role="module",
+                 size_mm={"w": 5, "h": 5, "d": 1},
+                 physical_source="datasheet",
+                 placement=Placement(x_mm=5, y_mm=5, board_id="PCB#main"),
+                 pins=["1", "2", "3"]),
+            Part(ref="U2", kind="sensor", role="module",
+                 size_mm={"w": 5, "h": 5, "d": 1},
+                 physical_source="datasheet",
+                 placement=Placement(x_mm=5, y_mm=5, board_id="PCB#sub"),
+                 pins=["1", "2"]),
+        ]
+        return design
+
+    def test_derive_groups_by_board_id(self) -> None:
+        from hw_velxio.design import units
+
+        design = self._multi()
+        found = units.derive(design)
+        self.assertEqual(len(found), 2)
+        parts = sorted(p for u in found for p in u.parts)
+        self.assertEqual(parts, ["U1", "U2"])
+
+    def test_role_needs_evidence(self) -> None:
+        from hw_velxio.design import units
+
+        design = self._multi()
+        design.nets = [
+            {"net": "OSC_IN", "pins": [{"ref": "U1", "pin": "1"}]},
+            {"net": "$1N1", "pins": [{"ref": "U2", "pin": "1"}]},
+        ]
+        found = {u.board_id: u for u in units.derive(design)}
+        main = found["PCB#main"]
+        self.assertEqual(main.role, "mcu")
+        self.assertTrue(main.evidence, "判出角色必须给证据")
+        # 子板只有自动网名 → 必须 unknown
+        sub = found["PCB#sub"]
+        self.assertEqual(sub.confidence, "unknown")
+        self.assertEqual(sub.named_nets, [])
+
+    def test_no_netlist_is_not_pass(self) -> None:
+        from hw_velxio.design import units
+
+        design = self._multi()
+        report = units.report(design)
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["known"], 0)
+        self.assertEqual(report["ratio_judgeable"], 0.0)
+        self.assertEqual(report["missing_data"]["no_netlist_count"], 2)
+
+    def test_apply_writes_units_list(self) -> None:
+        from hw_velxio.design import units
+
+        design = self._multi()
+        units.apply(design)
+        self.assertEqual(len(design.units_list), 2)
+        self.assertTrue(all("role" in row for row in design.units_list))
+
+
+class TestLinks(unittest.TestCase):
+    """P5 链路：inferred 不参与硬检查，空表不是通过。"""
+
+    @staticmethod
+    def _design() -> DesignModel:
+        from hw_velxio.design.model import Part, Placement
+
+        design = DesignModel(id="_links", title="links",
+                             board=Board(kind="custom",
+                                         size_mm={"w": 60, "h": 60}))
+        design.parts = [
+            Part(ref="U1", kind="mcu", role="module",
+                 size_mm={"w": 5, "h": 5, "d": 1},
+                 physical_source="datasheet",
+                 placement=Placement(x_mm=5, y_mm=5),
+                 pins=["1", "2", "3"], electrical={"v_in": 3.3}),
+            Part(ref="U2", kind="module", role="module",
+                 size_mm={"w": 5, "h": 5, "d": 1},
+                 physical_source="datasheet",
+                 placement=Placement(x_mm=20, y_mm=5),
+                 pins=["1", "2", "3"], electrical={"v_in": 3.3}),
+        ]
+        return design
+
+    def test_protocol_mismatch(self) -> None:
+        from hw_velxio.design import links
+
+        design = self._design()
+        table = [{
+            "id": "l1",
+            "a": {"part": "U1", "peripheral": "USART1"},
+            "b": {"part": "U2", "peripheral": "SPI1"},
+            "protocol": "uart", "params": {"level_v": 3.3},
+            "source": "declared",
+        }]
+        report = links.validate(design, table)
+        self.assertIn("link.protocol_match",
+                      [f["check"] for f in report["findings"]])
+        self.assertFalse(report["ok"])
+
+    def test_inferred_never_fails(self) -> None:
+        from hw_velxio.design import links
+
+        design = self._design()
+        table = [{
+            "id": "l1",
+            "a": {"peripheral": "USART1"},
+            "b": {"peripheral": "SPI1"},
+            "protocol": "uart", "source": "inferred",
+        }]
+        report = links.validate(design, table)
+        self.assertTrue(report["ok"], "inferred 不该判 fail")
+        self.assertEqual(report["checked"]["declared_links"], 0)
+        self.assertIn("l1", report["skipped_inferred"])
+
+    def test_empty_table_is_not_ready(self) -> None:
+        from hw_velxio.design import links
+
+        report = links.validate(self._design(), [])
+        self.assertEqual(report["status"], "not_ready")
+        self.assertIn("不是通过", report["reason"])
+
+    def test_baud_uses_fractional_prescaler(self) -> None:
+        from hw_velxio.design import links
+
+        # 8MHz 跑 115200：整数分频算不通（125000，偏差 8.5%），
+        # 但 STM32 的 BRR 有 4 位小数分频，实际 115942，偏差 0.6% → 通。
+        ok, actual = links.baud_reachable(8_000_000, 115200)
+        self.assertTrue(ok, f"8MHz/115200 应当可达，实际 {actual}")
+        self.assertLessEqual(abs(actual - 115200) / 115200, 0.02)
+
+        ok, _ = links.baud_reachable(8_000_000, 3_000_000)
+        self.assertFalse(ok, "8MHz 跑 3M 波特应当不可达")
+        ok, _ = links.baud_reachable(None, 115200)
+        self.assertIsNone(ok, "时钟未知必须是 None，不是 True")
+
+    def test_orphan_declared_peripheral(self) -> None:
+        from hw_velxio.design import links
+
+        design = self._design()
+        design.meta = {"interfaces": {"USART2": "unit:main"}}
+        report = links.validate(design, [])
+        self.assertIn("link.orphan",
+                      [f["check"] for f in report["findings"]])
+        self.assertEqual(
+            report["orphans"][0]["source"] if report["orphans"] else "",
+            "declared")
+
+    def test_family_tokens(self) -> None:
+        from hw_velxio.design import links
+
+        self.assertEqual(links.family_of("USART2"), "uart")
+        self.assertEqual(links.family_of("SPI1"), "spi")
+        self.assertEqual(links.family_of("I2C1"), "i2c")
+        # `RF_RXEN` 是射频使能脚，不是 UART —— 词元匹配挡住它
+        self.assertIsNone(links.family_of("RF_RXEN"))
+
+
+class TestCapability(unittest.TestCase):
+    """P6 能力表：来源不可信就不选；fills 挡住语义荒谬。"""
+
+    def test_only_trusted_sources(self) -> None:
+        from hw_velxio.design import capability
+
+        saved = dict(capability.CAPABILITY)
+        try:
+            capability.CAPABILITY["guessy"] = {
+                "fills": {"mcu"}, "provides": {"uart", "spi", "gpio"},
+                "footprint_mm2": 1.0, "source": "guess",
+            }
+            found = capability.candidates({"uart", "spi"}, role="mcu")
+            self.assertNotIn("guessy", found)
+        finally:
+            capability.CAPABILITY.clear()
+            capability.CAPABILITY.update(saved)
+
+    def test_fills_blocks_wrong_category(self) -> None:
+        from hw_velxio.design import capability
+
+        radio = capability.candidates({"spi"}, role="radio")
+        self.assertNotIn("bmp280", radio, "气压计不该当电台")
+        self.assertIn("esp32s3", radio)
+
+    def test_explain_miss_distinguishes(self) -> None:
+        from hw_velxio.design import capability
+
+        miss = capability.explain_miss({"eth", "wifi"})
+        self.assertIn(miss["reason"], ("filtered_out", "table_empty"))
+        self.assertTrue(miss["rejected"])
+        self.assertTrue(miss["hint"])
+
+
+class TestGenerate(unittest.TestCase):
+    """P6 生成：确定性、有上限、不凑数、不选荒谬组合。"""
+
+    @staticmethod
+    def _req(**kw):
+        from hw_velxio.design import generate
+
+        base = {
+            "id": "t", "roles": ["mcu", "radio", "sensor", "power_in"],
+            "interfaces": [{"a": "mcu", "b": "radio", "protocol": "spi",
+                            "level_v": 3.3}],
+        }
+        base.update(kw)
+        return generate.Requirement.from_dict(base)
+
+    def test_deterministic(self) -> None:
+        import json
+
+        from hw_velxio.design import generate
+
+        first = json.dumps(generate.generate(self._req(), max_candidates=10),
+                           ensure_ascii=False, sort_keys=True)
+        second = json.dumps(generate.generate(self._req(), max_candidates=10),
+                            ensure_ascii=False, sort_keys=True)
+        self.assertEqual(first, second, "同一需求两次结果必须一致")
+
+    def test_respects_budget(self) -> None:
+        from hw_velxio.design import generate
+
+        report = generate.generate(self._req(), max_candidates=4)
+        self.assertLessEqual(len(report["candidates"]), 4)
+
+    def test_candidates_are_distinct(self) -> None:
+        from hw_velxio.design import generate
+
+        report = generate.generate(self._req(), max_candidates=12)
+        signatures = []
+        for cand in report["candidates"]:
+            part_key = "|".join(
+                f"{','.join(p.get('units') or [p['unit']])}:{p['model']}"
+                for p in cand["parts"])
+            signatures.append(part_key)
+        self.assertEqual(len(signatures), len(set(signatures)),
+                         "候选签名必须互不相同，不能靠改名凑数")
+
+    def test_shared_part_collapsed(self) -> None:
+        from hw_velxio.design import generate
+
+        report = generate.generate(self._req(), max_candidates=20)
+        shared = [c for c in report["candidates"]
+                  if any(len(p.get("units") or []) > 1 for p in c["parts"])]
+        self.assertTrue(shared, "esp32s3 兼 mcu+radio 的候选应当存在")
+        for cand in shared:
+            models = [p["model"] for p in cand["parts"]]
+            self.assertEqual(len(models), len(set(models)),
+                             "同一颗料不能列两行（面积会重复计数）")
+
+    def test_no_self_loop_nets(self) -> None:
+        from hw_velxio.design import generate
+
+        report = generate.generate(self._req(), max_candidates=20)
+        req = self._req()
+        for cand in report["candidates"]:
+            obj = generate.Candidate(
+                id=cand["id"], parts=cand["parts"], links=cand["links"],
+                units=cand["units"])
+            design = generate.to_design(obj, req)
+            for net in design.nets:
+                refs = [p["ref"] for p in net["pins"]]
+                self.assertNotEqual(refs[0], refs[1],
+                                    f"{net['net']} 是自环网（同一颗料连自己）")
+
+    def test_no_candidates_is_not_ready(self) -> None:
+        from hw_velxio.design import generate
+
+        report = generate.generate(self._req(roles=[]), max_candidates=4)
+        self.assertEqual(report["status"], "not_ready")
+        self.assertEqual(report["candidates"], [])
 
 
 class TestPutAutoLock(unittest.TestCase):

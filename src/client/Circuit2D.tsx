@@ -24,6 +24,12 @@ interface View {
   oy: number
 }
 
+/** 缩放夹取。下限给到 5%：再小板子就只剩几个像素，没有信息量。 */
+const MIN_SCALE = 0.05
+const MAX_SCALE = 12
+/** 每次按键/按钮缩放的倍率（滚轮用指数，见 wheel 监听）。 */
+const STEP = 1.2
+
 interface DragState {
   ref: string
   startX: number
@@ -74,6 +80,8 @@ export function Circuit2D(props: Circuit2DProps): JSX.Element {
   const [drag, setDrag] = useState<DragState | null>(null)
   const panRef = useRef<PanState | null>(null)
   const dragRef = useRef<DragState | null>(null)
+  /** 空格键按住中：此时按下拖动 = 平移而非拖元件。 */
+  const spaceRef = useRef(false)
   const [size, setSize] = useState({ w: 0, h: 0 })
 
   const projection = snapshot.projection2d
@@ -109,6 +117,26 @@ export function Circuit2D(props: Circuit2DProps): JSX.Element {
   //
   // **按拼板尺寸**适配，不是按主板：多板工程里只适配主板会让其余板
   // 全部落在画布外（看起来像"只导了一块板"）。
+  //
+  // 抽成 `computeFit()` 是因为它现在有**三个**调用方：首次适配、双击复位、
+  // 键盘 `0`。三处各写一遍缩放算式，迟早会出现"双击复位后和刚打开时不一样"。
+  const computeFit = useCallback((): View | null => {
+    if (size.w === 0 || size.h === 0) return null
+    const panelW = projection.panel.size_mm.w * projection.px_per_mm
+    const panelH = projection.panel.size_mm.h * projection.px_per_mm
+    const padding = 36
+    const scale = Math.max(MIN_SCALE, Math.min(
+      Math.min((size.w - padding * 2) / Math.max(panelW, 1),
+               (size.h - padding * 2) / Math.max(panelH, 1)),
+      8,
+    ))
+    return {
+      scale,
+      ox: (size.w - panelW * scale) / 2,
+      oy: (size.h - panelH * scale) / 2,
+    }
+  }, [size, projection.panel.size_mm.w, projection.panel.size_mm.h, projection.px_per_mm])
+
   const fittedRef = useRef<string>('')
   useEffect(() => {
     if (size.w === 0 || size.h === 0) return
@@ -117,19 +145,16 @@ export function Circuit2D(props: Circuit2DProps): JSX.Element {
     const key = `${projection.panel.board_count}:${panelW.toFixed(0)}x${panelH.toFixed(0)}:${size.w}x${size.h}`
     if (fittedRef.current === key) return
     fittedRef.current = key
-    const padding = 36
-    const scale = Math.min(
-      (size.w - padding * 2) / Math.max(panelW, 1),
-      (size.h - padding * 2) / Math.max(panelH, 1),
-    )
-    const next = Math.max(0.05, Math.min(scale, 8))
-    setView({
-      scale: next,
-      ox: (size.w - panelW * next) / 2,
-      oy: (size.h - panelH * next) / 2,
-    })
+    const next = computeFit()
+    if (next !== null) setView(next)
   }, [projection.panel.board_count, projection.panel.size_mm.w,
-      projection.panel.size_mm.h, projection.px_per_mm, size])
+      projection.panel.size_mm.h, projection.px_per_mm, size, computeFit])
+
+  /** 复位到"适合窗口"。双击画布、按 `0`、点比例胶囊都走这一条。 */
+  const fitToView = useCallback((): void => {
+    const next = computeFit()
+    if (next !== null) setView(next)
+  }, [computeFit])
 
   // -- 绘制 ---------------------------------------------------------------
 
@@ -180,7 +205,10 @@ export function Circuit2D(props: Circuit2DProps): JSX.Element {
     const { x, y } = toBoard(event.clientX, event.clientY)
     const ref = hitTest(x, y)
     ;(event.target as HTMLElement).setPointerCapture(event.pointerId)
-    if (ref !== '') {
+    // 中键或按住空格 = **平移优先**，不选中也不拖元件。
+    // 大板子上"想移动视野却总抓到元件"是主要挫败点之一。
+    const wantsPan = event.button === 1 || spaceRef.current
+    if (ref !== '' && !wantsPan) {
       onSelect(ref)
       const selected = projection.parts.find((p) => p.ref === ref)
       if (event.button === 2) {
@@ -236,22 +264,88 @@ export function Circuit2D(props: Circuit2DProps): JSX.Element {
       placement.rot)
   }
 
-  const onWheel = (event: React.WheelEvent<HTMLCanvasElement>): void => {
-    event.preventDefault()
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    const mx = event.clientX - rect.left
-    const my = event.clientY - rect.top
-    const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12
-    const scale = Math.max(0.05, Math.min(view.scale * factor, 12))
-    setView({
-      scale,
-      ox: mx - (mx - view.ox) * (scale / view.scale),
-      oy: my - (my - view.oy) * (scale / view.scale),
+  /**
+   * 以某点为中心缩放。`clientX/clientY` 省略时按画布中心。
+   *
+   * 用**函数式 setView**：滚轮监听只注册一次，闭包里读不到最新 `view`，
+   * 用 `prev` 才不会在快速连滚时丢掉中间那几次的累积。
+   */
+  const zoomAt = useCallback((factor: number, clientX?: number, clientY?: number): void => {
+    setView((prev) => {
+      const scale = Math.max(MIN_SCALE, Math.min(prev.scale * factor, MAX_SCALE))
+      if (scale === prev.scale) return prev
+      const rect = canvasRef.current?.getBoundingClientRect()
+      const mx = clientX !== undefined && rect !== undefined
+        ? clientX - rect.left
+        : size.w / 2
+      const my = clientY !== undefined && rect !== undefined
+        ? clientY - rect.top
+        : size.h / 2
+      const ratio = scale / prev.scale
+      return {
+        scale,
+        ox: mx - (mx - prev.ox) * ratio,
+        oy: my - (my - prev.oy) * ratio,
+      }
     })
+  }, [size.w, size.h])
+
+  /**
+   * 滚轮缩放 —— **必须用原生非 passive 监听**。
+   *
+   * 这里曾是 React 的 `onWheel` + `event.preventDefault()`，而 React 18 在
+   * 根容器上以 `passive` 方式注册 `wheel`，于是 `preventDefault()` 是空操作：
+   * 缩放照算，浏览器的默认滚动也照做，页面跟着上下跑。控制台会打印
+   * `Unable to preventDefault inside passive event listener invocation`。
+   *
+   * 另外两件事：
+   * - **`ctrl+wheel` 也要拦**，否则触发浏览器整页缩放（整站变大，很难恢复）；
+   * - **`deltaMode` 要归一化**：0=像素 / 1=行 / 2=页。不归一化时触摸板
+   *   （大量小 delta）和 Firefox 行模式的手感完全不同。
+   */
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (canvas === null) return
+    const handler = (event: WheelEvent): void => {
+      // 先拦，再决定要不要缩放：即使 deltaY 为 0 也不能放行默认滚动。
+      event.preventDefault()
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? size.h : 1
+      const dy = event.deltaY * unit
+      if (dy === 0) return
+      // 指数而非固定倍率：滚一格与滚十格的手感一致。
+      zoomAt(Math.exp(-dy * 0.0015), event.clientX, event.clientY)
+    }
+    canvas.addEventListener('wheel', handler, { passive: false })
+    return () => { canvas.removeEventListener('wheel', handler) }
+  }, [zoomAt, size.h])
+
+  /** 键盘：`+`/`=` 放大、`-` 缩小、`0` 复位、按住空格时拖动平移。 */
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key === ' ') {
+      // 空格只改标志位，不 preventDefault：它不该吃掉按钮的激活键。
+      spaceRef.current = true
+      return
+    }
+    if (event.key === '+' || event.key === '=') {
+      event.preventDefault()
+      zoomAt(STEP)
+    } else if (event.key === '-' || event.key === '_') {
+      event.preventDefault()
+      zoomAt(1 / STEP)
+    } else if (event.key === '0') {
+      event.preventDefault()
+      fitToView()
+    }
+  }
+
+  const onKeyUp = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key === ' ') spaceRef.current = false
   }
 
   return (
-    <div className="hwv-canvas-wrap" ref={wrapRef}>
+    <div className="hwv-canvas-wrap" ref={wrapRef} tabIndex={0}
+         onKeyDown={onKeyDown} onKeyUp={onKeyUp}
+         aria-label="2D 电路画布（滚轮缩放，拖动平移，双击复位）">
       <canvas
         className="hwv-canvas"
         ref={canvasRef}
@@ -259,9 +353,18 @@ export function Circuit2D(props: Circuit2DProps): JSX.Element {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerUp}
-        onWheel={onWheel}
+        onDoubleClick={() => { fitToView() }}
         onContextMenu={(event) => { event.preventDefault() }}
       />
+      {/* 缩放胶囊：没有它，用户不知道当前是 40% 还是 300%，也没有复位的锚点。 */}
+      <div className="hwv-zoom" role="group" aria-label="缩放">
+        <button className="hwv-zoom-btn" title="缩小（-）"
+                onClick={() => { zoomAt(1 / STEP) }}>−</button>
+        <button className="hwv-zoom-pct" title="适合窗口（双击画布或按 0）"
+                onClick={fitToView}>{Math.round(view.scale * 100)}%</button>
+        <button className="hwv-zoom-btn" title="放大（+）"
+                onClick={() => { zoomAt(STEP) }}>+</button>
+      </div>
       <div className="hwv-legend">
         <span><i className="src-datasheet" />数据手册</span>
         <span><i className="src-measured" />实测</span>

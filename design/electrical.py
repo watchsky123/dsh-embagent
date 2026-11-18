@@ -223,7 +223,19 @@ def rail_under_load(name: str, nominal_v: float, load_a: float,
     （1.4A）把它拉到 4.87V；四个就会掉到 4.8V 以下，全部中途复位。
 
     按空载电流定容（每个 4mA）完全错过这件事 —— **低估 175 倍**。
+
+    但**零负载不是"轻负载"**：`load_a = 0` 意味着没有任何元件申报电流，
+    这时算出 `5.0V >= 4.8V` 是**空过**，不是通过。所以这里直接返回
+    `ok=False`，让调用方看见"没数据"，而不是让它被平均成绿灯。
     """
+    if load_a <= 0.0:
+        return RailResult(
+            name=name, nominal_v=nominal_v, load_a=0.0,
+            source_r_mohm=source_r_mohm, sag_v=0.0, v_at_load=nominal_v,
+            min_required_v=min_required_v,
+            ok=False,
+            note="负载电流未申报（或为 0）：轨跌无法验证，不是通过",
+            rated_a=rated_a, over_rated=False)
     sag = load_a * (source_r_mohm / 1000.0)
     voltage = nominal_v - sag
     over = rated_a is not None and load_a > rated_a
@@ -446,9 +458,13 @@ def run(design: Any, *, inputs: dict[str, Any] | None = None) -> ElectricalRepor
         load_a = entry.get("load_a")
         if load_a is None:
             load_a = total_load
-        if not loads and load_a is None:
+        # ★ **零负载不是"负载很轻"**。`load_a = total_load` 在没有任何元件
+        #   申报电流时等于 `0.0`，而 `0.0 is None` 为假 —— 于是"没数据"
+        #   分支永远进不去，`5.0 >= 4.8` 直接算出 `ok=True`。
+        #   这正是这套系统一直在防的：**缺失的值被渲染成通过的值**。
+        if not loads and not load_a:
             report.not_verified.append(
-                f"{name}: 没有负载电流数据，轨跌无法验证")
+                f"{name}: 没有任何元件申报负载电流，轨跌无法验证（不是通过）")
             continue
         try:
             result = rail_under_load(
@@ -469,8 +485,22 @@ def run(design: Any, *, inputs: dict[str, Any] | None = None) -> ElectricalRepor
             "没有任何电源轨输入，也没有元件申报负载电流：电学无法验证")
 
     # -- 稳压器 ----------------------------------------------------------
-    regs_in = raw["regulators"] if "regulators" in raw else (
-        DEFAULT_INPUTS.get("regulators") or [])
+    #
+    # ★ **同一类空过，同一个修法**：`DEFAULT_INPUTS` 里那条 SOT-223
+    #   （5V→3.3V @0.5A）是**示例数字，不是这个工程的稳压器**。先前无条件
+    #   拿它算，于是任何工程都能得到一个 `Tj=82.7°C → ok:true` 的热结论 ——
+    #   而这个工程里可能一颗稳压器都没有。
+    #
+    #   工程没申报就不算，报未验证。
+    if "regulators" in raw:
+        regs_in = raw["regulators"] or []
+        report.provenance["regulators"] = "调用方给出"
+    else:
+        regs_in = []
+        report.provenance["regulators"] = "未申报"
+        report.not_verified.append(
+            "稳压器：工程没有申报（meta.electrical.regulators），"
+            "结温无法验证（不是通过）")
     for entry in regs_in:
         if not isinstance(entry, dict):
             continue

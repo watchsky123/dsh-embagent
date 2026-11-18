@@ -39,8 +39,10 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { bridge, design, designPut } from './bridge.js'
+import { bridge, design, designLong, designPut } from './bridge.js'
 import { noteHint } from './service.js'
+import * as sim from './velxio/sim.js'
+import { loadCompiledHex } from './velxio/artifact.js'
 
 /** DSH 工具服务的结构声明（只用一个方法，避免把整个包拉成类型依赖）。 */
 interface ToolsService {
@@ -329,6 +331,1103 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
+  // ---- 3b. hw_ladder ----------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_ladder',
+    description:
+      '按 V0→V6 阶梯跑验证：V0 符号（引用完整性）、V1 约束（绝对最大值/极性）、'
+      + 'V2 几何、V3 电气 DC、V4 时序、V5 数字仿真、V6 SPICE。'
+      + 'V0/V1 硬失败会**截断**下游（下游记 not_run，不是 pass）。'
+      + '不传 project 时只返回阶梯说明。写 ladder.json。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回阶梯说明）' },
+      levels: {
+        type: 'string',
+        description: '逗号分隔的层，如 "V0,V1,V2"；省略则跑全部 7 层',
+      },
+      stopOnHard: {
+        type: 'boolean',
+        description: 'V0/V1 失败是否截断下游，默认 true',
+      },
+      pitchMm: { type: 'number', description: 'V2 体素间距 mm，默认 0.5' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          ok: { type: 'boolean' },
+          stoppedAt: { type: 'string' },
+          downstream: { type: 'string' },
+          levels: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                level: { type: 'string' },
+                title: { type: 'string' },
+                status: { type: 'string' },
+                checked: { type: 'number' },
+                failed: { type: 'number' },
+                unknown: { type: 'array', items: { type: 'string' } },
+                findings: { type: 'array', items: { type: 'string' } },
+              },
+            },
+          },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; ok: boolean; stoppedAt: string; downstream: string
+          levels: Array<{
+            level: string; title: string; status: string; checked: number
+            failed: number; unknown: string[]; findings: string[]
+          }>
+          summary: string
+        }
+        const head = v.stoppedAt === ''
+          ? `# ${v.project} 阶梯：${v.ok ? '全部通过' : '未全部通过'}`
+          : `# ${v.project} 阶梯：在 ${v.stoppedAt} 硬失败，下游已截断`
+        const body: string[] = []
+        for (const lv of v.levels) {
+          const mark = lv.status === 'pass' ? '✓'
+            : lv.status === 'fail' ? '✗'
+            : lv.status === 'not_run' ? '·' : '?'
+          body.push(`${mark} ${lv.level} ${lv.title} — ${lv.status}`
+            + `（检查 ${lv.checked} 个对象`
+            + (lv.failed > 0 ? `，${lv.failed} 项失败` : '') + '）')
+          for (const f of lv.findings) body.push(`    ✗ ${f}`)
+          for (const u of lv.unknown) body.push(`    ? ${u}`)
+        }
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        if (project === '') return {}
+        // 面板上**没有** ladder 视图（`SectionId` 里没有它），所以指到
+        // `checks`：阶梯的 V2 就是 `checks.json` 的内容，落在同一处不误导。
+        return viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        project?: unknown; levels?: unknown; stopOnHard?: unknown; pitchMm?: unknown
+      }
+      const project = str(a.project)
+      const cliArgs: string[] = project === '' ? [] : [project]
+      const levels = str(a.levels)
+      if (levels !== '') cliArgs.push('--levels', levels)
+      if (a.stopOnHard === false) cliArgs.push('--no-truncate')
+      if (a.pitchMm !== undefined) cliArgs.push('--pitch', String(num(a.pitchMm, 0.5)))
+
+      const payload = await design('ladder', ...cliArgs)
+      if (payload.status === 'failed' || payload.status === 'not_ready') {
+        throw new Error(findings(payload).join('；') || '阶梯无法运行')
+      }
+      // 不带 project：只是阶梯说明，没有 levels 列表
+      if (project === '') {
+        const table = rowsOf(payload as Record<string, unknown>, 'levels')
+        return {
+          project: '',
+          ok: true,
+          stoppedAt: '',
+          downstream: 'run',
+          levels: table.map((row) => ({
+            level: str(row.level),
+            title: str(row.title),
+            status: str(row.implemented) === 'true' ? 'built' : 'unsupported',
+            checked: 0,
+            failed: 0,
+            unknown: [] as string[],
+            findings: [] as string[],
+          })),
+          summary: `阶梯共 ${table.length} 层；V5/V6 未实现（如实报 not_run）`,
+        }
+      }
+
+      noteHint(project, 'checks')
+      return {
+        project,
+        ok: payload.ok === true,
+        stoppedAt: str(payload.stopped_at),
+        downstream: str(payload.downstream),
+        levels: rowsOf(payload as Record<string, unknown>, 'levels').map((lv) => ({
+          level: str(lv.level),
+          title: str(lv.title),
+          status: str(lv.status),
+          checked: num(lv.checked),
+          failed: num(lv.failed),
+          unknown: (Array.isArray(lv.unknown) ? lv.unknown : []).map((x) => str(x)),
+          findings: (Array.isArray(lv.findings) ? lv.findings : [])
+            .filter((f) => (f as Record<string, unknown>).ok !== true)
+            .map((f) => {
+              const row = f as Record<string, unknown>
+              return `${str(row.check)}: ${str(row.message)}`
+            }),
+        })),
+        summary: (() => {
+          const s = (payload.summary ?? {}) as Record<string, unknown>
+          return `通过 ${num(s.pass)} / 失败 ${num(s.fail)}`
+            + ` / 未知 ${num(s.unknown)} / 未跑 ${num(s.not_run)}`
+            + `，检查 ${num(s.checked)} 个对象，${num(s.ms).toFixed(1)}ms`
+        })(),
+      }
+    },
+  })))
+
+  // ---- 3c. hw_claims ----------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_claims',
+    description:
+      '推导并求值断言层：每个元件为什么在板上，变成一条可执行断言。'
+      + '断言由**规则生成**（不让 AI 写，否则会写出永远为真的断言）。'
+      + '三态 pass/fail/unknown，缺数据是 unknown 不是 pass。'
+      + '同时报出**语义覆盖率**——全绿可能只是因为断言全是结构性 connected。'
+      + '写 claims.json。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+      priority: {
+        type: 'string',
+        description: '逗号分隔的优先级过滤，如 "P0,P1"',
+      },
+      evaluateOnly: {
+        type: 'boolean',
+        description: '只求值不写 claims.json（默认写）',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          ok: { type: 'boolean' },
+          count: { type: 'number' },
+          pass: { type: 'number' },
+          fail: { type: 'number' },
+          unknown: { type: 'number' },
+          semanticRatio: { type: 'number' },
+          partsWithSemantic: { type: 'number' },
+          partsCovered: { type: 'number' },
+          byType: { type: 'string' },
+          failures: { type: 'array', items: { type: 'string' } },
+          unknowns: { type: 'array', items: { type: 'string' } },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; ok: boolean; count: number; pass: number
+          fail: number; unknown: number; semanticRatio: number
+          partsWithSemantic: number; partsCovered: number; byType: string
+          failures: string[]; unknowns: string[]; summary: string
+        }
+        const head = `# ${v.project} 断言：${v.count} 条，`
+          + `${v.ok ? '全部通过' : '未全部通过'}`
+        const cov = `语义覆盖 ${v.partsWithSemantic}/${v.partsCovered}`
+          + `（${(v.semanticRatio * 100).toFixed(0)}%）· ${v.byType}`
+        const body: string[] = [cov]
+        for (const f of v.failures) body.push(`✗ ${f}`)
+        for (const u of v.unknowns) body.push(`? ${u}`)
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        project?: unknown; priority?: unknown; evaluateOnly?: unknown
+      }
+      const project = str(a.project)
+      const cliArgs: string[] = project === '' ? [] : [project]
+      const priority = str(a.priority)
+      if (priority !== '') cliArgs.push('--priority', priority)
+      if (a.evaluateOnly === true) cliArgs.push('--evaluate')
+
+      const payload = await design('claims', ...cliArgs)
+      if (payload.status === 'failed' || payload.status === 'not_ready') {
+        throw new Error(findings(payload).join('；') || '断言层无法运行')
+      }
+      if (project === '') {
+        return {
+          project: '', ok: true, count: 0, pass: 0, fail: 0, unknown: 0,
+          semanticRatio: 0, partsWithSemantic: 0, partsCovered: 0,
+          byType: '', failures: [] as string[], unknowns: [] as string[],
+          summary: '断言层：requires 缺失即 fail —— 这是"删除即失败"的支点',
+        }
+      }
+
+      const cov = (payload.coverage ?? {}) as Record<string, unknown>
+      const rows = rowsOf(payload as Record<string, unknown>, 'claims')
+      const byType = (cov.by_type ?? {}) as Record<string, unknown>
+      noteHint(project, 'checks')
+      return {
+        project,
+        ok: payload.ok === true,
+        count: num(payload.count),
+        pass: num(payload.pass),
+        fail: num(payload.fail),
+        unknown: num(payload.unknown),
+        semanticRatio: num(cov.semantic_ratio),
+        partsWithSemantic: num(cov.parts_with_semantic),
+        partsCovered: num(cov.parts_covered),
+        byType: Object.entries(byType)
+          .map(([k, n]) => `${k} ${num(n)}`).join(' / '),
+        failures: rows
+          .filter((r) => str(r.status) === 'fail')
+          .map((r) => `${str(r.id)} — ${str(r.basis)}`),
+        unknowns: rows
+          .filter((r) => str(r.status) === 'unknown')
+          .map((r) => `${str(r.id)} — ${str(r.basis)}`),
+        summary: num(cov.semantic === 0)
+          ? '注意：没有任何语义断言。全绿只说明元件接进了网表，'
+            + '不说明功能正确'
+          : `语义断言 ${num(cov.semantic)} 条 / 结构断言 ${num(cov.structural)} 条`,
+      }
+    },
+  })))
+
+  // ---- 3d. hw_assert ----------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_assert',
+    description:
+      '**删除即失败**的验证：把某个元件从内存副本里剔除后重新求值断言，'
+      + '报出哪些断言因此从 pass 变红。原设计一个字节都不改（不写盘）。'
+      + 'reddened 为空说明断言机制没覆盖到那个元件。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名' },
+      remove: { type: 'string', description: '要剔除的元件 ref，如 R12' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          removed: { type: 'string' },
+          count: { type: 'number' },
+          reddened: { type: 'array', items: { type: 'string' } },
+          unchangedPass: { type: 'number' },
+          wasUnknown: { type: 'number' },
+          note: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; removed: string; count: number
+          reddened: string[]; unchangedPass: number; wasUnknown: number
+          note: string
+        }
+        const head = v.count > 0
+          ? `# 移除 ${v.removed} → ${v.count} 条断言变红`
+          : `# 移除 ${v.removed} → 没有断言变红（机制未覆盖它）`
+        const body = v.reddened.map((id) => `✗ ${id}`)
+        return text(head, ...body,
+          `未受影响 ${v.unchangedPass} 条 · 原本 unknown ${v.wasUnknown} 条`,
+          v.note)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown; remove?: unknown }
+      const project = str(a.project)
+      const remove = str(a.remove)
+      if (project === '' || remove === '') {
+        throw new Error('需要 project 和 remove')
+      }
+      const payload = await design('assert', project, '--remove', remove)
+      if (payload.status === 'failed' || payload.status === 'not_ready') {
+        throw new Error(findings(payload).join('；') || '无法求值')
+      }
+      const reddened = (Array.isArray(payload.reddened) ? payload.reddened : [])
+        .map((x) => str(x))
+      return {
+        project,
+        removed: str(payload.removed),
+        count: num(payload.count),
+        reddened,
+        unchangedPass: num(payload.unchanged_pass),
+        wasUnknown: num(payload.was_unknown),
+        note: str(payload.note),
+      }
+    },
+  })))
+
+  // ---- 3e. hw_justify ---------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_justify',
+    description:
+      '归因反推：从网表拓扑反推每个元件**为什么在板上**，给出'
+      + 'why + effect_if_removed + confidence。判不出时返回 unknown 并说清'
+      + '为什么判不出（哈希 kind / 没有网表），**不编理由**。'
+      + '同时报两个比例：全部元件口径 与 有网表元件口径——'
+      + '两者差距大说明是缺数据，不是算法不行。'
+      + '写 justify.json（`writeBack=true` 时还写回 design.json）。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+      ref: { type: 'string', description: '只看某个元件，如 R12' },
+      writeBack: {
+        type: 'boolean',
+        description: '把结论写进 design.json 的 part.justification（默认不写）',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          written: { type: 'boolean' },
+          ok: { type: 'boolean' },
+          total: { type: 'number' },
+          known: { type: 'number' },
+          unknown: { type: 'number' },
+          ratio: { type: 'number' },
+          judgeable: { type: 'number' },
+          ratioJudgeable: { type: 'number' },
+          noNetlist: { type: 'number' },
+          groups: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                label: { type: 'string' },
+                count: { type: 'number' },
+                why: { type: 'string' },
+              },
+            },
+          },
+          detail: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                ref: { type: 'string' },
+                category: { type: 'string' },
+                kind: { type: 'string' },
+                confidence: { type: 'string' },
+                why: { type: 'string' },
+                removed: { type: 'string' },
+              },
+            },
+          },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; ok: boolean; total: number; known: number
+          unknown: number; ratio: number; judgeable: number
+          ratioJudgeable: number; noNetlist: number
+          groups: Array<{ label: string; count: number; why: string }>
+          detail: Array<{ ref: string; category: string; kind: string
+            confidence: string; why: string; removed: string }>
+          summary: string
+        }
+        const head = `# ${v.project} 归因：${v.known}/${v.total} 判出理由`
+          + `（${(v.ratio * 100).toFixed(1)}%）`
+        const body: string[] = []
+        if (v.noNetlist > 0) {
+          body.push(`! ${v.noNetlist} 个元件没有网表：有网表的 ${v.judgeable} 个`
+            + `里判出 ${(v.ratioJudgeable * 100).toFixed(1)}% —— `
+            + `差距是缺数据，不是算法判不出`)
+        }
+        if (v.detail.length > 0) {
+          body.push('', '## 明细（人工核对用）')
+          for (const row of v.detail) {
+            body.push(`* ${row.ref} [${row.category}] ${row.confidence}`)
+            body.push(`    ${row.why}`)
+            body.push(`    删掉：${row.removed}`)
+          }
+        } else if (v.groups.length > 0) {
+          body.push('', '## 分组（无源件读这一层）')
+          for (const g of v.groups) body.push(`* ${g.count} × ${g.label} — ${g.why}`)
+        }
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        project?: unknown; ref?: unknown; writeBack?: unknown
+      }
+      const project = str(a.project)
+      const cliArgs: string[] = project === '' ? [] : [project]
+      const ref = str(a.ref)
+      if (ref !== '') cliArgs.push('--ref', ref)
+      if (a.writeBack === true) cliArgs.push('--write')
+
+      const payload = await design('justify', ...cliArgs)
+      if (payload.status === 'failed' || payload.status === 'not_ready') {
+        throw new Error(findings(payload).join('；') || '归因失败')
+      }
+      const groups = (Array.isArray(payload.groups) ? payload.groups : [])
+        .slice(0, 40)
+        .map((g) => {
+          const row = (g ?? {}) as Record<string, unknown>
+          return {
+            label: str(row.label),
+            count: num(row.count),
+            why: str(row.why),
+          }
+        })
+      const wanted = Array.isArray(payload.parts) ? payload.parts : []
+      const detail = wanted.slice(0, 30).map((raw) => {
+        const row = (raw ?? {}) as Record<string, unknown>
+        const j = (row.justification ?? {}) as Record<string, unknown>
+        const g = (row.group ?? {}) as Record<string, unknown>
+        return {
+          ref: str(row.ref),
+          category: str(row.category),
+          kind: str(g.kind),
+          confidence: str(j.confidence),
+          why: str(j.why),
+          removed: str(j.effect_if_removed),
+        }
+      })
+      const missing = (payload.missing_data ?? {}) as Record<string, unknown>
+      return {
+        project,
+        written: payload.written === true,
+        ok: payload.ok === true,
+        total: num(payload.total),
+        known: num(payload.known),
+        unknown: num(payload.unknown),
+        ratio: num(payload.ratio),
+        judgeable: num(payload.judgeable),
+        ratioJudgeable: num(payload.ratio_judgeable),
+        noNetlist: num(missing.no_netlist_count),
+        groups,
+        detail,
+        summary: str(payload.summary),
+      }
+    },
+  })))
+
+  // ---- 3f. hw_handoff ---------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_handoff',
+    description:
+      '交接层：把散在阶梯/断言/预算/归因里的「未验证」聚成五类'
+      + '（阻断 / 缺数据 / 默认值 / 不会验 / 未接线），'
+      + '每类都写「你要做什么」和风险。输出 handoff.json + handoff.md。'
+      + '**不重新跑判定**——它读已有产物，并用指纹标明对着哪一版。'
+      + '空表会显式写「无」，缺产物会标 missing（不是「没问题」）。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          deliverable: { type: 'boolean' },
+          blocking: { type: 'number' },
+          missingData: { type: 'number' },
+          assumed: { type: 'number' },
+          unverifiable: { type: 'number' },
+          orphan: { type: 'number' },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                category: { type: 'string' },
+                title: { type: 'string' },
+                action: { type: 'string' },
+                risk: { type: 'string' },
+              },
+            },
+          },
+          missingArtifacts: { type: 'array', items: { type: 'string' } },
+          summary: { type: 'string' },
+          markdownPath: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; deliverable: boolean
+          blocking: number; missingData: number; assumed: number
+          unverifiable: number; orphan: number
+          items: Array<{ category: string; title: string
+            action: string; risk: string }>
+          missingArtifacts: string[]
+          summary: string
+          markdownPath: string
+        }
+        const head = v.deliverable
+          ? `# ${v.project} 交接：可打板（无阻断项）`
+          : `# ${v.project} 交接：不可打板（${v.blocking} 项阻断）`
+        const label: Record<string, string> = {
+          blocking: '必须修好才能打板',
+          missing_data: '缺数据（机器不知道）',
+          assumed: '机器用了默认值',
+          unverifiable: '这套系统不会验',
+          orphan: '生成了但没接线',
+        }
+        const body: string[] = []
+        for (const cat of Object.keys(label)) {
+          const rows = v.items.filter((i) => i.category === cat)
+          body.push('', `## ${label[cat]}（${rows.length}）`)
+          if (rows.length === 0) {
+            body.push('  无。')
+            continue
+          }
+          for (const row of rows) {
+            body.push(`* ${row.title}`)
+            body.push(`    要做：${row.action}`)
+            body.push(`    风险：${row.risk}`)
+          }
+        }
+        if (v.missingArtifacts.length > 0) {
+          body.push('', `! 缺失的产物：${v.missingArtifacts.join(', ')} —— `
+            + '那几类没有被检查过，不是「检查了没问题」')
+        }
+        return text(head, ...body, v.summary, `完整表格：${v.markdownPath}`)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown }
+      const project = str(a.project)
+      if (project === '') throw new Error('需要 project')
+      const payload = await design('handoff', project)
+      if (payload.status === 'failed' || payload.status === 'not_ready') {
+        throw new Error(findings(payload).join('；') || '无法构建交接单')
+      }
+      const counts = (payload.counts ?? {}) as Record<string, unknown>
+      const sources = (payload.sources ?? {}) as Record<string, unknown>
+      const missingArtifacts = Object.entries(sources)
+        .filter(([, v]) => str(v) === 'missing')
+        .map(([k]) => k)
+      const items = (Array.isArray(payload.items) ? payload.items : [])
+        .slice(0, 60)
+        .map((raw) => {
+          const row = (raw ?? {}) as Record<string, unknown>
+          return {
+            category: str(row.category),
+            title: str(row.title),
+            action: str(row.action),
+            risk: str(row.risk),
+          }
+        })
+      return {
+        project,
+        deliverable: payload.deliverable === true,
+        blocking: num(counts.blocking),
+        missingData: num(counts.missing_data),
+        assumed: num(counts.assumed),
+        unverifiable: num(counts.unverifiable),
+        orphan: num(counts.orphan),
+        items,
+        missingArtifacts,
+        summary: str(payload.summary),
+        markdownPath: 'handoff.md',
+      }
+    },
+  })))
+
+  // ---- 3g. hw_coverify --------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_coverify',
+    description:
+      '协同验证：需求里写的数值（指向精度/跟踪速率/探测距离/链路带宽/延迟/'
+      + '电源电流）与硬件能力是否对得上（8 条 CV 检查）。'
+      + '**未申报的项会用默认值计算，并明确列为 not_verified** ——'
+      + '那是「机器替你做主了」，不是「没问题」。写 coverify.json。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          ok: { type: 'boolean' },
+          passed: { type: 'number' },
+          failed: { type: 'number' },
+          notVerified: { type: 'number' },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                check: { type: 'string' },
+                status: { type: 'string' },
+                message: { type: 'string' },
+              },
+            },
+          },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; ok: boolean; passed: number; failed: number
+          notVerified: number
+          items: Array<{ check: string; status: string; message: string }>
+          summary: string
+        }
+        const head = `# ${v.project} 协同验证：`
+          + (v.ok ? '通过' : '未通过')
+          + `（通过 ${v.passed} / 失败 ${v.failed} / 未验证 ${v.notVerified}）`
+        const body: string[] = []
+        for (const row of v.items) {
+          body.push(`* [${row.status}] ${row.check} — ${row.message}`)
+        }
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown }
+      const project = str(a.project)
+      if (project === '') throw new Error('需要 project')
+      const payload = await design('coverify', project)
+      // 真实字段是 `check_id` / `passed`（布尔），计数在 `summary` 里。
+      // 第一版按 `id` / `status` / `counts` 写，全读成空——工具会报
+      // "通过 0 / 失败 0" 而 `ok=false`，自相矛盾。
+      const checks = Array.isArray(payload.checks) ? payload.checks : []
+      const items = checks.slice(0, 40).map((raw) => {
+        const row = (raw ?? {}) as Record<string, unknown>
+        const passed = row.passed === true
+        return {
+          check: str(row.check_id) || str(row.check),
+          status: passed ? 'pass' : 'fail',
+          message: str(row.message) || str(row.title),
+        }
+      })
+      const summary = (payload.summary ?? {}) as Record<string, unknown>
+      const total = num(summary.total)
+      const failed = num(summary.failed)
+      return {
+        project,
+        ok: payload.ok === true,
+        passed: Math.max(0, total - failed),
+        failed,
+        notVerified: (Array.isArray(payload.not_verified)
+          ? payload.not_verified.length : 0),
+        items,
+        summary: str(payload.summary),
+      }
+    },
+  })))
+
+  // ---- 3h. hw_units -----------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_units',
+    description:
+      '单元层：把设计按 `Placement.board_id` 切成功能单元（**纯结构，不用 AI**），'
+      + '并判每块板的角色。角色只看板上的**具名网络**——自动网名'
+      + '（`$1N394` / `w1`）不算。没有具名网的板如实记 unknown，'
+      + '并说明是「缺数据」而不是「判不出」。'
+      + '同时报两个比例：全部单元口径 与 有具名网单元口径。写 units.json。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+      apply: {
+        type: 'boolean',
+        description: '把结果写进 design.json 的 units_list（默认只读推导）',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          multiBoard: { type: 'boolean' },
+          total: { type: 'number' },
+          known: { type: 'number' },
+          ratio: { type: 'number' },
+          ratioJudgeable: { type: 'number' },
+          noNetlist: { type: 'number' },
+          units: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                id: { type: 'string' },
+                role: { type: 'string' },
+                partCount: { type: 'number' },
+                confidence: { type: 'string' },
+                why: { type: 'string' },
+              },
+            },
+          },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; multiBoard: boolean; total: number; known: number
+          ratio: number; ratioJudgeable: number; noNetlist: number
+          units: Array<{ id: string; role: string; partCount: number
+            confidence: string; why: string }>
+          summary: string
+        }
+        const head = `# ${v.project} 单元层：${v.total} 个单元，`
+          + `判出角色 ${v.known}（${(v.ratio * 100).toFixed(1)}%）`
+        const body: string[] = []
+        for (const u of v.units) {
+          body.push(`* ${u.id} [${u.role}] ${u.partCount} 件 · ${u.confidence}`)
+          body.push(`    ${u.why}`)
+        }
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown; apply?: unknown }
+      const project = str(a.project)
+      const cliArgs: string[] = project === '' ? [] : [project]
+      if (a.apply === true) cliArgs.push('--apply')
+      const payload = await design('units', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '单元层失败')
+      }
+      const unitRows = (Array.isArray(payload.units) ? payload.units : [])
+        .slice(0, 60).map((raw) => {
+          const row = (raw ?? {}) as Record<string, unknown>
+          return {
+            id: str(row.id),
+            role: str(row.role),
+            partCount: num(row.part_count),
+            confidence: str(row.confidence),
+            why: str(row.why),
+          }
+        })
+      const missing = (payload.missing_data ?? {}) as Record<string, unknown>
+      return {
+        project,
+        multiBoard: payload.multi_board === true,
+        total: num(payload.total),
+        known: num(payload.known),
+        ratio: num(payload.ratio),
+        ratioJudgeable: num(payload.ratio_judgeable),
+        noNetlist: num(missing.no_netlist_count),
+        units: unitRows,
+        summary: str(payload.summary),
+      }
+    },
+  })))
+
+  // ---- 3i. hw_links -----------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_links',
+    description:
+      '板间链路四条检查：协议族一致 / 电平兼容 / 波特率可达 / '
+      + '**孤儿外设**（声明了外设但没说接谁——隐性假设）。'
+      + '`source=inferred` 的链路**只提示不判 fail**（推断会错）。'
+      + '链路表为空时状态是 not_ready，不是通过。写 links.json。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+      apply: {
+        type: 'boolean',
+        description: '把推断出的候选链路写进 design.json 的 links_list',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          ok: { type: 'boolean' },
+          status: { type: 'string' },
+          declared: { type: 'number' },
+          inferred: { type: 'number' },
+          declaredUnlinked: { type: 'number' },
+          observedUnlinked: { type: 'number' },
+          unitsWithoutNets: { type: 'number' },
+          findings: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                check: { type: 'string' },
+                message: { type: 'string' },
+              },
+            },
+          },
+          reason: { type: 'string' },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; ok: boolean; status: string
+          declared: number; inferred: number
+          declaredUnlinked: number; observedUnlinked: number
+          unitsWithoutNets: number
+          findings: Array<{ check: string; message: string }>
+          reason: string; summary: string
+        }
+        const head = `# ${v.project} 板间链路：${v.status}`
+          + `（声明 ${v.declared} / 推断 ${v.inferred}）`
+        const body: string[] = []
+        if (v.reason) body.push(`! ${v.reason}`)
+        for (const row of v.findings) body.push(`* [${row.check}] ${row.message}`)
+        body.push('', `孤儿：声明未接 ${v.declaredUnlinked} · `
+          + `仅提示 ${v.observedUnlinked} · `
+          + `无网表单元 ${v.unitsWithoutNets}`)
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown; apply?: unknown }
+      const project = str(a.project)
+      const cliArgs: string[] = project === '' ? [] : [project]
+      if (a.apply === true) cliArgs.push('--apply')
+      const payload = await design('links', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '链路检查失败')
+      }
+      const checked = (payload.checked ?? {}) as Record<string, unknown>
+      const counts = (payload.orphans ?? {}) as Record<string, unknown>
+      const orphanCounts = (counts.counts ?? {}) as Record<string, unknown>
+      const rows = (Array.isArray(payload.findings) ? payload.findings : [])
+        .slice(0, 30).map((raw) => {
+          const row = (raw ?? {}) as Record<string, unknown>
+          return { check: str(row.check), message: str(row.message) }
+        })
+      return {
+        project,
+        ok: payload.ok === true,
+        status: str(payload.status),
+        declared: num(checked.declared_links),
+        inferred: num(checked.inferred_links),
+        declaredUnlinked: num(orphanCounts.declared_unlinked),
+        observedUnlinked: num(orphanCounts.observed_unlinked),
+        unitsWithoutNets: num(orphanCounts.units_without_nets),
+        findings: rows,
+        reason: str(payload.reason),
+        summary: str(payload.summary),
+      }
+    },
+  })))
+
+  // ---- 3j. hw_capability -------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_capability',
+    description:
+      '能力窄表查询（字典 + 纯过滤，不是知识图谱）。'
+      + '`source` 不是 datasheet/measured 的型号**直接不参与选择**'
+      + '（猜出来的能力值 = 假通过）。`fills` 回答「它是什么」，'
+      + '`provides` 回答「它能干什么」，两者不可互相替代。'
+      + '空结果会解释成「表没收录」还是「约束砍光了」。',
+    parameters: {
+      needs: { type: 'string', description: '需要的能力，逗号分隔，如 uart,spi' },
+      role: { type: 'string', description: '单元角色，如 mcu / radio / sensor' },
+      areaMm2: { type: 'number', description: '面积上限 mm²' },
+      exclude: { type: 'string', description: '排除的型号，逗号分隔' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ok: { type: 'boolean' },
+          candidates: { type: 'array', items: { type: 'string' } },
+          count: { type: 'number' },
+          reason: { type: 'string' },
+          hint: { type: 'string' },
+          rejected: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          ok: boolean; candidates: string[]; count: number
+          reason: string; hint: string; rejected: string[]
+        }
+        if (v.ok) {
+          return text(`# 能力表：${v.count} 个候选`,
+            ...v.candidates.map((c) => `* ${c}`))
+        }
+        return text('# 能力表：没有候选',
+          `! ${v.reason}`, `建议：${v.hint}`,
+          ...v.rejected.slice(0, 12).map((r) => `* ${r}`))
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        needs?: unknown; role?: unknown; areaMm2?: unknown; exclude?: unknown
+      }
+      const cliArgs: string[] = []
+      const needs = str(a.needs)
+      if (needs !== '') cliArgs.push('--needs', needs)
+      const role = str(a.role)
+      if (role !== '') cliArgs.push('--role', role)
+      if (typeof a.areaMm2 === 'number') {
+        cliArgs.push('--area', String(a.areaMm2))
+      }
+      const exclude = str(a.exclude)
+      if (exclude !== '') cliArgs.push('--exclude', exclude)
+      const payload = await design('capability', ...cliArgs)
+      const rejected = Object.entries(
+        (payload as Record<string, unknown>).rejected ?? {} as Record<string, unknown>)
+        .slice(0, 20)
+        .map(([k, v]) => `${k}: ${str(v)}`)
+      return {
+        ok: payload.status === 'ok',
+        candidates: (Array.isArray(payload.candidates) ? payload.candidates : [])
+          .map((x) => str(x)),
+        count: num(payload.count),
+        reason: str(payload.detail),
+        hint: str(payload.hint),
+        rejected,
+      }
+    },
+  })))
+
+  // ---- 3k. hw_generate ---------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_generate',
+    description:
+      '按需求**有限枚举**生成候选设计（四段：需求→单元→元件组合→链路→断言）。'
+      + '**没有收敛循环**：枚举有硬上限，天然终止，不会震荡。'
+      + '按 (硬失败, 软失败, unknown, 面积) 排序输出多个候选，'
+      + '工程师从中选。不保证全局最优——可行解比最优解重要。'
+      + '生成器只对**新工程**有效（不为导入的哈希 kind 补映射）。',
+    parameters: {
+      requirement: { type: 'string', description: '需求文件路径（.yaml/.yml/.json）' },
+      maxCandidates: { type: 'number', description: '枚举上限，默认 50' },
+      fast: {
+        type: 'boolean',
+        description: '跳过验证阶梯，只出候选清单（更快）',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ok: { type: 'boolean' },
+          status: { type: 'string' },
+          enumerated: { type: 'number' },
+          unique: { type: 'number' },
+          deliverableCount: { type: 'number' },
+          reason: { type: 'string' },
+          candidates: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                id: { type: 'string' },
+                hardFailures: { type: 'number' },
+                softFailures: { type: 'number' },
+                cost: { type: 'number' },
+                parts: { type: 'string' },
+                why: { type: 'string' },
+              },
+            },
+          },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          ok: boolean; status: string; enumerated: number; unique: number
+          deliverableCount: number; reason: string
+          candidates: Array<{ id: string; hardFailures: number
+            softFailures: number; cost: number; parts: string; why: string }>
+          summary: string
+        }
+        const head = `# 生成：${v.status}（枚举 ${v.enumerated} / 唯一 ${v.unique}`
+          + ` / 可交付 ${v.deliverableCount}）`
+        const body: string[] = []
+        if (v.reason) body.push(`! ${v.reason}`)
+        for (const c of v.candidates.slice(0, 8)) {
+          body.push(`* ${c.id} 硬失败=${c.hardFailures} 软=${c.softFailures}`)
+          body.push(`    ${c.parts}`)
+        }
+        if (v.candidates.length > 8) {
+          body.push(`（其余 ${v.candidates.length - 8} 个候选见 JSON）`)
+        }
+        return text(head, ...body, v.summary)
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        requirement?: unknown; maxCandidates?: unknown; fast?: unknown
+      }
+      const requirement = str(a.requirement)
+      if (requirement === '') throw new Error('需要 requirement 文件路径')
+      const cliArgs: string[] = ['--requirement', requirement]
+      if (typeof a.maxCandidates === 'number') {
+        cliArgs.push('--max-candidates', String(Math.trunc(a.maxCandidates)))
+      }
+      if (a.fast === true) cliArgs.push('--fast')
+      const payload = await design('generate', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '生成失败')
+      }
+      const rows = (Array.isArray(payload.candidates) ? payload.candidates : [])
+        .slice(0, 20).map((raw) => {
+          const row = (raw ?? {}) as Record<string, unknown>
+          const parts = Array.isArray(row.parts) ? row.parts : []
+          // 名字不能叫 text —— 那会遮蔽模块级的 text() 辅助函数，
+          // 虽然当前作用域不用它，但下一次有人在这里加一行 text(...) 就会撞。
+          const partsText = parts.map((p) => {
+            const r = (p ?? {}) as Record<string, unknown>
+            const owners = Array.isArray(r.units) ? r.units.map((x) => str(x))
+              : [str(r.unit)]
+            return `${owners.join('+')}=${str(r.model)}`
+          }).join(' ')
+          return {
+            id: str(row.id),
+            hardFailures: num(row.hard_failures),
+            softFailures: num(row.soft_failures),
+            cost: num(row.cost),
+            parts: partsText,
+            why: str(row.why),
+          }
+        })
+      return {
+        ok: payload.ok === true,
+        status: str(payload.status),
+        enumerated: num(payload.enumerated),
+        unique: num(payload.unique),
+        deliverableCount: num(payload.deliverable_count),
+        reason: str(payload.reason),
+        candidates: rows,
+        summary: str(payload.summary),
+      }
+    },
+  })))
+
   // ---- 4. hw_import -----------------------------------------------------
   disposers.push(tools.register(defineTool({
     name: 'hw_import',
@@ -427,20 +1526,38 @@ export function registerTools(ctx: Context): Array<() => void> {
       const argv = ['budget', project]
       if (limits !== '') argv.push('--limits', limits)
       const payload = await design(...argv)
-      if (payload.status === 'not_ready') {
-        throw new Error(findings(payload).join('；') || '预算前置缺失')
+      // `not_ready` 在这里**不是错误**：预算在"没有任何元件声明功耗/成本"时
+      // 就是无法评估（`budgets.evaluate` 明确返回 status=not_ready +
+      // confidence=none）。把它 throw 掉会让面板在干净工程和 141 件全未
+      // claim 的真实工程上同样打不开——正是本仓库反对的"把缺失当失败"。
+      // 正确行为：把"无法评估 + 覆盖率"如实呈现出来。
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '预算评估失败')
       }
-      if (!ok(payload)) throw new Error(findings(payload).join('；') || '预算失败')
       noteHint(project, 'budget')
       const byCurrency = (payload.by_currency ?? {}) as Record<string, Record<string, unknown>>
+      const coverage = (payload.coverage ?? {}) as Record<string, unknown>
+      const claimed = num(coverage.claimed_parts)
+      const total = num(coverage.total_parts)
+      const confidence = str(payload.confidence, 'none')
+      const lines: string[] = Object.entries(byCurrency)
+        .filter(([, row]) => row.over === true)
+        .map(([currency, row]) =>
+          `✗ ${currency}: ${num(row.used)} / ${num(row.limit)}`)
+      if (confidence === 'none') {
+        lines.unshift(
+          `没有可评估的数据：${claimed} / ${total} 个元件声明了功耗/成本。`
+          + '这不是"通过"，是"没数据"。',
+          '补 claim：hw_setpart 传 {"electrical":{"power_w":…,"cost_usd":…}}',
+        )
+      } else if (total > claimed) {
+        lines.unshift(`覆盖率 ${claimed} / ${total} 个元件（其余按未知处理，结论是下界）`)
+      }
       return {
         project,
-        confidence: str(payload.confidence, 'none'),
+        confidence,
         violations: ((payload.violations ?? []) as unknown[]).length,
-        lines: Object.entries(byCurrency)
-          .filter(([, row]) => row.over === true)
-          .map(([currency, row]) =>
-            `✗ ${currency}: ${num(row.used)} / ${num(row.limit)}`),
+        lines,
       }
     },
   })))
@@ -743,12 +1860,16 @@ export function registerTools(ctx: Context): Array<() => void> {
         throw new Error(findings(payload).join('；') || '新建失败')
       }
       noteHint(project, 'design')
-      const summary = (payload.summary ?? {}) as Record<string, unknown>
+      // `design_cli new` 的载荷形状是 {status, project:{id,path,parts,…},
+      // workspace, design, warnings} —— **不是** {path, summary}。
+      // 以前读 payload.path / payload.summary 恒为空，面板于是显示
+      // "目录：（空）""0 元件"，看起来像新建失败了但其实成功了。
+      const created = (payload.project ?? {}) as Record<string, unknown>
       return {
         project,
-        board,
-        parts: num(summary.parts),
-        path: str(payload.path, ''),
+        board: str(created.board_name, board),
+        parts: num(created.parts),
+        path: str(created.path, ''),
       }
     },
   })))
@@ -1182,16 +2303,25 @@ export function registerTools(ctx: Context): Array<() => void> {
         throw new Error(findings(payload).join('；') || '装配失败')
       }
       if (doAssemble) noteHint(project, 'design')
+      // `design_cli roles` 的载荷只有 {roles, plan:{part_count,parts,
+      // unmatched,…}, role_check, role_enhancement, unresolved, summary}。
+      // **没有 `wiring`** —— 以前读 payload.wiring 恒得到空对象，于是这个
+      // 工具永远报"0 条网表"，而实际上装配成功后网表就在 summary 里。
       const plan = (payload.plan ?? {}) as Record<string, unknown>
-      const wiring = (payload.wiring ?? {}) as Record<string, unknown>
       const enhance = (payload.role_enhancement ?? {}) as Record<string, unknown>
+      const summary = (payload.summary ?? {}) as Record<string, unknown>
+      const assembled = (payload.assembled ?? {}) as Record<string, unknown>
+      // 网表数有三个可能来源，按可靠性排序；都没有就如实留 0 并说明未落盘。
+      const nets = doAssemble
+        ? num(assembled.nets) || num(summary.nets)
+        : 0
       return {
         roles: ((payload.roles ?? []) as unknown[]).map(String),
         addedRoles: ((enhance.added ?? []) as unknown[]).map(String),
         parts: num(plan.part_count),
-        nets: num(wiring.net_count),
+        nets,
         unmatched: ((plan.unmatched ?? []) as unknown[]).map(String),
-        unrouted: ((wiring.unrouted ?? []) as unknown[]).map(String),
+        unrouted: ((assembled.unrouted ?? payload.unrouted ?? []) as unknown[]).map(String),
         assembled: doAssemble,
         project: doAssemble ? project : '',
         unresolved: ((payload.unresolved ?? []) as unknown[]).map(String),
@@ -1267,8 +2397,14 @@ export function registerTools(ctx: Context): Array<() => void> {
       + 'read 读某一份、coverage 看"哪些文件读了、哪些没读"。'
       + 'write 是**写**操作：追加一条活动记录。',
     parameters: {
-      action: { type: 'string', description: 'list（默认）/ read / coverage' },
+      action: {
+        type: 'string',
+        description: 'list（默认）/ read / coverage / append（追加一条活动记录，写操作）',
+      },
       name: { type: 'string', description: 'read 时必填：日志文件名' },
+      step: { type: 'string', description: 'append 时必填：步骤名' },
+      outcome: { type: 'string', description: 'append 时必填：结果（ok/failed/跳过…）' },
+      detail: { type: 'string', description: 'append 时可选：详情' },
     },
     output: {
       schema: {
@@ -1289,6 +2425,7 @@ export function registerTools(ctx: Context): Array<() => void> {
         }
         if (v.action === 'coverage') return text(v.coverage)
         if (v.action === 'read') return text(v.text)
+        if (v.action === 'append') return text(v.text)
         return text(
           `# 日志目录：${v.dir}`,
           '',
@@ -1300,6 +2437,28 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
     execute: async (args) => {
       const action = str((args as { action?: unknown }).action, 'list').trim() || 'list'
+      // append 分支：描述里承诺了"write 是写操作：追加一条活动记录"，但此前
+      // 参数表与 execute 都没有这个分支 —— 工具描述在撒谎。现在接上
+      // `design_cli log append <step> <outcome> <detail>`。
+      if (action === 'append' || action === 'write') {
+        const step = str((args as { step?: unknown }).step).trim()
+        const outcome = str((args as { outcome?: unknown }).outcome).trim()
+        if (step === '') throw new Error('append 需要 step（步骤名）')
+        if (outcome === '') throw new Error('append 需要 outcome（结果）')
+        const detail = str((args as { detail?: unknown }).detail)
+        const argv = ['log', 'append', step, outcome]
+        if (detail !== '') argv.push(detail)
+        const payload = await design(...argv)
+        if (!ok(payload)) throw new Error(findings(payload).join('；') || '写日志失败')
+        return {
+          action: 'append',
+          dir: '',
+          files: [],
+          coverage: '',
+          text: `已追加到 ${str(payload.path)}：${step} → ${outcome}`
+            + (detail !== '' ? `（${detail}）` : ''),
+        }
+      }
       if (action === 'coverage') {
         const payload = await design('log', 'coverage')
         if (!ok(payload)) throw new Error(findings(payload).join('；'))
@@ -1338,6 +2497,611 @@ export function registerTools(ctx: Context): Array<() => void> {
           `${str(row.kind)}  ${str(row.name)}  ${num(row.size)} B`),
         coverage: '',
         text: '',
+      }
+    },
+  })))
+
+  // ---- 17. hw_velxio ----------------------------------------------------
+  //
+  // 后端生命周期。**没有这个工具，模型永远不知道后端有没有起** —— 在此之前
+  // 只有 `hw_block(velxio_compile)` 会失败，而失败信息说"后端不可达"，
+  // 却不提供"把它起来"的动作。这个工具就是那个动作。
+  //
+  // 纪律：`not_ready`（没起）与 `failed`（起了但坏）必须分开，因为处理方式
+  // 完全不同——前者点一下 start，后者要看日志。
+  disposers.push(tools.register(defineTool({
+    name: 'hw_velxio',
+    description:
+      'Velxio 后端（真实编译 / 电路 / 库）的生命周期：action=status 看状态，'
+      + 'start 启动，stop 停止，logs 读日志。'
+      + '**纯 DSH 内跑，不需要浏览器、不需要 Docker**：'
+      + '后端是本机 venv 里的 uvicorn，工具链在 ~/.dsh/hw_velxio/toolchain。'
+      + '没装 arduino-cli 时后端仍能起，但编译会报 setup 未就绪。',
+    parameters: {
+      action: { type: 'string', description: 'status（默认）/ start / stop / logs' },
+      tail: { type: 'number', description: 'logs 时可选：读多少行（默认 60）' },
+      port: { type: 'number', description: 'start 时可选：端口（默认 3080）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          action: { type: 'string' },
+          status: { type: 'string' },
+          url: { type: 'string' },
+          port: { type: 'number' },
+          pid: { type: 'number' },
+          arduinoReady: { type: 'boolean' },
+          lines: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          action: string; status: string; url: string; port: number
+          pid: number; arduinoReady: boolean; lines: string[]
+        }
+        const label = v.status === 'ok' ? '运行中'
+          : v.status === 'failed' ? '异常' : '未启动'
+        return text(`# Velxio 后端：${label}`, ...v.lines)
+      },
+    },
+    execute: async (args) => {
+      const action = str((args as { action?: unknown }).action, 'status').trim() || 'status'
+      const argv = ['serve', action]
+      if (action === 'logs') {
+        argv.push('--tail', String(num((args as { tail?: unknown }).tail, 60)))
+      }
+      if (action === 'start' && (args as { port?: unknown }).port !== undefined) {
+        argv.push('--port', String(num((args as { port?: unknown }).port, 3080)))
+      }
+      // `start` 是**会故意等待**的动作（等 /health 起来，最长 150s），
+      // 必须给它比默认 120s 更长的超时，否则会在拿到结果前被砍断，
+      // 面板只看到一句 "Command failed"——那会误导成"后端启动失败"。
+      const payload = action === 'start'
+        ? await designLong(240_000, ...argv)
+        : await design(...argv)
+      const status = str(payload.status, 'failed')
+      const cli = (payload.toolchain ?? {}) as Record<string, unknown>
+      const lines: string[] = []
+      if (action === 'logs') {
+        lines.push(str(payload.text, '（空）'))
+      } else {
+        lines.push(`URL：${str(payload.url)}　端口：${num(payload.port)}`)
+        if (payload.pid !== undefined && payload.pid !== null) {
+          lines.push(`PID：${num(payload.pid)}（来源 ${str(payload.pid_source, '未知')}）`)
+        }
+        lines.push(`arduino-cli：${cli.arduino_cli_ready === true ? '就绪' : '**未安装**（编译会失败）'}`)
+        lines.push(`QEMU：${cli.qemu_ready === true ? '就绪（ESP32 可仿真）' : '未安装（ESP32 仿真不可用）'}`)
+        if (status !== 'ok') {
+          lines.push('', '原因：', ...findings(payload).map((f) => `! ${f}`))
+          if (status === 'not_ready') {
+            lines.push('', '下一步：hw_velxio action=start')
+          } else {
+            lines.push('', '下一步：hw_velxio action=logs 看日志尾部')
+          }
+        }
+      }
+      return {
+        action,
+        status,
+        url: str(payload.url),
+        port: num(payload.port),
+        pid: num(payload.pid),
+        arduinoReady: cli.arduino_cli_ready === true,
+        lines,
+      }
+    },
+  })))
+
+  // ---- 18. hw_compile ---------------------------------------------------
+  //
+  // 真实编译。**没有这个工具，模型只能靠 hw_block("velxio_compile", …)
+  // 摸黑传 JSON** —— 参数名、板卡 fqbn、files 的形状全靠猜，猜错拿到的
+  // 是一句"参数形状不对"。
+  //
+  // 这个工具把三件事固定下来：文件从工程的 sources/ 读（或内联给）、
+  // 板卡是 fqbn、结果是**等编译完成后的 hex**而不是 job_id。
+  disposers.push(tools.register(defineTool({
+    name: 'hw_compile',
+    description:
+      '用 Velxio 后端**真实编译** Arduino/ESP-IDF 源码，返回 hex/bin。'
+      + '需要后端在跑（hw_velxio action=start）。'
+      + 'boardFqbn 形如 arduino:avr:uno / arduino:avr:nano / esp32:esp32:esp32。'
+      + 'files 是 [{name, content}]；只想编工程里已有的 sketch 时给 project 即可。'
+      + '**编译是真的**：hex 来自 arduino-cli，不是占位符。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（结果落盘到 <project>/velxio_compile.json）' },
+      boardFqbn: { type: 'string', description: '板卡 FQBN，如 arduino:avr:uno' },
+      filesJson: {
+        type: 'string',
+        description: '可选：源码文件 JSON 数组，如 [{"name":"b.ino","content":"…"}]。'
+          + '不给则尝试读工程 sources/ 下的 .ino',
+      },
+      waitSeconds: { type: 'number', description: '可选：最多等多少秒（默认 300）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          boardFqbn: { type: 'string' },
+          success: { type: 'boolean' },
+          hexBytes: { type: 'number' },
+          binaryBytes: { type: 'number' },
+          jobId: { type: 'string' },
+          lines: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; boardFqbn: string; success: boolean
+          hexBytes: number; binaryBytes: number; jobId: string; lines: string[]
+        }
+        return text(
+          `# ${v.project} 编译（${v.boardFqbn}）：${v.success ? '成功' : '失败'}`,
+          ...v.lines,
+        )
+      },
+      presentationMeta: (args) => viewHint(requireProject(args), 'velxio'),
+    },
+    execute: async (args) => {
+      const project = requireProject(args)
+      const boardFqbn = str((args as { boardFqbn?: unknown }).boardFqbn, 'arduino:avr:uno')
+      const waitSeconds = num((args as { waitSeconds?: unknown }).waitSeconds, 300)
+      const filesJson = str((args as { filesJson?: unknown }).filesJson)
+      const params: Record<string, unknown> = {
+        board: boardFqbn,
+        wait_s: waitSeconds,
+      }
+      if (filesJson.trim() !== '') {
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(filesJson)
+        } catch (error) {
+          throw new Error(`filesJson 不是合法 JSON：`
+            + (error instanceof Error ? error.message : String(error)))
+        }
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          throw new Error('filesJson 必须是非空数组，如 [{"name":"b.ino","content":"…"}]')
+        }
+        params.files = parsed
+      } else {
+        // 不给 files 时从工程的 sources/ 读。
+        //
+        // 这里**用 hw_survey 拿到的工程路径**去读盘，而不是调 `design
+        // firmware --list`：后者是"读固件做静态检查"，不是"列源码"，
+        // 参数形状完全不同（它要 --scope，不要 --list）。用一个错的命令
+        // 去实现文件列举，只会得到一个和意图无关的报错。
+        const survey = await design('survey')
+        const rows = rowsOf(survey as Record<string, unknown>, 'projects')
+        const row = rows.find((entry) => str(entry.id) === project)
+        if (row === undefined) {
+          throw new Error(`工程 ${project} 不在当前工作区的勘察结果里。`
+            + '用 hw_projects 确认工程名，或先 hw_workspace 切到它的工作区。')
+        }
+        const projectPath = str(row.path)
+        if (projectPath === '') {
+          throw new Error(`工程 ${project} 没有可用路径（勘察结果缺 path 字段）。`)
+        }
+        const sourcesDir = `${projectPath}\\sources`
+        const listing = await design('log', 'list')
+        // 没有专用的"列目录"工具，直接用 Node 读——这是本地文件，不涉及判定。
+        const { readdirSync, readFileSync } = await import('node:fs')
+        let names: string[] = []
+        try {
+          names = readdirSync(sourcesDir)
+        } catch {
+          throw new Error(
+            `没有可编译的源码：${sourcesDir} 不存在。`
+            + '给 filesJson 内联源码，或把 .ino 放进工程 sources/ 目录。')
+        }
+        const sketchFiles = names
+          .filter((name) => /\.(ino|cpp|c|h)$/i.test(name))
+          .map((name) => ({
+            name,
+            content: readFileSync(`${sourcesDir}\\${name}`, 'utf8'),
+          }))
+        if (sketchFiles.length === 0) {
+          throw new Error(
+            `没有可编译的源码：${sourcesDir} 里没有 .ino/.cpp/.c/.h。`)
+        }
+        params.files = sketchFiles
+        void listing
+      }
+      const payload = await bridge('run', project, 'velxio_compile', JSON.stringify(params))
+      const data = (payload.data ?? {}) as Record<string, unknown>
+      const success = data.success === true
+      const hex = str(data.hex_content)
+      const bin = str(data.binary_content)
+      const lines: string[] = []
+      lines.push(`状态：${str(data.state, 'unknown')}`)
+      if (hex !== '') {
+        lines.push(`hex：${hex.length} 字符（${Math.round(hex.length * 0.75)} 字节二进制）`)
+      }
+      if (bin !== '') lines.push(`bin：${bin.length} 字符（base64）`)
+      if (str(data.job_id) !== '') lines.push(`作业：${str(data.job_id)}`)
+      const err = str(data.error)
+      if (err !== '') lines.push('', `错误：${err.slice(0, 600)}`)
+      const stderr = str(data.stderr)
+      if (stderr !== '') lines.push('', `stderr：${stderr.slice(-800)}`)
+      if (!success && err === '' && stderr === '') {
+        lines.push('', '编译没有成功但后端没给原因——用 hw_velxio action=logs 看后端日志。')
+      }
+      if (!success && /not found in PATH|not_ready/i.test(str(payload.findings))) {
+        lines.push('', '提示：后端可能没起来或缺 arduino-cli，用 hw_velxio action=status 查。')
+      }
+      noteHint(project, 'velxio')
+      return {
+        project,
+        boardFqbn,
+        success,
+        hexBytes: hex === '' ? 0 : Math.round(hex.length * 0.75),
+        binaryBytes: bin === '' ? 0 : Math.round(bin.length * 0.75),
+        jobId: str(data.job_id),
+        lines,
+      }
+    },
+  })))
+
+  // ---- 19. hw_circuit ---------------------------------------------------
+  //
+  // 电路 JSON ↔ Wokwi diagram.json。**纯计算，不需要后端在线** ——
+  // 这一点很重要：它是全插件唯一在后端没起时仍然能用的 Velxio 能力。
+  disposers.push(tools.register(defineTool({
+    name: 'hw_circuit',
+    description:
+      'Wokwi 电路图互转（复用 Velxio 的 wokwi 纯计算）：'
+      + 'action=import 把 diagram.json 解析成电路，export 反向生成 diagram，'
+      + 'sketch 生成 Arduino 草图。**不需要后端在线**，只需要 Velxio 源码在盘上。',
+    parameters: {
+      action: { type: 'string', description: 'import / export / sketch' },
+      diagramJson: { type: 'string', description: 'diagram JSON 对象字符串' },
+      project: { type: 'string', description: '可选：结果落盘到该工程' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          action: { type: 'string' },
+          status: { type: 'string' },
+          lines: { type: 'array', items: { type: 'string' } },
+          text: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as { action: string; status: string; lines: string[]; text: string }
+        return text(`# 电路 ${v.action} → ${v.status}`, ...v.lines,
+          ...(v.text !== '' ? ['', v.text] : []))
+      },
+    },
+    execute: async (args) => {
+      const action = str((args as { action?: unknown }).action, 'export').trim() || 'export'
+      const raw = str((args as { diagramJson?: unknown }).diagramJson)
+      if (raw.trim() === '') throw new Error('需要 diagramJson（Wokwi diagram JSON 对象）')
+      let diagram: unknown
+      try {
+        diagram = JSON.parse(raw)
+      } catch (error) {
+        throw new Error(`diagramJson 不是合法 JSON：`
+          + (error instanceof Error ? error.message : String(error)))
+      }
+      if (diagram === null || typeof diagram !== 'object' || Array.isArray(diagram)) {
+        throw new Error('diagramJson 必须是一个 JSON 对象')
+      }
+      const project = str((args as { project?: unknown }).project)
+      const params: Record<string, unknown> = { action, diagram }
+      if (project !== '') params.project = project
+      const payload = await bridge('run', project === '' ? '_shared' : project,
+        'velxio_circuit', JSON.stringify(params))
+      const status = str(payload.status, 'failed')
+      const data = (payload.data ?? {}) as Record<string, unknown>
+      const lines: string[] = []
+      if (status === 'ok') {
+        const circuit = (data.circuit ?? {}) as Record<string, unknown>
+        const components = (circuit.components ?? []) as unknown[]
+        lines.push(`元件 ${components.length} 个，板卡 ${str(circuit.board_fqbn, '未识别')}`)
+      } else {
+        lines.push(...findings(payload).map((f) => `! ${f}`))
+      }
+      const textOut = typeof data.wokwi === 'string' ? data.wokwi
+        : typeof data.sketch === 'string' ? data.sketch : ''
+      return { action, status, lines, text: textOut.slice(0, 2000) }
+    },
+  })))
+
+  // ---- 20. hw_libs ------------------------------------------------------
+  //
+  // 库搜索/安装。**Arduino 与 MicroPython 双通道** —— 后者在
+  // `velxio_client` 里写了两个函数但从未被调用（死代码），这里接上。
+  disposers.push(tools.register(defineTool({
+    name: 'hw_libs',
+    description:
+      '搜索/安装 Arduino 或 MicroPython 库（Velxio 后端）。'
+      + 'kind=arduino（默认）走 /api/libraries，kind=micropython 走 '
+      + '/api/micropython-libs。给 query 搜索，给 name 安装，都不给则列出已装'
+      + '（MicroPython 没有 list 接口，会如实说明）。',
+    parameters: {
+      query: { type: 'string', description: '搜索关键词' },
+      name: { type: 'string', description: '要安装的库名' },
+      version: { type: 'string', description: '可选：版本' },
+      kind: { type: 'string', description: 'arduino（默认）/ micropython' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          kind: { type: 'string' },
+          status: { type: 'string' },
+          count: { type: 'number' },
+          lines: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as { kind: string; status: string; count: number; lines: string[] }
+        return text(`# 库（${v.kind}）→ ${v.status}，${v.count} 条`, ...v.lines)
+      },
+    },
+    execute: async (args) => {
+      const kind = str((args as { kind?: unknown }).kind, 'arduino').trim() || 'arduino'
+      const params: Record<string, unknown> = { kind }
+      const query = str((args as { query?: unknown }).query)
+      const name = str((args as { name?: unknown }).name)
+      const version = str((args as { version?: unknown }).version)
+      if (query !== '') params.query = query
+      if (name !== '') params.name = name
+      if (version !== '') params.version = version
+      const payload = await bridge('run', '_shared', 'velxio_libs', JSON.stringify(params))
+      const status = str(payload.status, 'failed')
+      const data = (payload.data ?? {}) as Record<string, unknown>
+      const libraries = (data.libraries ?? []) as Array<Record<string, unknown>>
+      const packages = (data.packages ?? []) as Array<Record<string, unknown>>
+      const rows = libraries.length > 0 ? libraries : packages
+      const lines = rows.slice(0, 15).map((row) =>
+        `· ${str(row.name)}${str(row.version) !== '' ? ` @${str(row.version)}` : ''}`
+        + `${str(row.sentence) !== '' ? ` — ${str(row.sentence).slice(0, 80)}` : ''}`
+        + `${str(row.description) !== '' ? ` — ${str(row.description).slice(0, 80)}` : ''}`)
+      if (status !== 'ok') lines.push(...findings(payload).map((f) => `! ${f}`))
+      return { kind, status, count: rows.length, lines }
+    },
+  })))
+
+  // ---- 21. hw_sim -------------------------------------------------------
+  //
+  // **真跑固件**。在此之前"编译出 hex"是终点——hex 躺在文件里，没人执行它。
+  // 这个工具把 avr8js 跑在宿主 Node 里，于是 `Serial.print` 真的会产字节。
+  //
+  // 关键设计：只做"执行 + 串口/引脚"，**不做可视化**。150+ 元件动画是
+  // Velxio 前端的职责，与"不依赖浏览器"直接冲突；能拿到字节与电平，
+  // 才是无浏览器环境下有意义的那部分。
+  disposers.push(tools.register(defineTool({
+    name: 'hw_sim',
+    description:
+      '跑真实固件（AVR）。action=start 起一个会话（需要 hex）、run 推进仿真并取串口、'
+      + 'stop 停止、status 看状态。'
+      + '**在宿主 Node 进程里用 avr8js 执行真指令**，不需要浏览器、不需要 Velxio 后端。'
+      + '支持 ATmega328p 家族（Uno/Nano/Mini/Pro Mini）；Mega/ESP32 不支持并会如实说明。'
+      + '不提供元件动画——那需要浏览器。',
+    parameters: {
+      action: { type: 'string', description: 'start / run / stop / status' },
+      project: { type: 'string', description: '工程目录名（会话按它索引）' },
+      board: { type: 'string', description: 'start 时可选：板卡 FQBN（默认 arduino:avr:uno）' },
+      hexJson: {
+        type: 'string',
+        description: 'start 时可选：直接给 hex 文本；不给则读 <工程>/velxio_compile.json 里的 hex_content',
+      },
+      maxInstructions: { type: 'number', description: 'run 时可选：最多跑多少条指令（默认 4000 万 ≈ 2.5s 仿真）' },
+      maxBytes: { type: 'number', description: 'run 时可选：攒够多少串口字节就停（默认 4096）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          action: { type: 'string' },
+          status: { type: 'string' },
+          project: { type: 'string' },
+          board: { type: 'string' },
+          running: { type: 'boolean' },
+          instructions: { type: 'number' },
+          simMs: { type: 'number' },
+          serialText: { type: 'string' },
+          serialTotal: { type: 'number' },
+          droppedBytes: { type: 'number' },
+          lines: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          action: string; status: string; project: string; board: string
+          running: boolean; instructions: number; simMs: number
+          serialText: string; serialTotal: number; droppedBytes: number
+          lines: string[]
+        }
+        return text(`# 仿真 · ${v.project || '（无工程）'} → ${v.status}`,
+          ...(v.lines.length > 0 ? v.lines : []),
+          ...(v.serialText !== '' ? ['', '串口输出：', v.serialText] : []))
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project).trim()
+        return project === '' ? {} : viewHint(project, 'velxio')
+      },
+    },
+    execute: async (args) => {
+      const action = str((args as { action?: unknown }).action, 'status').trim() || 'status'
+      const project = str((args as { project?: unknown }).project).trim()
+
+      if (action === 'start') {
+        if (project === '') throw new Error('start 需要 project（会话按工程名索引）')
+        const board = str((args as { board?: unknown }).board, 'arduino:avr:uno')
+        let hex = str((args as { hexJson?: unknown }).hexJson)
+        if (hex.trim() === '') {
+          // 从编译产物里取。读盘逻辑与宿主端点 `simStart` **共用一份**
+          // （`velxio/artifact.ts`）：两处各写一遍会在"异步/同步编译落盘
+          // 形状不同"这个细节上分叉，后果是"工具能起、面板不能"。
+          const survey = await design('survey')
+          const rows = rowsOf(survey as Record<string, unknown>, 'projects')
+          const row = rows.find((entry) => str(entry.id) === project)
+          const projectPath = row === undefined ? '' : str(row.path)
+          const loaded = loadCompiledHex(projectPath)
+          if (loaded.status !== 'ok') {
+            throw new Error((loaded.findings ?? ['读不到编译产物']).join('；'))
+          }
+          hex = loaded.hex ?? ''
+        }
+        const out = sim.start({ project, board, hex })
+        const status = str(out.status, 'failed')
+        const lines: string[] = []
+        if (status === 'ok') {
+          lines.push(`板卡：${board}`)
+          lines.push(`固件：${num(out.hexBytes)} 字节`)
+          lines.push(`会话已起（${str(out.note, '')}）`)
+          if (out.replaced === true) lines.push('（替换了同名的旧会话）')
+          lines.push('', '下一步：hw_sim action=run 推进仿真；hw_serial 读串口。')
+          noteHint(project, 'velxio')
+        } else {
+          lines.push(...findings(out as Record<string, unknown>).map((f) => `! ${f}`))
+        }
+        return {
+          action, status, project, board,
+          running: status === 'ok',
+          instructions: 0, simMs: 0, serialText: '', serialTotal: 0, droppedBytes: 0,
+          lines,
+        }
+      }
+
+      if (action === 'run') {
+        if (project === '') throw new Error('run 需要 project')
+        const out = sim.run(project, {
+          maxInstructions: num((args as { maxInstructions?: unknown }).maxInstructions, 40_000_000),
+          maxBytes: num((args as { maxBytes?: unknown }).maxBytes, 4096),
+        })
+        const status = str(out.status, 'failed')
+        const lines: string[] = []
+        if (status === 'ok') {
+          lines.push(`执行 ${num(out.instructions)} 条指令（${num(out.simMs)} ms 仿真时间）`)
+          lines.push(`停止原因：${str(out.stopReason)}`)
+          lines.push(`串口累计 ${num(out.serialTotal)} 字节，本次新增 ${num(out.serialBytes)}`)
+          if (num(out.droppedBytes) > 0) {
+            lines.push(`⚠ 缓冲容量不够，丢了 ${num(out.droppedBytes)} 字节（数据不完整）`)
+          }
+          const pins = (out.pinEvents ?? []) as Array<Record<string, unknown>>
+          if (pins.length > 0) {
+            lines.push(`引脚变化 ${pins.length} 次（最近）：`
+              + pins.slice(-6).map((p) => `P${str(p.port)}=${num(p.value)}`).join(' '))
+          }
+          noteHint(project, 'velxio')
+        } else {
+          lines.push(...findings(out as Record<string, unknown>).map((f) => `! ${f}`))
+        }
+        return {
+          action, status, project,
+          board: '', running: true,
+          instructions: num(out.instructions), simMs: num(out.simMs),
+          serialText: str(out.serialText), serialTotal: num(out.serialTotal),
+          droppedBytes: num(out.droppedBytes), lines,
+        }
+      }
+
+      if (action === 'stop') {
+        const out = sim.stop(project)
+        return {
+          action, status: str(out.status, 'ok'), project, board: '',
+          running: false, instructions: num(out.instructions), simMs: 0,
+          serialText: '', serialTotal: num(out.serialTotal), droppedBytes: 0,
+          lines: [out.stopped === true
+            ? `已停止（共执行 ${num(out.instructions)} 条指令，串口 ${num(out.serialTotal)} 字节）`
+            : str(out.note, '没有正在跑的会话')],
+        }
+      }
+
+      const out = sim.status(project)
+      const lines: string[] = []
+      if (project !== '') {
+        lines.push(`运行中：${out.running === true ? '是' : '否'}`)
+        if (out.running === true) {
+          lines.push(`板卡：${str(out.board)}`)
+          lines.push(`指令 ${num(out.instructions)}（${num(out.simMs)} ms）`)
+          lines.push(`串口累计 ${num(out.serialTotal)}，待读 ${num(out.serialPending)}`)
+          lines.push(`起于 ${str(out.startedAt)}`)
+        } else {
+          lines.push(...findings(out as Record<string, unknown>).map((f) => `! ${f}`))
+        }
+      } else {
+        lines.push(`活跃会话：${num(out.running)} 个`)
+        for (const row of (out.sessions ?? []) as Array<Record<string, unknown>>) {
+          lines.push(`· ${str(row.project)}（${str(row.board)}，${num(row.instructions)} 指令）`)
+        }
+      }
+      return {
+        action: 'status', status: str(out.status, 'ok'), project,
+        board: str(out.board), running: out.running === true,
+        instructions: num(out.instructions), simMs: num(out.simMs),
+        serialText: '', serialTotal: num(out.serialTotal), droppedBytes: 0, lines,
+      }
+    },
+  })))
+
+  // ---- 22. hw_serial ----------------------------------------------------
+  //
+  // 串口读取单独一个工具，因为它是**每次交互都要用的**动作；塞进 hw_sim 的
+  // action 里会让"只读一下有没有输出"变成一次完整的 run（多跑 4000 万条
+  // 指令）。读与跑分开，代价才可控。
+  disposers.push(tools.register(defineTool({
+    name: 'hw_serial',
+    description:
+      '读仿真会话的串口输出（**只读，不推进 CPU**）。'
+      + '返回自上次读取以来新增的字节。会话必须先由 hw_sim action=start 起。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          status: { type: 'string' },
+          text: { type: 'string' },
+          bytes: { type: 'number' },
+          totalBytes: { type: 'number' },
+          droppedBytes: { type: 'number' },
+          lines: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; status: string; text: string
+          bytes: number; totalBytes: number; droppedBytes: number; lines: string[]
+        }
+        if (v.status !== 'ok') return text(...v.lines)
+        return text(
+          `# ${v.project} 串口（新增 ${v.bytes} 字节 / 累计 ${v.totalBytes}）`,
+          ...(v.droppedBytes > 0
+            ? [`⚠ 缓冲丢弃 ${v.droppedBytes} 字节：输出比读取快，数据不完整`] : []),
+          '',
+          ...(v.text === '' ? ['（本次没有新输出）'] : [v.text]),
+        )
+      },
+    },
+    execute: async (args) => {
+      const project = requireProject(args)
+      const out = sim.serialRead(project)
+      const status = str(out.status, 'failed')
+      const lines = status === 'ok'
+        ? []
+        : findings(out as Record<string, unknown>).map((f) => `! ${f}`)
+      return {
+        project,
+        status,
+        text: str(out.text),
+        bytes: num(out.bytes),
+        totalBytes: num(out.totalBytes),
+        droppedBytes: num(out.droppedBytes),
+        lines,
       }
     },
   })))

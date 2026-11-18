@@ -13,7 +13,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { bridge, design, pythonExecutable, repoRoot } from './bridge.js'
+import { bridge, design, designLong, pythonExecutable, repoRoot } from './bridge.js'
 import type {
   BootstrapPayload,
   BoardPreset,
@@ -406,7 +406,29 @@ export class HwVelxioGateway extends TypertRemoteService {
 
   @Remote('velxioHealth')
   async velxioHealth(): Promise<Record<string, unknown>> {
-    return bridge('velxio_health')
+    // 走 serve 子命令而不是 bridge('velxio_health')：前者报三态
+    // （ok/not_ready/failed）+ 工具链状态 + 端口监听者，后者只报
+    // "HTTP 通不通"。面板需要区分"后端没起"与"起了但缺 arduino-cli"。
+    return design('serve', 'status')
+  }
+
+  /**
+   * 启动/停止 Velxio 后端。
+   *
+   * **不在 TS 里做进程管理**：那会造第二事实源。全部委托 `serve` 子命令，
+   * 这里只转发 action 并原样返回结果。
+   */
+  @Remote('velxioControl')
+  async velxioControl(action: string): Promise<Record<string, unknown>> {
+    const verb = (action ?? '').trim()
+    if (verb !== 'start' && verb !== 'stop' && verb !== 'status') {
+      return { status: 'failed', findings: [`未知动作 ${verb}（start/stop/status）`] }
+    }
+    // `start` 会等 /health 起来（最长 150s），必须有更长的超时，
+    // 否则面板拿到的是被外部砍断的 "Command failed" 而不是结构化结果。
+    return verb === 'start'
+      ? designLong(240_000, 'serve', verb)
+      : design('serve', verb)
   }
 
   @Remote('velxioBoards')
@@ -426,6 +448,86 @@ export class HwVelxioGateway extends TypertRemoteService {
   async capacities(): Promise<Record<string, unknown>> {
     const payload = await bridge('catalog')
     return payload
+  }
+
+  // -- 仿真（AVR，宿主 Node 内）-------------------------------------------
+
+  /**
+   * 起一个 AVR 仿真会话。
+   *
+   * **不经过 Python**：AVR 的 CPU 模型不在 Velxio 后端（那是 ESP32 QEMU），
+   * 而在 `avr8js` 里；它在 Node 中可直接运行。所以这一层是本插件自己的
+   * 运行时，不是"绕过 Velxio"——是补上它在无浏览器场景下缺的那块。
+   *
+   * `hex` 传空串表示"**由宿主去取**"：面板没有文件系统访问，让它读
+   * `<工程>/velxio_compile.json` 是把宿主的能力交给客户端，而客户端
+   * 本来就不该碰盘。
+   */
+  @Remote('simStart')
+  async simStart(project: string, board: string, hex: string): Promise<Record<string, unknown>> {
+    const { start } = await import('./velxio/sim.js')
+    let firmware = hex
+    if (firmware.trim() === '') {
+      const loaded = await this.loadCompiledHex(project)
+      if (loaded.status !== 'ok') return loaded
+      firmware = String(loaded.hex ?? '')
+    }
+    const out = start({ project, board, hex: firmware })
+    if (out.status === 'ok') noteHint(project, 'velxio')
+    return out
+  }
+
+  /**
+   * 从工程目录读上次编译出的 hex。
+   *
+   * 找 `velxio_compile.json`：`hw_compile` / `hw_block` 把后端响应原样落盘，
+   * hex 在 `data.hex_content`（异步路径）或顶层 `hex_content`（同步路径）——
+   * **两种形状都要认**，否则"编译明明成功了，仿真说没有固件"。
+   */
+  private async loadCompiledHex(project: string): Promise<Record<string, unknown>> {
+    const survey = await design('survey')
+    const rows = Array.isArray(survey.projects) ? survey.projects as Array<Record<string, unknown>> : []
+    const row = rows.find((entry) => String(entry.id) === project)
+    const projectPath = row === undefined ? '' : String(row.path ?? '')
+    if (projectPath === '') {
+      return { status: 'not_ready', findings: [
+        `找不到工程 ${project} 的路径；用 hw_projects 确认工程名。`] }
+    }
+    // 读盘与形状兼容都在 `velxio/artifact.ts` —— 与 `hw_sim` 工具共用一份。
+    const { loadCompiledHex } = await import('./velxio/artifact.js')
+    const loaded = loadCompiledHex(projectPath)
+    return loaded.status === 'ok'
+      ? { status: 'ok', hex: loaded.hex }
+      : { status: loaded.status, findings: loaded.findings }
+  }
+
+  @Remote('simRun')
+  async simRun(project: string, maxInstructions?: number,
+               maxBytes?: number): Promise<Record<string, unknown>> {
+    const { run } = await import('./velxio/sim.js')
+    return run(project, {
+      maxInstructions: maxInstructions ?? 40_000_000,
+      maxBytes: maxBytes ?? 4096,
+    })
+  }
+
+  @Remote('simStop')
+  async simStop(project: string): Promise<Record<string, unknown>> {
+    const { stop } = await import('./velxio/sim.js')
+    return stop(project)
+  }
+
+  @Remote('simStatus')
+  async simStatus(project: string): Promise<Record<string, unknown>> {
+    const { status } = await import('./velxio/sim.js')
+    return status(project)
+  }
+
+  /** 只读串口（不推进 CPU）。面板轮询就靠它。 */
+  @Remote('serialRead')
+  async serialRead(project: string): Promise<Record<string, unknown>> {
+    const { serialRead } = await import('./velxio/sim.js')
+    return serialRead(project)
   }
 
   // -- 通知 ---------------------------------------------------------------

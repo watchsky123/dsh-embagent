@@ -439,3 +439,170 @@ export function ExportResult(props: { result: ExportPayload | null }): JSX.Eleme
     </div>
   )
 }
+
+/**
+ * Velxio 后端面板。
+ *
+ * 这个页签存在的理由：`velxioHealth` / `velxioBoards` / `capacities` 三个
+ * 宿主端点**早就实现了，却从来没有被客户端调用过**——是三个死端点。
+ * 面板上完全看不到后端状态，用户只能靠模型调 `hw_block` 才知道"编译失败
+ * 是因为后端没起"。
+ *
+ * 设计纪律（与本仓库其它面板一致）：
+ *
+ * - `not_ready`（没起）与 `failed`（起了但坏）**分开显示**，因为处理方式
+ *   不同：前者点一下启动，后者要看日志。
+ * - **不把"没装工具链"显示成"后端不可用"**：后端可以健康而 arduino-cli
+ *   缺失，那时 `/health` 是 200 但编译会失败。两个状态分开报。
+ */
+export function VelxioPanel(props: PanelProps & {
+  status: VelxioStatus | null
+  onRefresh: () => void
+  onStart: () => void
+  onStop: () => void
+}): JSX.Element {
+  const { status } = props
+  if (status === null) {
+    return (
+      <div className="hwv-body">
+        <div className="hwv-row">
+          <Mark severity="info" />
+          <span className="msg">正在读 Velxio 后端状态…</span>
+        </div>
+        <div className="hwv-inline hwv-block-tight">
+          <button className="hwv-btn" onClick={props.onRefresh}>刷新</button>
+        </div>
+      </div>
+    )
+  }
+  const reachable = status.reachable === true
+  const tri = String(status.status ?? 'failed')
+  const severity: 'ok' | 'error' | 'warning' = reachable ? 'ok' : tri === 'failed' ? 'error' : 'warning'
+  const label = reachable ? '运行中' : tri === 'failed' ? '异常' : '未启动'
+  const findings = Array.isArray(status.findings) ? status.findings.map(String) : []
+  const toolchain = (status.toolchain ?? {}) as Record<string, unknown>
+  return (
+    <div className="hwv-body">
+      <div className={`hwv-row ${severity === 'ok' ? 'ok' : severity === 'error' ? 'err' : ''}`}>
+        <Mark severity={severity} />
+        <span className="msg">
+          Velxio 后端：{label}
+          {typeof status.url === 'string' && <span className="hwv-dim"> · {status.url}</span>}
+        </span>
+      </div>
+      <div className="hwv-dim hwv-block-tight">
+        端口 {String(status.port ?? '')}
+        {status.pid !== undefined && status.pid !== null && ` · PID ${String(status.pid)}`}
+        {typeof status.pid_source === 'string' && status.pid_source !== ''
+          && `（来源 ${status.pid_source}）`}
+      </div>
+      <div className={`hwv-row ${toolchain.arduino_cli_ready === true ? 'ok' : 'err'}`}>
+        <Mark severity={toolchain.arduino_cli_ready === true ? 'ok' : 'error'} />
+        <span className="msg">
+          arduino-cli：{toolchain.arduino_cli_ready === true ? '就绪' : '未安装'}
+          <span className="hwv-dim">
+            {' '}· QEMU {toolchain.qemu_ready === true ? '就绪' : '未安装（ESP32 仿真不可用）'}
+          </span>
+        </span>
+      </div>
+      {!reachable && findings.length > 0 && (
+        <div className="hwv-body hwv-block-tight">
+          {findings.map((line, index) => (
+            <div key={index} className="hwv-dim">! {line}</div>
+          ))}
+        </div>
+      )}
+      <div className="hwv-inline hwv-block-tight">
+        <button className="hwv-btn" onClick={props.onRefresh}>刷新</button>
+        <button className="hwv-btn" onClick={props.onStart} disabled={reachable}>启动</button>
+        <button className="hwv-btn" onClick={props.onStop} disabled={!reachable}>停止</button>
+      </div>
+      <div className="hwv-dim hwv-block-tight">
+        后端是**本机 venv 里的 uvicorn**，不需要浏览器、不需要 Docker。
+        启动后 hw_compile 才可用；hw_circuit 不需要后端。
+      </div>
+    </div>
+  )
+}
+
+/** Velxio 状态载荷：字段都可选——面板对"读不到"和"起来了但缺工具链"必须等重。 */
+export interface VelxioStatus {
+  readonly status?: string
+  readonly reachable?: boolean
+  readonly url?: string
+  readonly port?: number
+  readonly pid?: number | null
+  readonly pid_source?: string
+  readonly findings?: readonly string[]
+  readonly toolchain?: Record<string, unknown>
+}
+
+/**
+ * AVR 仿真面板：起会话、推进、看串口。
+ *
+ * 与 `VelxioPanel` 分开的理由：那个管**后端**（编译服务），这个管**执行**
+ * （avr8js 在宿主 Node 里跑）。两者的失败模式完全不同——后端没起不影响
+ * 仿真（只要已有 hex），而仿真没起也不影响编译。
+ *
+ * **明确不提供**：元件动画。Velxio 前端的 150+ Web Components 需要浏览器，
+ * 与本插件"纯 DSH"的前提冲突。这里给的是**串口字节流**——那是无可视化时
+ * 仍然能验证固件行为的唯一东西。
+ */
+export function SimPanel(props: PanelProps & {
+  sim: AvrSimStatus | null
+  serial: string
+  onStart: () => void
+  onStop: () => void
+  onRun: () => void
+  onRead: () => void
+}): JSX.Element {
+  const { sim } = props
+  const running = sim?.running === true
+  return (
+    <div className="hwv-body">
+      <div className={`hwv-row ${running ? 'ok' : ''}`}>
+        <Mark severity={running ? 'ok' : 'info'} />
+        <span className="msg">
+          AVR 仿真：{running ? `运行中（${String(sim?.board ?? '')}）` : '未启动'}
+          <span className="hwv-dim"> · avr8js 在宿主 Node 内跑，不需要浏览器</span>
+        </span>
+      </div>
+      {running && (
+        <div className="hwv-dim hwv-block-tight">
+          指令 {String(sim?.instructions ?? 0)}（{String(sim?.simMs ?? 0)} ms 仿真）
+          {' · '}串口累计 {String(sim?.serialTotal ?? 0)} 字节
+          {' · '}待读 {String(sim?.serialPending ?? 0)}
+        </div>
+      )}
+      <div className="hwv-inline hwv-block-tight">
+        <button className="hwv-btn" onClick={props.onStart} disabled={running}>起会话</button>
+        <button className="hwv-btn" onClick={props.onRun} disabled={!running}>推进</button>
+        <button className="hwv-btn" onClick={props.onRead} disabled={!running}>读串口</button>
+        <button className="hwv-btn" onClick={props.onStop} disabled={!running}>停止</button>
+      </div>
+      <pre className="hwv-mono hwv-block-tight" style={{
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0,
+        maxHeight: 260, overflow: 'auto', minHeight: 80,
+      }}>
+        {props.serial === '' ? '（串口暂无输出）' : props.serial}
+      </pre>
+      <div className="hwv-dim hwv-block-tight">
+        支持 ATmega328p（Uno/Nano/Mini/Pro Mini）。Mega2560 的寄存器不同，
+        ESP32 需要 QEMU —— 两者都会如实拒绝，不硬套。
+        {' '}不支持板卡时先 hw_compile 换一块，或看 docs/p4-simulation.md。
+      </div>
+    </div>
+  )
+}
+
+/** 仿真状态载荷（字段都可选：读不到 ≠ 没在跑）。 */
+export interface AvrSimStatus {
+  readonly running?: boolean
+  readonly board?: string
+  readonly instructions?: number
+  readonly simMs?: number
+  readonly serialTotal?: number
+  readonly serialPending?: number
+  readonly startedAt?: string
+  readonly findings?: readonly string[]
+}

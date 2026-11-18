@@ -133,21 +133,102 @@ def news_feed() -> dict[str, Any]:
 # 编译 / 芯片 / ROM
 # ---------------------------------------------------------------------------
 
+def _compile_body(files: list[dict[str, str]], board: str, **extra: Any) -> dict[str, Any]:
+    """构造编译请求体。
+
+    **字段名必须是 `board_fqbn`，不是 `board`。**
+
+    后端 ``CompileRequest``（``api/routes/compile.py:595``）声明的是
+    ``board_fqbn: str = "arduino:avr:uno"``，而 pydantic v2 默认
+    ``extra="ignore"`` —— 发 ``{"board": "esp32:esp32:esp32"}`` 不会报错，
+    只会被**静默丢弃**，然后按默认的 uno 编译。那比直接报错更糟：用户会拿到
+    一份"成功"的、给错板子编的固件。
+
+    所以这里用 ``board_fqbn``，并且保留 ``board`` 作为一个**显式的错误**
+    （见 ``compile_start`` 的断言）——两个名字都收会让下一个读代码的人
+    以为哪个都行。
+    """
+    if "board" in extra:
+        raise ValueError(
+            "compile 的板卡字段是 board_fqbn，不是 board；"
+            "传错名字后端会静默按 uno 编译（pydantic 默认 ignore 未知字段）")
+    body: dict[str, Any] = {"files": files, "board_fqbn": board}
+    body.update(extra)
+    return body
+
+
 def compile_sync(files: list[dict[str, str]], board: str, **extra: Any) -> dict[str, Any]:
     """POST /api/compile/ —— 同步编译。冷 ESP-IDF 可能超时，优先用 start/status。"""
-    body = {"files": files, "board": board, **extra}
-    return _request("POST", "/api/compile/", body=body, timeout=extra.pop("_timeout", 180.0))
+    timeout = float(extra.pop("_timeout", 180.0))
+    body = _compile_body(files, board, **extra)
+    out = _request("POST", "/api/compile/", body=body, timeout=timeout)
+    return _verify_board(out, board)
 
 
 def compile_start(files: list[dict[str, str]], board: str, **extra: Any) -> dict[str, Any]:
     """POST /api/compile/start —— 异步编译，返回 job_id。"""
-    body = {"files": files, "board": board, **extra}
+    body = _compile_body(files, board, **extra)
     return _request("POST", "/api/compile/start", body=body, timeout=60.0)
 
 
+def _verify_board(out: dict[str, Any], board: str) -> dict[str, Any]:
+    """回读响应里的板卡，和请求不一致时补一条显式告警。
+
+    后端目前不回显 fqbn，所以这条检查**只在它回显时才生效**；重点是它不会
+    假装成功——一旦将来后端加了回显字段，不匹配会立刻暴露，而不是继续静默。
+    """
+    echoed = out.get("board_fqbn") or out.get("board")
+    if isinstance(echoed, str) and echoed and echoed != board:
+        warnings = out.get("warnings")
+        note = f"请求的板卡是 {board}，后端用的是 {echoed}"
+        if isinstance(warnings, list):
+            warnings.append(note)
+        else:
+            out["warnings"] = [note]
+    return out
+
+
 def compile_status(job_id: str) -> dict[str, Any]:
-    """GET /api/compile/status/{job_id} —— 轮询异步编译结果。"""
+    """GET /api/compile/status/{job_id} —— 轮询异步编译结果。
+
+    **结果在 `result` 子对象里**，不在顶层：顶层只有 `state`/`stage`/
+    `progress` 这些作业进度字段，而 `success`/`hex_content`/`stderr` 全在
+    `result` 下。第一版直接读顶层 `hex_content`，恒为 None——于是"编译成功
+    但拿不到固件"，看起来像编译失败。
+    """
     return _request("GET", f"/api/compile/status/{job_id}", timeout=30.0)
+
+
+def compile_wait(job_id: str, timeout_s: float = 240.0, interval_s: float = 1.2) -> dict[str, Any]:
+    """轮询到作业结束，返回**摊平**的结果。
+
+    摊平的形状：顶层带 `state`/`success`/`hex_content`/`binary_content`/
+    `stderr` 等，与 `/api/compile/`（同步路径）的响应同形。这样调用方不需要
+    知道"异步作业有个 result 子对象"，两条路径的消费方式一致。
+
+    超时**不抛**：返回 `state='timeout'` 与已观测到的进度，让上层如实上报。
+    """
+    import time as _time
+
+    deadline = _time.time() + timeout_s
+    last: dict[str, Any] = {}
+    while _time.time() < deadline:
+        last = compile_status(job_id)
+        state = str(last.get("state") or "")
+        if state in ("done", "error", "cancelled", "failed"):
+            break
+        _time.sleep(interval_s)
+
+    result = last.get("result") if isinstance(last.get("result"), dict) else {}
+    flat: dict[str, Any] = dict(result) if result else {}
+    for key in ("state", "stage", "progress", "error", "job_id", "build_seconds"):
+        if key in last and key not in flat:
+            flat[key] = last[key]
+    flat["job_id"] = job_id
+    flat.setdefault("state", last.get("state", "unknown"))
+    if flat.get("state") == "timeout":
+        flat.setdefault("success", False)
+    return flat
 
 
 def compile_chip(files: list[dict[str, str]], **extra: Any) -> dict[str, Any]:

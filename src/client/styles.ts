@@ -1,20 +1,20 @@
 /**
  * 工作台的样式，一次注入。
  *
- * 分布形式学自 Velxio（`frontend/src/tokens/*` 的纪律，不抄它的值）：
+ * 分布形式学自 Velxio（frontend/src/tokens/* 的纪律，不抄它的值）：
  *
- * 1. **三层颜色**：primitive 层直接坐在宿主 `--dsw-alias-*` 令牌上（不重
- *    复发明灰阶），semantic 层（`--hwv-*`）供组件使用，切主题只重映射
- *    semantic 层。宿主 `ui-theme` 把解析后的主题写到 `body[data-ds-dark-theme]`
- *    （preference=system 时跟随 `prefers-color-scheme`），chrome 引用 alias
+ * 1. **三层颜色**：primitive 层直接坐在宿主 --dsw-alias-* 令牌上（不重
+ *    复发明灰阶），semantic 层（--hwv-*）供组件使用，切主题只重映射
+ *    semantic 层。宿主 ui-theme 把解析后的主题写到 body[data-ds-dark-theme]
+ *    （preference=system 时跟随 prefers-color-scheme），chrome 引用 alias
  *    令牌即自动翻转。
- * 2. **画布调色板按深度索引**（`--hwv-p-*`，仿 `--wb-0…13`）：canvas 与
- *    three.js 不跟 CSS，`getComputedStyle` 对自定义属性返回**声明原文**，
- *    `var()` 链不会解析成颜色——所以浅/深各一套**字面量**，值与宿主两套
- *    调色板对齐，裸环境（无宿主样式）也能解析。翻转监听在 `theme.ts`。
+ * 2. **画布调色板按深度索引**（--hwv-p-*，仿 --wb-0…13）：canvas 与
+ *    three.js 不跟 CSS，getComputedStyle 对自定义属性返回**声明原文**，
+ *    var() 链不会解析成颜色——所以浅/深各一套**字面量**，值与宿主两套
+ *    调色板对齐，裸环境（无宿主样式）也能解析。翻转监听在 theme.ts。
  * 3. **刻度令牌**：spacing 4pt 基数、radius 按角色、z-index 显式分级
  *    （禁魔法数）、motion 三时长三缓动 + reduced-motion 归零、焦点环
- *    全局 `:focus-visible`。组件里新代码不许写裸 px/hex/zIndex。
+ *    全局 :focus-visible。组件里新代码不许写裸 px/hex/zIndex。
  *
  * @module dsh-hw-velxio/client/styles
  */
@@ -25,6 +25,14 @@ const CSS = `
   --hwv-space-1: 2px;  --hwv-space-2: 4px;  --hwv-space-3: 6px;
   --hwv-space-4: 8px;  --hwv-space-5: 12px; --hwv-space-6: 16px;
   --hwv-space-7: 20px; --hwv-space-8: 24px;
+
+  /* 字阶（Linear 的紧凑阶梯）：只有三档 + 一个标题档。
+     没有 10px —— 低于 11px 在 1x DPI 上就要凑近看，而"元信息"不是
+     "可以看不清的信息"。 */
+  --hwv-fs-caption: 11px;   /* 计数、提示、元信息 */
+  --hwv-fs-body: 12px;      /* 默认正文与按钮 */
+  --hwv-fs-title: 13px;     /* 面板标题（配 600 字重） */
+  --hwv-fs-heading: 15px;   /* 区块标题 */
 
   --hwv-radius-xs: 4px; --hwv-radius-sm: 6px; --hwv-radius-md: 10px;
   --hwv-radius-pill: 9999px;
@@ -69,40 +77,80 @@ const CSS = `
   --hwv-est: var(--dsw-static-violet-600, #7c3aed);
   --hwv-hover: var(--dsw-alias-interactive-bg-hover, #2631480f);
 
-  /* 画布调色板按深度索引：地面 → 板 → 面板 → 描边 → 文字 → 语义色。
-     three.js 专用（3d 后缀）必须是**无 alpha 纯色**（Color 不解析 alpha）。 */
-  --hwv-p-canvas-bg: #f7f8fa;        /* 床 */
-  --hwv-p-grid: rgba(15, 17, 21, 0.06);
-  --hwv-p-board-fill: #e9f2ec;       /* 板上 */
-  --hwv-p-board-stroke: #7fae8f;
-  --hwv-p-hole-fill: #eef1f4;
-  --hwv-p-hole-stroke: rgba(15, 17, 21, 0.35);
-  --hwv-p-plain-stroke: rgba(15, 17, 21, 0.30);
-  --hwv-p-label: #1b1b1c;            /* 前景文字 */
-  --hwv-p-est-mark: #7c3aed;
-  --hwv-p-sel: #1971c2;              /* 选择/强调 */
-  --hwv-p-err: #ec1313;
-  --hwv-p-warn: #dd8629;
-  --hwv-p-fill-datasheet: #3b82f6;   /* 尺寸来源四态 */
-  --hwv-p-fill-measured: #22c55e;
-  --hwv-p-fill-derived: #7aaaff;
-  --hwv-p-fill-estimated: #a78bfa;
-  --hwv-p-fill-error: #f25a5a;       /* 判定着色 */
-  --hwv-p-fill-warn: #f7ad31;
-  --hwv-p-scene-bg: #eef1f4;         /* 3D：床/板/线/壳 */
-  --hwv-p-board3d: #cfe9d6;
-  --hwv-p-board3d-edge: #5f8f70;
-  --hwv-p-hole3d: #43454a;
-  --hwv-p-edge: #81858c;
-  --hwv-p-wire3d: #1971c2;
-  --hwv-p-shell3d: #f59e0b;
-  --hwv-p-pad-fill: #c8a951;       /* 焊盘（金属）：比元件本体醒目 */
-  --hwv-p-pad-stroke: #8a6d1f;
-  --hwv-p-pad3d: #d4af37;
-  --hwv-p-trace: #c45c26;          /* 铜线（已布线走线） */
-  --hwv-p-grid3d-major: #cfd3d6;
-  --hwv-p-grid3d-minor: #e1e5ee;
-  --hwv-p-wire-l: 45%;               /* 2D 导线 HSL 亮度：浅底要深才看得清 */
+  /* 画布调色板 —— **分两层**：材质层（--hwv-m-*）+ 引用层（--hwv-p-*）。
+   *
+   * 为什么分层：同一个概念在 2D 与 3D 各有一个名字（board-fill / board3d），
+   * 以前它们各自写死一个 hex，改一个忘一个就会出现"2D 浅绿、3D 深绿"同一工程
+   * 两个板色。现在材质只有一处取值，2D/3D 都引用它。
+   *
+   * **为什么不用 color-mix()/oklab() 派生**：three.js 的 Color 只认
+   * hex/rgb/hsl，遇到 oklab() / color-mix() 会静默退回黑色——画布不报错，
+   * 只是颜色错了。所以"跟随系统"靠下面深色块**整层替换材质值**实现，
+   * 而不是靠 CSS 色彩函数。
+   *
+   * chrome 语义色（标签/错误/警告/线/强调）**引用 --hwv-* 语义令牌**，
+   * 那些令牌本身坐在宿主 --dsw-alias-* 上，因此随系统主题自动翻转；
+   * 材质色（板/焊盘/铜线/外壳）是"物理颜色"，深浅两套各自定义。 */
+
+  /* ── 材质层：唯一取值处 ── */
+  --hwv-m-board: #e9f2ec;
+  --hwv-m-board-edge: #7fae8f;
+  --hwv-m-board-3d: #cfe9d6;
+  --hwv-m-board-3d-edge: #5f8f70;
+  --hwv-m-hole-fill: #eef1f4;
+  --hwv-m-hole-3d: #43454a;
+  --hwv-m-pad: #c8a951;          /* 焊盘（金属）：比元件本体醒目 */
+  --hwv-m-pad-stroke: #8a6d1f;
+  --hwv-m-pad-3d: #d4af37;
+  --hwv-m-wire: #1971c2;         /* 3D 导线 */
+  --hwv-m-trace: #c45c26;        /* 铜线（已布线走线） */
+  --hwv-m-shell: #f59e0b;        /* 外壳 */
+  --hwv-m-edge: #81858c;
+  --hwv-m-grid3d-major: #cfd3d6;
+  --hwv-m-grid3d-minor: #e1e5ee;
+  --hwv-m-fill-datasheet: #3b82f6;   /* 尺寸来源四态 */
+  --hwv-m-fill-measured: #22c55e;
+  --hwv-m-fill-derived: #7aaaff;
+  --hwv-m-fill-estimated: #a78bfa;
+  --hwv-m-fill-error: #f25a5a;       /* 判定着色 */
+  --hwv-m-fill-warn: #f7ad31;
+  --hwv-m-wire-l: 45%;               /* 2D 导线 HSL 亮度：浅底要深才看得清 */
+
+  /* ── 引用层：2D/3D 各自的命名都指到这里 ── */
+  --hwv-p-canvas-bg: var(--hwv-panel-2);   /* 床 = 面板底 */
+  --hwv-p-scene-bg: var(--hwv-panel-2);    /* 3D 床 */
+  --hwv-p-grid: var(--hwv-line);
+  --hwv-p-plain-stroke: var(--hwv-line);
+  --hwv-p-hole-stroke: var(--hwv-line);
+  --hwv-p-label: var(--hwv-text);
+  /* 唯一强调色：紫（--hwv-est）。选择环与"估算"标记共用它——
+     两者靠几何区分（环 vs 角标），不靠色相区分，所以不算第二个强调色。 */
+  --hwv-p-est-mark: var(--hwv-est);
+  --hwv-p-sel: var(--hwv-est);
+  --hwv-p-err: var(--hwv-err);
+  --hwv-p-warn: var(--hwv-warn);
+  --hwv-p-board-fill: var(--hwv-m-board);
+  --hwv-p-board-stroke: var(--hwv-m-board-edge);
+  --hwv-p-board3d: var(--hwv-m-board-3d);
+  --hwv-p-board3d-edge: var(--hwv-m-board-3d-edge);
+  --hwv-p-hole-fill: var(--hwv-m-hole-fill);
+  --hwv-p-hole3d: var(--hwv-m-hole-3d);
+  --hwv-p-pad-fill: var(--hwv-m-pad);
+  --hwv-p-pad-stroke: var(--hwv-m-pad-stroke);
+  --hwv-p-pad3d: var(--hwv-m-pad-3d);
+  --hwv-p-wire3d: var(--hwv-m-wire);
+  --hwv-p-trace: var(--hwv-m-trace);
+  --hwv-p-shell3d: var(--hwv-m-shell);
+  --hwv-p-edge: var(--hwv-m-edge);
+  --hwv-p-grid3d-major: var(--hwv-m-grid3d-major);
+  --hwv-p-grid3d-minor: var(--hwv-m-grid3d-minor);
+  --hwv-p-fill-datasheet: var(--hwv-m-fill-datasheet);
+  --hwv-p-fill-measured: var(--hwv-m-fill-measured);
+  --hwv-p-fill-derived: var(--hwv-m-fill-derived);
+  --hwv-p-fill-estimated: var(--hwv-m-fill-estimated);
+  --hwv-p-fill-error: var(--hwv-m-fill-error);
+  --hwv-p-fill-warn: var(--hwv-m-fill-warn);
+  --hwv-p-wire-l: var(--hwv-m-wire-l);
 
   display: flex;
   flex-direction: column;
@@ -251,7 +299,51 @@ const CSS = `
   border-bottom: 1px solid var(--hwv-line); color: var(--hwv-dim);
   font-size: 11px; flex: 0 0 auto;
 }
-.hwv-canvas-wrap { position: relative; flex: 1 1 auto; min-height: 0; z-index: var(--hwv-z-canvas); }
+/* 画布容器。
+   overflow:hidden —— 画面不溢出到相邻面板（以前没有，缩放后元件会画到
+   检查器上）。
+   overscroll-behavior:contain —— 滚轮缩放到边界时**不链式**传给祖先滚动
+   容器。这是 wheel 修复的第二层防御：第一层是非 passive 监听里的
+   preventDefault，两层都要有——监听负责「缩放时不许滚」，contain 负责
+   「万一还有残余 delta 也不许滚」。 */
+.hwv-canvas-wrap {
+  position: relative; flex: 1 1 auto; min-height: 0;
+  z-index: var(--hwv-z-canvas);
+  overflow: hidden;
+  overscroll-behavior: contain;
+  outline: none;
+}
+.hwv-canvas-wrap:focus-visible {
+  box-shadow: inset var(--hwv-focus);
+}
+/* 缩放胶囊：右下角，glass 风格但不加渐变（Linear 纪律：靠 surface + hairline）。 */
+.hwv-zoom {
+  position: absolute; right: var(--hwv-space-3); bottom: var(--hwv-space-3);
+  z-index: var(--hwv-z-actionbar);
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--hwv-line);
+  border-radius: var(--hwv-radius-md);
+  background: var(--hwv-panel);
+  overflow: hidden;
+}
+.hwv-zoom-btn, .hwv-zoom-pct {
+  border: 0; background: transparent; color: var(--hwv-text);
+  font: inherit; cursor: pointer;
+  height: 26px; padding: 0 var(--hwv-space-2);
+  min-width: 26px;
+}
+.hwv-zoom-pct {
+  min-width: 52px; font-size: 11px; color: var(--hwv-dim);
+  font-variant-numeric: tabular-nums;
+  border-left: 1px solid var(--hwv-line);
+  border-right: 1px solid var(--hwv-line);
+}
+.hwv-zoom-btn:hover, .hwv-zoom-pct:hover {
+  background: var(--hwv-hover); color: var(--hwv-text);
+}
+.hwv-zoom-btn:focus-visible, .hwv-zoom-pct:focus-visible {
+  outline: none; box-shadow: var(--hwv-focus);
+}
 /* 画布绝对定位铺满父级：不依赖父级 height 是"确定值"，
    否则 flex 列里的百分比高度在部分浏览器算成 0（空白画布）。 */
 .hwv-canvas {
@@ -295,7 +387,7 @@ const CSS = `
 .hwv-inspector > h4:first-child { margin-top: var(--hwv-space-1); }
 /* 检查器里的表单小件 */
 .hwv-form { display: flex; flex-direction: column; gap: var(--hwv-space-3); }
-.hwv-field-label { font-size: 10px; color: var(--hwv-dim); }
+.hwv-field-label { font-size: var(--hwv-fs-caption); color: var(--hwv-dim); }
 .hwv-row-3 { display: flex; gap: var(--hwv-space-2); }
 .hwv-row-3 > * { flex: 1 1 0; min-width: 0; }
 .hwv-btn-row { display: flex; flex-wrap: wrap; gap: var(--hwv-space-3); margin-top: var(--hwv-space-4); }
@@ -354,9 +446,68 @@ const CSS = `
 }
 .hwv-tab:hover { color: var(--hwv-text); }
 .hwv-tab.active { background: var(--hwv-panel-2); color: var(--hwv-text); border-color: var(--hwv-line); }
-.hwv-tab .count { margin-left: 5px; font-size: 10px; opacity: .8; }
+.hwv-tab .count { margin-left: 5px; font-size: var(--hwv-fs-caption); opacity: .8; }
 .hwv-tab .count.err { color: var(--hwv-err); }
 .hwv-tab .count.warn { color: var(--hwv-warn); }
+
+/* 分组页签上的**点**（不是数字）：一个组里有 5 个分区，"3" 究竟是 3 个错误
+   还是 3 个未决？聚合数字必然含混，所以分组只报"这组有问题"，数字留给分区。 */
+.hwv-tab-dot {
+  display: inline-block; width: 5px; height: 5px; margin-left: 6px;
+  border-radius: 50%; vertical-align: middle;
+}
+.hwv-tab-dot.err { background: var(--hwv-err); }
+.hwv-tab-dot.warn { background: var(--hwv-warn); }
+
+/* 组内分区（segmented）。比页签更轻：它不改"我在哪个组"，只切"看哪一段"。 */
+.hwv-subtabs {
+  display: flex; gap: var(--hwv-space-1); flex-wrap: wrap;
+  padding: var(--hwv-space-1) var(--hwv-space-4);
+  border-bottom: 1px solid var(--hwv-line);
+  flex: 0 0 auto;
+}
+.hwv-subtab {
+  padding: 3px var(--hwv-space-3);
+  border: 1px solid transparent; border-radius: var(--hwv-radius-sm);
+  background: transparent; color: var(--hwv-dim);
+  cursor: pointer; font-size: 11px;
+  transition: var(--hwv-transition-color);
+}
+.hwv-subtab:hover { color: var(--hwv-text); background: var(--hwv-hover); }
+.hwv-subtab.active {
+  color: var(--hwv-text); background: var(--hwv-panel-2);
+  border-color: var(--hwv-line);
+}
+.hwv-subtab .count { margin-left: 4px; font-size: var(--hwv-fs-caption); opacity: .85; }
+.hwv-subtab .count.err { color: var(--hwv-err); }
+.hwv-subtab .count.warn { color: var(--hwv-warn); }
+
+/* AI 抽屉：从右侧滑入的浮层，不是压在工具栏里的一个按钮。
+   动效走 --hwv-ease-out；prefers-reduced-motion 时由根令牌把时长降到 1ms
+   （见文件顶部）。 */
+/* AI 入口按钮：和普通按钮同高，但**语义不同**（打开抽屉而非执行动作），
+   用虚线边框 + 强调色文字提示它不是主操作之一。 */
+.hwv-ai-toggle { border-style: dashed; color: var(--hwv-est); }
+.hwv-ai-toggle.on { border-style: solid; background: var(--hwv-panel-2); }
+.hwv-drawer-scrim {
+  position: fixed; inset: 0; z-index: var(--hwv-z-scrim, 40);
+  background: rgba(0, 0, 0, 0.28);
+}
+.hwv-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(420px, 92vw);
+  z-index: var(--hwv-z-drawer, 41);
+  display: flex; flex-direction: column; gap: var(--hwv-space-3);
+  padding: var(--hwv-space-5);
+  background: var(--hwv-panel);
+  border-left: 1px solid var(--hwv-line);
+  overflow: auto;
+  animation: hwv-drawer-in var(--hwv-dur-base) var(--hwv-ease-out);
+}
+@keyframes hwv-drawer-in {
+  from { transform: translateX(12px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
 
 .hwv-body { overflow: auto; padding: var(--hwv-space-4) var(--hwv-space-5); flex: 1 1 auto; min-height: 0; }
 .hwv-row {
@@ -438,7 +589,7 @@ const CSS = `
    输入框里的灰字一敲键盘就没了，标签不会 */
 .hwv-form-grid { display: flex; gap: var(--hwv-space-4); flex-wrap: wrap; }
 .hwv-field { display: flex; flex-direction: column; gap: var(--hwv-space-2); flex: 1 1 160px; min-width: 0; }
-.hwv-field-label { font-size: 10px; color: var(--hwv-dim); }
+.hwv-field-label { font-size: var(--hwv-fs-caption); color: var(--hwv-dim); }
 .hwv-select-wide { max-width: none; width: 100%; }
 .hwv-start-foot { display: flex; align-items: center; gap: var(--hwv-space-4); flex-wrap: wrap; }
 .hwv-hint { font-size: 11px; color: var(--hwv-dim); line-height: 1.7; }
@@ -525,43 +676,38 @@ const CSS = `
   outline: 1px solid var(--hwv-p-plain-stroke);
 }
 
-/* ── 8. 深色主题：宿主 ui-theme 在 body 写 data-ds-dark-theme。chrome 不动
-      （alias 令牌已随主题翻），只翻命令式调色板（按深度索引值逐一对应）。 */
+/* ── 8. 深色主题：宿主 ui-theme 在 body 写 data-ds-dark-theme。
+ *
+ * 这里**只覆盖材质层**（--hwv-m-*）：引用层（--hwv-p-*）是 var()，
+ * 自动跟着材质走。chrome 语义色本来就坐在 alias 令牌上，不用管。
+ *
+ * 以前这里逐个重写 28 个 --hwv-p-*，和浅色块是两份平行清单——加一个颜色
+ * 要改两处，漏一次就出现"浅色对了、深色没跟上"。现在只有材质这一处。 */
 body[data-ds-dark-theme] .hwv-root {
-  --hwv-p-canvas-bg: #101216;
-  --hwv-p-grid: rgba(255, 255, 255, 0.05);
-  --hwv-p-board-fill: #1d3a2a;
-  --hwv-p-board-stroke: #4f8f66;
-  --hwv-p-hole-fill: #0c0e12;
-  --hwv-p-hole-stroke: rgba(255, 255, 255, 0.4);
-  --hwv-p-plain-stroke: rgba(255, 255, 255, 0.3);
-  --hwv-p-label: #e6edf3;
-  --hwv-p-est-mark: #c8a6ff;
-  --hwv-p-sel: #74c0fc;
-  --hwv-p-err: #f85149;
-  --hwv-p-warn: #d29922;
-  --hwv-p-fill-datasheet: #2f6fb5;
-  --hwv-p-fill-measured: #2f9e5f;
-  --hwv-p-fill-derived: #4d6ea6;
-  --hwv-p-fill-estimated: #6d5a9e;
-  --hwv-p-fill-error: #8f2f2f;
-  --hwv-p-fill-warn: #8f6f2f;
-  --hwv-p-scene-bg: #15171c;
-  --hwv-p-board3d: #24553a;
-  --hwv-p-board3d-edge: #5a9f74;
-  --hwv-p-hole3d: #6e7683;
-  --hwv-p-edge: #9aa3af;
-  --hwv-p-wire3d: #4c9aff;
-  --hwv-p-shell3d: #f59e0b;
-  --hwv-p-pad-fill: #b8963f;
-  --hwv-p-pad-stroke: #e0c268;
-  --hwv-p-pad3d: #d4af37;
-  --hwv-p-trace: #e07b4a;
-  --hwv-p-grid3d-major: #43454a;
-  --hwv-p-grid3d-minor: #2c2c2e;
-  --hwv-p-wire-l: 60%;
-}
-`
+  --hwv-m-board: #1d3a2a;
+  --hwv-m-board-edge: #4f8f66;
+  --hwv-m-board-3d: #24553a;
+  --hwv-m-board-3d-edge: #5a9f74;
+  --hwv-m-hole-fill: #0c0e12;
+  --hwv-m-hole-3d: #6e7683;
+  --hwv-m-pad: #b8963f;
+  --hwv-m-pad-stroke: #e0c268;
+  --hwv-m-pad-3d: #d4af37;
+  --hwv-m-wire: #4c9aff;
+  --hwv-m-trace: #e07b4a;
+  --hwv-m-shell: #f59e0b;
+  --hwv-m-edge: #9aa3af;
+  --hwv-m-grid3d-major: #43454a;
+  --hwv-m-grid3d-minor: #2c2c2e;
+  --hwv-m-fill-datasheet: #2f6fb5;
+  --hwv-m-fill-measured: #2f9e5f;
+  --hwv-m-fill-derived: #4d6ea6;
+  --hwv-m-fill-estimated: #6d5a9e;
+  --hwv-m-fill-error: #8f2f2f;
+  --hwv-m-fill-warn: #8f6f2f;
+  --hwv-m-wire-l: 60%;
+}`
+
 
 let injected = false
 

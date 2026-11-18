@@ -48,7 +48,10 @@ const fakeTools = {
 const ctx = { get: (name) => (name === 'tools' ? fakeTools : undefined) }
 const disposers = mod.registerTools(ctx)
 check('registerTools 返回 disposers', Array.isArray(disposers) && disposers.length > 0)
-check('注册了 18 个工具', registered.length === 18, `实际 ${registered.length}`)
+// 数量**不写死**：每加一个工具就要改一次常数，而这个断言的真实意图是
+// "没有工具在注册时静默丢失"。下面对 EXPECTED_TOOLS 的逐个检查才是那条
+// 保证；这里只要求"至少覆盖清单"。
+check('注册数不少于工具清单', registered.length >= 18, `实际 ${registered.length}`)
 
 // 工具清单必须与 README / 文档一致。少一个 = 模型不知道那条路存在
 // （`hw_roles` 就是这样补进来的：之前"需求 → 装配"只有 CLI，没有工具）。
@@ -57,6 +60,10 @@ const EXPECTED_TOOLS = [
   'hw_crosscheck', 'hw_export', 'hw_block', 'hw_survey', 'hw_new',
   'hw_put', 'hw_setpart', 'hw_deferred', 'hw_workspace', 'hw_synth',
   'hw_roles', 'hw_scene', 'hw_log',
+  // P3：Velxio 能力从"只有 hw_block 摸黑传 JSON"提升为一等工具。
+  'hw_velxio', 'hw_compile', 'hw_circuit', 'hw_libs',
+  // P1：验证阶梯（审查机）。
+  'hw_ladder', 'hw_sim', 'hw_serial',
 ]
 for (const name of EXPECTED_TOOLS) {
   check(`工具 ${name} 存在`, registered.some((tool) => tool.name === name))
@@ -120,6 +127,33 @@ for (const name of ['hw_projects', 'hw_snapshot']) {
   const tool = byName.get(name)
   const d = String(tool?.description ?? '')
   check(`${name} 标为只读`, d.includes('只读'), d.slice(0, 60))
+}
+
+// ---- 5b. 验证阶梯：描述必须把"截断"和"不是 pass"说清楚 ----------------
+// 这两点是 hw_ladder 存在的理由。描述里没写，模型会以为它和 hw_check 等价，
+// 于是拿 V2 的结果当"全部通过"。
+{
+  const d = String(byName.get('hw_ladder')?.description ?? '')
+  check('hw_ladder 列出 V0→V6 七层', /V0/.test(d) && /V6/.test(d), d.slice(0, 80))
+  check('hw_ladder 说明硬失败会截断下游', d.includes('截断'), d.slice(0, 120))
+  check('hw_ladder 点明下游是 not_run 而非 pass',
+    d.includes('not_run') || d.includes('不是 pass'), d.slice(0, 160))
+  // `parameters` 是 JSON Schema（`{type, properties}`），不是名字映射。
+  const params = Object.keys(byName.get('hw_ladder')?.parameters?.properties ?? {})
+  check('hw_ladder 可指定层（levels）', params.includes('levels'), params.join(','))
+  check('hw_ladder 可关闭截断（stopOnHard）', params.includes('stopOnHard'),
+    params.join(','))
+  check('hw_ladder 可调体素间距（pitchMm）', params.includes('pitchMm'),
+    params.join(','))
+}
+
+// ---- 5c. 仿真三件套：描述必须诚实说明"只有 AVR" ------------------------
+{
+  const d = String(byName.get('hw_sim')?.description ?? '')
+  check('hw_sim 说明可跑真实固件', d.includes('固件') || d.includes('指令'), d.slice(0, 80))
+  check('hw_sim 如实说明 ESP32/Mega 不支持',
+    d.includes('ESP32') && (d.includes('不支持') || d.includes('不提供')),
+    d.slice(0, 200))
 }
 
 // ---- 6. 参数形态：Typert 会拒绝解构/默认值，工具参数表也得是平的 --------

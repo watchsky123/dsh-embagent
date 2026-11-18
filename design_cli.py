@@ -309,19 +309,19 @@ def cmd_workspace(args: list[str]) -> dict[str, Any]:
         if len(args) < 2:
             return {"status": "failed", "findings": ["workspace set 需要 <绝对路径>"]}
         try:
-            config = ws.set_workspace(args[1])
+            ws.set_workspace(args[1])
         except ValueError as exc:
             return {"status": "failed", "findings": [str(exc)]}
         root = ws.workspace_root()
         root.mkdir(parents=True, exist_ok=True)
-        return {"status": "ok", "workspace": str(root), "config": config,
-                "projects": [p.name for p in sorted(root.iterdir())
-                             if p.is_dir() and (p / "design.json").is_file()]}
+        # 与 show 返回**同一组字段**：缺 source/writable 会让面板在刚切换完
+        # 这一刻显示"来源：unknown"，而 show 又是对的——同一个事实两种形状。
+        return _describe_workspace(root, changed=True, projects=_project_ids(root))
     if action == "default":
         target = ws.default_workspace()
         target.mkdir(parents=True, exist_ok=True)
-        config = ws.save_config({"workspace": str(target)})
-        return {"status": "ok", "workspace": str(target), "config": config}
+        ws.save_config({"workspace": str(target)})
+        return _describe_workspace(target, changed=True, projects=_project_ids(target))
     if action == "create":
         # ``workspace create <parent> <name>``：在**用户指定的父目录**下建子目录
         # 并切换过去。(3) 的语义：新建工程落在 DSH 当前工作区的子文件夹里。
@@ -344,17 +344,27 @@ def cmd_workspace(args: list[str]) -> dict[str, Any]:
         except OSError as exc:
             return {"status": "failed", "findings": [f"无法创建 {target}：{exc}"]}
         config = ws.save_config({"workspace": str(target)})
-        return {"status": "ok", "workspace": str(target), "created": True,
-                "config": config, "projects": []}
+        return _describe_workspace(target, changed=True, created=True,
+                                   projects=[], config=config)
     if action != "show":
         return {"status": "failed",
-                "findings": [f"未知 workspace 动作 {action!r}（show/set/default）"]}
+                "findings": [f"未知 workspace 动作 {action!r}（show/set/create/default）"]}
 
-    root = ws.workspace_root()
-    # `source` 说清这个根是怎么来的——用户/环境变量/默认，面板要能显示。
-    env = bool(__import__("os").environ.get("HWV_WORKSPACE", "").strip())
+    return _describe_workspace(ws.workspace_root(), changed=False)
+
+
+def _describe_workspace(root: Path, changed: bool, **extra: Any) -> dict[str, Any]:
+    """workspace 各动作的统一返回形状（show/set/create/default 共用）。
+
+    `source` 说清这个根从哪来（env/config/default），`writable` 是**写探针**
+    的结果而不是猜的——只读目录必须在保存前暴露，而不是等到写失败。
+    """
+    import os as _os
+    from .design import workspace as ws
+
+    env = bool(_os.environ.get("HWV_WORKSPACE", "").strip())
     configured = isinstance(ws.load_config().get("workspace"), str)
-    return {
+    body: dict[str, Any] = {
         "status": "ok",
         "workspace": str(root),
         "exists": root.is_dir(),
@@ -362,7 +372,23 @@ def cmd_workspace(args: list[str]) -> dict[str, Any]:
         "source": "env" if env else ("config" if configured else "default"),
         "default": str(ws.default_workspace()),
         "config_path": str(ws.config_path()),
+        "changed": changed,
     }
+    body.update(extra)
+    return body
+
+
+def _project_ids(root: Path) -> list[str]:
+    """工作区里**真正的工程**：有 design.json 的那些目录。
+
+    以前 `bridge status` 把根目录下每个文件夹都当工程（连 `logs/`、
+    `*-master/` 都算），于是列表里有 15 项而真工程只有 5 个。
+    """
+    try:
+        return [p.name for p in sorted(root.iterdir())
+                if p.is_dir() and (p / "design.json").is_file()]
+    except OSError:
+        return []
 
 
 def _probe_writable(path) -> bool:
@@ -907,6 +933,382 @@ def cmd_check(args: list[str]) -> dict[str, Any]:
     return {"status": "ok", **result}
 
 
+def cmd_ladder(args: list[str]) -> dict[str, Any]:
+    """``ladder <id> [--levels V0,V1] [--no-truncate] [--pitch 0.5]``。
+
+    V0→V6 阶梯：便宜的先跑，V0/V1 硬失败就截断下游（记 `not_run`，
+    **不是 pass**）。不带 id 时只输出阶梯说明。
+    """
+    from .design import ladder as ladder_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **ladder_module.describe()}
+
+    levels: list[str] | None = None
+    if "--levels" in args:
+        try:
+            raw = args[args.index("--levels") + 1]
+        except IndexError:
+            return {"status": "failed", "findings": ["--levels 需要一个列表"]}
+        levels = [x.strip() for x in raw.split(",") if x.strip()]
+    pitch = 0.5
+    if "--pitch" in args:
+        try:
+            pitch = float(args[args.index("--pitch") + 1])
+        except (IndexError, ValueError):
+            return {"status": "failed", "findings": ["--pitch 需要一个数字"]}
+    inputs = None
+    if "--inputs" in args:
+        try:
+            inputs = json.loads(args[args.index("--inputs") + 1])
+        except (IndexError, ValueError) as exc:
+            return {"status": "failed",
+                    "findings": [f"--inputs 需要一个 JSON：{exc}"]}
+
+    store, design = _load(args[0])
+    try:
+        result = ladder_module.run_ladder(
+            design, levels=levels,
+            stop_on_hard="--no-truncate" not in args,
+            pitch_mm=pitch, inputs=inputs)
+    except ValueError as exc:
+        return {"status": "failed", "findings": [str(exc)]}
+
+    payload = result.to_dict()
+    store.write("ladder.json", payload)
+    return {"status": "ok", **payload}
+
+
+def cmd_claims(args: list[str]) -> dict[str, Any]:
+    """``claims <id> [--evaluate] [--priority P0,P1]``。
+
+    从设计**推导**断言（规则生成，不由 AI 写），然后求值。
+    `--evaluate` 只求值不重写 `claims.json`（用于对比）。
+    """
+    from .design import claims as claims_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **claims_module.describe()}
+
+    priorities: set[str] | None = None
+    if "--priority" in args:
+        try:
+            raw = args[args.index("--priority") + 1]
+        except IndexError:
+            return {"status": "failed", "findings": ["--priority 需要一个列表"]}
+        priorities = {x.strip().upper() for x in raw.split(",") if x.strip()}
+
+    store, design = _load(args[0])
+    items = claims_module.derive(design)
+    if priorities is not None:
+        items = [c for c in items if c.priority in priorities]
+
+    report = claims_module.check(design, items)
+    payload = report.to_dict()
+    payload["derived"] = len(items)
+    if "--evaluate" not in args:
+        store.write("claims.json", payload)
+    return {"status": "ok", **payload}
+
+
+def cmd_assert(args: list[str]) -> dict[str, Any]:
+    """``assert <id> --remove <REF>``：**删除即失败**的验证入口。
+
+    把 REF 从内存副本里剔除后重新求值断言，报出哪些断言因此变红。
+    原设计一个字节都不改。`reddened` 为空说明断言机制没建对。
+    """
+    from .design import claims as claims_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **claims_module.describe()}
+    if "--remove" not in args:
+        return {"status": "not_ready",
+                "findings": ["需要 --remove <REF>：删掉哪个元件"]}
+    try:
+        ref = args[args.index("--remove") + 1]
+    except IndexError:
+        return {"status": "failed", "findings": ["--remove 需要一个元件号"]}
+
+    store, design = _load(args[0])
+    impact = claims_module.removal_impact(design, ref)
+    if impact is None:
+        return {"status": "not_ready",
+                "findings": [f"工程 {args[0]!r} 里没有元件 {ref}"]}
+
+    basis_report = claims_module.check(design)
+    impact["basis"] = {
+        "claims": basis_report.counts(),
+        "note": "移除前的基线；reddened 是相对它从 pass 掉到 fail 的那些",
+    }
+    return {"status": "ok", **impact}
+
+
+def cmd_justify(args: list[str]) -> dict[str, Any]:
+    """``justify <id> [--ref R1] [--write] [--json]`` —— 归因反推。
+
+    从网表拓扑反推每个元件**为什么在板上**。判不出时返回 `unknown`
+    并说清为什么判不出（哈希 kind？没有网表？），不编理由。
+
+    `--write` 把结论写进 `design.json` 的 `part.justification`
+    （默认不写：推导结果混进规范模型后，分不清哪条是人说的）。
+    """
+    from .design import justify as justify_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **justify_module.describe()}
+
+    store, design = _load(args[0])
+    wanted: str | None = None
+    if "--ref" in args:
+        try:
+            wanted = args[args.index("--ref") + 1]
+        except IndexError:
+            return {"status": "failed", "findings": ["--ref 需要一个元件号"]}
+
+    report = justify_module.run(design)
+    written = False
+    if "--write" in args:
+        justify_module.run(design, write_back=True)
+        store.save(design)
+        written = True
+
+    if wanted is not None:
+        rows = [r for r in report["parts"]
+                if str(r.get("ref") or "") == wanted]
+        if not rows:
+            return {"status": "not_ready",
+                    "findings": [f"工程 {args[0]!r} 里没有元件 {wanted}"]}
+        report = {**report, "parts": rows, "filtered": wanted}
+
+    store.write("justify.json", report)
+    return {"status": "ok", "written": written, **report}
+
+
+def cmd_handoff(args: list[str]) -> dict[str, Any]:
+    """``handoff <id> [--write]`` —— 交接层：一份「必须确认才能打板」的清单。
+
+    聚合散在 4 处的"未验证"（阶梯的 `not_run`/`unknown`、断言的
+    `unknown`、预算的缺数据、协同验证的默认值），输出 4 张表 +
+    `handoff.md`（人读）/ `handoff.json`（机读）。
+
+    **这个命令不重新跑判定**——它读已有产物。理由：判定很贵
+    （V2 要跑几何体素），而且交接清单必须**对着某一版产物**，
+    而不是每次看都重算出一个新版本。
+    """
+    from .design import handoff as handoff_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **handoff_module.describe()}
+
+    store = _store(args[0])
+    if not store.exists():
+        return {"status": "not_ready",
+                "findings": [f"工程 {args[0]!r} 不存在（没有 design.json）"]}
+
+    try:
+        result = handoff_module.build(store)
+    except ValueError as exc:
+        return {"status": "failed", "findings": [str(exc)]}
+
+    payload = result.to_dict()
+    store.write("handoff.json", payload)
+    markdown = handoff_module.render_markdown(payload)
+    store.write_text("handoff.md", markdown)
+    payload["markdown"] = markdown
+    return {"status": "ok", **payload}
+
+
+def cmd_capability(args: list[str]) -> dict[str, Any]:
+    """``capability [--needs a,b] [--role mcu] [--area 100] [--exclude x]``
+
+    能力窄表查询。给 needs 时返回候选型号；否则只返回表的自省。
+    """
+    from .design import capability as capability_module
+
+    if not args or (args[0].startswith("-") and "--needs" not in args
+                    and "--role" not in args):
+        return {"status": "ok", **capability_module.describe()}
+
+    needs: set[str] = set()
+    if "--needs" in args:
+        try:
+            raw = args[args.index("--needs") + 1]
+        except IndexError:
+            return {"status": "failed", "findings": ["--needs 需要值"]}
+        needs = {part.strip() for part in raw.split(",") if part.strip()}
+
+    role: str | None = None
+    if "--role" in args:
+        try:
+            role = args[args.index("--role") + 1]
+        except IndexError:
+            return {"status": "failed", "findings": ["--role 需要值"]}
+
+    constraints: dict[str, Any] = {}
+    if "--area" in args:
+        try:
+            constraints["area_mm2"] = float(args[args.index("--area") + 1])
+        except (IndexError, ValueError):
+            return {"status": "failed", "findings": ["--area 需要数字"]}
+
+    exclude: set[str] = set()
+    if "--exclude" in args:
+        try:
+            exclude = {x.strip() for x in
+                       args[args.index("--exclude") + 1].split(",") if x.strip()}
+        except IndexError:
+            return {"status": "failed", "findings": ["--exclude 需要值"]}
+
+    found = capability_module.candidates(needs, constraints, exclude, role=role)
+    if not found:
+        return {"status": "not_ready",
+                "candidates": [], **(capability_module.explain_miss(
+                    needs, constraints, exclude, role=role))}
+    return {"status": "ok", "candidates": found,
+            "count": len(found), "needs": sorted(needs),
+            "role": role, "constraints": constraints}
+
+
+def cmd_generate(args: list[str]) -> dict[str, Any]:
+    """``generate --requirement <file> [--max-candidates N] [--fast]``
+
+    按需求有限枚举候选。**不是收敛优化**：枚举有硬上限，天然终止。
+
+    `--fast` 跳过验证阶梯（只出候选清单），用于快速看枚举结果。
+    """
+    from .design import generate as generate_module
+
+    if not args:
+        return {"status": "ok", **generate_module.describe()}
+
+    if "--requirement" not in args:
+        return {"status": "failed",
+                "findings": ["需要 --requirement <req.yaml|req.json>"]}
+    try:
+        path = args[args.index("--requirement") + 1]
+    except IndexError:
+        return {"status": "failed", "findings": ["--requirement 需要文件路径"]}
+
+    budget = 50
+    if "--max-candidates" in args:
+        try:
+            budget = int(args[args.index("--max-candidates") + 1])
+        except (IndexError, ValueError):
+            return {"status": "failed",
+                    "findings": ["--max-candidates 需要整数"]}
+    if budget <= 0:
+        return {"status": "failed",
+                "findings": ["--max-candidates 必须为正"]}
+
+    try:
+        req = generate_module.load_requirement(path)
+    except (OSError, ValueError) as exc:
+        return {"status": "failed", "findings": [f"读不到需求：{exc}"]}
+
+    report = generate_module.generate(
+        req, max_candidates=budget, run_ladder="--fast" not in args)
+    report["requirement_file"] = str(path)
+    return {"status": report.get("status", "not_ready"), **report}
+
+
+def cmd_units(args: list[str]) -> dict[str, Any]:
+    """``units <id> [--apply]`` —— 单元层：把设计切成功能单元并判角色。
+
+    `--apply` 把结果写进 `design.json` 的 `units_list`（默认只读推导）。
+    """
+    from .design import units as units_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **units_module.describe()}
+
+    store, design = _load(args[0])
+    report = units_module.report(design)
+    report["project"] = args[0]
+    store.write("units.json", report)
+
+    applied = False
+    if "--apply" in args:
+        units_module.apply(design)
+        store.save(design)
+        applied = True
+
+    return {"status": "ok" if report["ok"] else "not_ready",
+            "applied": applied, **report}
+
+
+def cmd_links(args: list[str]) -> dict[str, Any]:
+    """``links <id> [--infer] [--apply]`` —— 板间链路四条检查。
+
+    默认只检查 `design.json` 里**声明**的链路（`links_list`）。
+    `--infer` 额外把从网表推出的候选一起看（候选只提示，不判 fail）。
+    `--apply --infer` 把推断结果写进 `links_list`（source 保持 inferred）。
+    """
+    from .design import links as links_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **links_module.describe()}
+
+    store, design = _load(args[0])
+    report = links_module.report(design)
+    report["project"] = args[0]
+    store.write("links.json", report)
+
+    applied = False
+    if "--apply" in args and report.get("inferred"):
+        merged = list(design.links_list or []) + [
+            {k: v for k, v in link.items()}
+            for link in report["inferred"]]
+        design.links_list = merged
+        store.save(design)
+        applied = True
+
+    # 状态：有声明链路才可能"通过"；表为空是 not_ready，不是 ok。
+    status = "ok"
+    if report.get("status") == "not_ready":
+        status = "not_ready"
+    elif not report.get("ok"):
+        status = "failed"
+
+    return {"status": status, "applied": applied, **report}
+
+
+def cmd_coverify(args: list[str]) -> dict[str, Any]:
+    """``coverify <id>`` —— 协同验证：需求数值 vs 硬件能力（8 条 CV 检查）。
+
+    ## 为什么要给它一条独立命令
+
+    `coverify` 的结果原来**只出现在 `snapshot` 的返回值里，从不落盘**。
+    交接层 `handoff` 要找"机器用了哪些默认值"时，去 `budget.json` 里
+    翻 `coverify` 字段——那个字段从来不存在。于是交接单的第三类
+    （"机器用了默认值"）**永远是 0 条**，而实际上 `示例-单板` 有
+    7 条 `not_verified`：指向精度、跟踪速率、探测距离、链路带宽、
+    延迟全部是拿默认值算的。
+
+    这属于「静默丢项」：表格空着，人以为"没有默认值"，
+    真相是"有 7 个，但没人去看"。给它独立产物，交接层读得到。
+
+    写 `coverify.json`。
+    """
+    if not args or args[0].startswith("-"):
+        from .design import coverify as coverify_module
+        return {"status": "ok", **coverify_module.describe()}
+
+    store, design = _load(args[0])
+    from .design import coverify as coverify_module
+
+    try:
+        report = coverify_module.run(design)
+    except Exception as exc:                                  # noqa: BLE001
+        return {"status": "failed",
+                "findings": [f"{type(exc).__name__}: {exc}"]}
+
+    payload = {**report.to_dict(),
+               "summary": coverify_module.summarise(report),
+               "project": args[0]}
+    store.write("coverify.json", payload)
+    return {"status": "ok" if report.ok else "failed", **payload}
+
+
 def cmd_project2d(args: list[str]) -> dict[str, Any]:
     from .design.projection import to_2d
     if not args:
@@ -1401,6 +1803,21 @@ def survey_client() -> dict[str, Any]:
     return survey_module.survey()
 
 
+def cmd_serve(args: list[str]) -> dict[str, Any]:
+    """``serve [status|start|stop|logs|prepare|ensure]`` —— Velxio 后端生命周期。
+
+    实现全在 ``hw_velxio/serve.py``（进程/venv/工具链都在那一层）。这里只做
+    **一次转发**：不能让 design_cli 自己再写一份进程管理，那是第二事实源。
+
+    注意调用的是 `serve.call()` 而不是 `serve.main()` —— 后者会把 JSON 打到
+    stdout 并返回退出码，套在 design_cli 里会输出两行 JSON，桥接层只取最后
+    一行，于是命令的退出码与内容可能来自不同的东西。
+    """
+    from . import serve as serve_module
+
+    return serve_module.call(args)
+
+
 COMMANDS = {
     "boards": cmd_boards,
     "catalog": cmd_catalog,
@@ -1416,6 +1833,16 @@ COMMANDS = {
     "project2d": cmd_project2d,
     "scene3d": cmd_scene3d,
     "check": cmd_check,
+    "ladder": cmd_ladder,
+    "claims": cmd_claims,
+    "assert": cmd_assert,
+    "justify": cmd_justify,
+    "handoff": cmd_handoff,
+    "coverify": cmd_coverify,
+    "units": cmd_units,
+    "links": cmd_links,
+    "capability": cmd_capability,
+    "generate": cmd_generate,
     "budget": cmd_budget,
     "move": cmd_move,
     "addpart": cmd_addpart,
@@ -1434,6 +1861,7 @@ COMMANDS = {
     "firmware": cmd_firmware,
     "semantics": cmd_semantics,
     "log": cmd_log,
+    "serve": cmd_serve,
 }
 
 

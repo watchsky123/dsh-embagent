@@ -181,6 +181,22 @@ export function design(...args: string[]): Promise<BridgeResult> {
 }
 
 /**
+ * 慢动作版 `design()` —— 给"启动后端"这类会**故意等待**的命令用。
+ *
+ * 为什么需要它：`runPython` 默认超时 120s，而 `serve start` 要等后端把
+ * `/health` 打起来（冷启动包含 arduino 环境预置与 uvicorn 引导，最长等 150s）。
+ * 两者一撞，`serve start` 会在**还没等到结果时**被 SIGTERM 杀掉，父进程拿到
+ * 非零退出码、拿不到任何 JSON，于是面板只显示一句 `Command failed`——
+ * 看起来像后端启动失败，其实是"我们没等够"。
+ *
+ * 超时值必须**大于** Python 侧自己的等待窗口，让 Python 有机会返回
+ * 结构化的 `not_ready`（带日志尾部），而不是被外部砍断。
+ */
+export function designLong(timeoutMs: number, ...args: string[]): Promise<BridgeResult> {
+  return runPython('hw_velxio.design_cli', args, { timeoutMs })
+}
+
+/**
  * 提交完整设计 JSON（走 `DesignModel` 校验）。
  *
  * 正文走 **stdin** 而不是 argv：Windows 的命令行上限是 32767 字符，

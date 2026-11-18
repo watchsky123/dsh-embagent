@@ -37,6 +37,14 @@ ARTIFACTS = (
     "deferred.json",
     "budget.json",
     "checks.json",
+    "ladder.json",
+    "claims.json",
+    "justify.json",
+    "coverify.json",
+    "units.json",
+    "links.json",
+    "handoff.json",
+    "handoff.md",
     "crosscheck.json",
     "export.json",
 )
@@ -113,6 +121,18 @@ class DesignStore:
 
     def write(self, name: str, payload: Any) -> Path:
         return self._write_json(name, payload)
+
+    def write_text(self, name: str, text: str) -> Path:
+        """写**非 JSON** 产物（如 `handoff.md`）。同样原子。"""
+        path = self.path(name)
+        _atomic_write(path, text if text.endswith("\n") else text + "\n")
+        return path
+
+    def read_text(self, name: str) -> str:
+        path = self.path(name)
+        if not path.is_file():
+            return ""
+        return path.read_text(encoding="utf-8")
 
     def artifact_paths(self) -> dict[str, bool]:
         return {name: self.path(name).is_file() for name in ARTIFACTS}

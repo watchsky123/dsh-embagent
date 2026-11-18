@@ -263,6 +263,46 @@ window.__probe = function () {
   cv.width = Math.round(w * dpr);
   cv.height = Math.round(h * dpr);
   res.canvasBitmap = { w: cv.width, h: cv.height };
+
+  // ── 画布滚动防护（P0）────────────────────────────────────────────────
+  //
+  // 注意：本 harness 只渲染静态 markup，**不跑 React effect**，所以这里
+  // 测不了"滚轮手势真的不滚页面"（那需要挂载真组件）。行为断言放在
+  // Node 侧对产物做（见下方 bundle 检查）；这里只测**应用后的 CSS 生效**，
+  // 那是真浏览器才能回答的问题。
+  var cs = getComputedStyle(wrap);
+  res.canvasGuard = {
+    overflow: cs.overflow,
+    overscrollY: cs.overscrollBehaviorY || cs.overscrollBehavior,
+    hasZoomPill: !!document.querySelector('.hwv-zoom'),
+  };
+
+  // ── P2：调色板必须是 three.js 能解析的形态 ──────────────────────────────
+  //
+  // three.js 的 Color 只认 hex / rgb() / hsl()；oklab()、color-mix()、
+  // color(srgb …) 会让它**静默退回黑色**（不抛错，只是颜色错）。
+  // 所以凡是被 canvas 或 three 读的 --hwv-p-*，解析出来必须是 hex/rgb。
+  // 不用正则：这段代码在**模板字符串**里，正则的转义会被外层吃掉，
+  // 结果是页面脚本语法错误、__probe 根本没定义（比断言失败更难查）。
+  var PALETTE = ['canvas-bg', 'grid', 'board-fill', 'board-stroke', 'hole-fill',
+    'hole-stroke', 'plain-stroke', 'label', 'est-mark', 'sel', 'err', 'warn',
+    'fill-datasheet', 'fill-measured', 'fill-derived', 'fill-estimated',
+    'fill-error', 'fill-warn', 'scene-bg', 'board3d', 'board3d-edge', 'hole3d',
+    'edge', 'wire3d', 'shell3d', 'pad-fill', 'pad-stroke', 'pad3d', 'trace',
+    'grid3d-major', 'grid3d-minor'];
+  function parseable(value) {
+    if (value === '') return false
+    if (value.charAt(0) === '#') return true
+    var head = value.slice(0, 4).toLowerCase()
+    return head.indexOf('rgb') === 0 || head.indexOf('hsl') === 0
+  }
+  var bad = [];
+  PALETTE.forEach(function (name) {
+    var value = cs.getPropertyValue('--hwv-p-' + name).trim();
+    if (!parseable(value)) bad.push(name + '=' + value);
+  });
+  res.palette = { bad: bad, sampled: PALETTE.length };
+
   return res;
 };
 </script>
@@ -365,6 +405,41 @@ if (probe === null) {
   check('板子在另一维两侧留白相等（真的居中，不是被推到角上）',
     centeredX && centeredY,
     `左 ${probe.marginX.toFixed(0)} / 右 ${(probe.wrap.w - probe.boardPx.w - probe.marginX).toFixed(0)}`)
+
+  // ── P0 回归断言：滚轮缩放不许带走页面滚动 ────────────────────────────
+  //
+  // 分两层断言，因为单一层都不够：
+  //  1. **CSS 层**（真浏览器）：`overflow:hidden` + `overscroll-behavior:contain`
+  //     必须真的应用在画布容器上——否则即使 preventDefault 生效，边界处
+  //     仍会链式滚动。
+  //  2. **产物层**（Node 侧读 dist）：canvas 上**不能有 `onWheel`**（React 合成
+  //     事件在根容器上被动注册，preventDefault 是空操作，这正是 bug 的来源），
+  //     且 bundle 里必须出现非 passive 的 `addEventListener("wheel"`。
+  const guard = probe.canvasGuard ?? {}
+  check('画布容器 overflow 被裁剪（不溢出到相邻面板）',
+    String(guard.overflow ?? '').includes('hidden'),
+    String(guard.overflow))
+  check('画布容器 overscroll-behavior: contain（滚动不链式传给祖先）',
+    String(guard.overscrollY ?? '').includes('contain'),
+    String(guard.overscrollY))
+  check('缩放胶囊在 DOM 里', guard.hasZoomPill === true)
+
+  const onWheelOnCanvas = /"canvas", \{[\s\S]{0,400}?onWheel/.test(bundle)
+  check('canvas 不再用 React onWheel（被动监听会让 preventDefault 失效）',
+    !onWheelOnCanvas)
+  check('bundle 里有非 passive 的原生 wheel 监听',
+    /addEventListener\("wheel"[\s\S]{0,80}?passive: !1/.test(bundle)
+    || /addEventListener\("wheel"[\s\S]{0,80}?passive: false/.test(bundle))
+
+  // ── P2 回归断言：调色板只有一处取值，且 three.js 能解析 ────────────────
+  const palette = probe.palette ?? { bad: [], sampled: 0 }
+  check('画布调色板解析后都是 hex/rgb（three.js 不认 oklab/color-mix）',
+    palette.bad.length === 0, palette.bad.slice(0, 4).join(' · '))
+  check('深色块只覆盖材质层（不再平行重写 28 个 --hwv-p-*）',
+    /--hwv-m-board: #1d3a2a/.test(bundle)
+    && !/--hwv-p-board-fill: #1d3a2a/.test(bundle))
+  check('引用层用 var() 指向材质层',
+    /--hwv-p-board-fill: var\(--hwv-m-board\)/.test(bundle))
 }
 
 rmSync(workspace, { recursive: true, force: true })
