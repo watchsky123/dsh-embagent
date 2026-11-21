@@ -646,6 +646,221 @@ return pls.map(p => p.getState_Polygon().getSource());
 
 ---
 
+### 3.21 `createProject` 在会话刚开时会抛 `username undefined`（竞态，不是权限）
+
+**症状**：发射第一步就 `failed`：
+
+```
+TypeError: Cannot read properties of undefined (reading 'username')
+```
+
+**根因**：`lceda-pro open` 返回 sessionId 只代表"窗口起来了"，**用户态是异步装载的**。
+同一句 `createProject` 在 `open` 之后等 5 秒再调就正常（实测）。
+
+**修法**（`_JS_PROJECT_NEW`）：先轮询 `dmt_Team.getAllTeamsInfo()` 直到非空（最多 6 秒），
+再把 `createProject` **包进 try/catch 并重试 24 次**。第一版没包 catch，
+于是"偶发的竞态"表现成"立创不让建工程"。
+
+**判别**：单独跑一句 `createProject` 能成功，而整条发射在第一步失败 → 就是它。
+
+---
+
+### 3.22 `openDocument` 返回 true ≠ 文档已激活（多板时会把线布到上一块板）
+
+**症状**：多板发射报「布通 2/3」，缺的那条网络只属于**第一块板**；
+`successNetsCount` 却是 2；盘上第二块板的线全在、第一块板一条没有。
+
+**根因**：`getCurrentDocumentInfo()` 要到**几秒后**才变成 `documentType === 3`。
+第一版只 `setTimeout(settleMs=900)` 就调 `autoRouting` —— 那次调用跑在了
+**上一块板**的文档上。
+
+**修法**（`_DOC_READY_JS`）：轮询 docType 最多 12 秒，再等 400ms。
+路由/测量/落笔/铺铜**四个段共用同一段前奏**。
+
+**判别**：单板永远看不出这个坑；**必须用 ≥2 块板**的夹具跑一遍。
+
+---
+
+### 3.23 只铺底层会「没铜」——孤岛被丢弃，要缝合过孔
+
+**症状**：双面铺铜，顶层 `getCopperRegion().pourFills = 7`，
+底层 **0**、`rebuildCopperRegion()` 也返回 false。坐标明明是对的。
+
+**根因**：底层那片铜和**任何焊盘都没有电气连接**（SMD 焊盘只在顶层），
+立创按 `preserveSilos:false` 把孤岛丢掉。手册 §17.15/§17.16 说的就是这件事。
+
+**修法**：先放**缝合过孔**（GND 网络、20/12 mil），再建铺铜，最后统一 rebuild。
+过孔位置要避开别的网络的铜（`router.stitch_sites` 按几何挑，挑不到就返回空并照实说）。
+
+**修后实测**：顶层 7 fills、底层 **1 fill**，两块板都 `hasCopper`。
+
+---
+
+### 3.24 DRC 分类：分组树里的**网络名**会把父节点的类别覆盖掉
+
+**症状**：写了 `_drc_categories()`，结果 4 条 `Connection Error` 全落进 `other`。
+
+**根因**：DRC 的树是 `Connection Error → GND → A1 → {explanation}`。
+第一版对**每个**带 `name` 的节点都重算类别，于是走到 `GND` 时把
+`connection` 改写成了 `other`（网络名当然不是类别）。
+
+**修法**：只有**认得出来**的类别名才继承（`if guess != "other": kind = guess`）。
+
+**判别**：分类结果 `other` 占大头 = 类别没生效，不是"这些违规不属于任何类别"。
+
+---
+
+### 3.25 分批发射的批大小不是拍脑袋：器件 6、导线 12、摆放 6、走线 14
+
+单次 `invoke` 有 **30 秒硬上限**（`lceda.py` 的 F1）。实测耗时（手册 §13.3 +
+本机复测）：放器件 ≈2.5s/个、接线 ≈0.2s/条、`pcb_PrimitiveComponent.modify`
+≈0.2~0.5s/个、`pcb_PrimitiveLine.create` ≈0.1s/条。于是：
+
+| 操作 | 批大小 | 常量 |
+|---|---|---|
+| 装器件 | 6 | `SCH_PART_BATCH` |
+| 接线（每根还带一个网络标签）| 12 | `SCH_WIRE_BATCH` |
+| PCB 摆放 | 6 | `PCB_MOVE_BATCH` |
+| 走线落笔 | 14 | `_emit_plan(batch=14)` |
+
+**装器件与接线必须分成两段**：两者单次耗时差 10 倍，混在一个脚本里
+批大小就没法各自最优。分批的代价是每批多一次 `openDocument`（≈1s），
+用户允许长时间运行时这笔开销换"大板不会整段失败"是值得的。
+
+**判别**：整板一次装时，元件数一多就报超时；而**超时后 EDA 侧可能已经做了
+一半**（手册 §17.7），重跑会看到"有的装了有的没装"。
+
+---
+
+### 3.26 同层多张铺铜会**互相吃光**（2 层板只能地铺铜 + 电源宽走线）
+
+**症状**：先铺整板 GND、再给 3V3 铺一块小矩形 → 3V3 的
+`getCopperRegion().pourFills = 0`（铜被地平面的间距规则整片吃掉）；
+把顺序反过来 → 地变成 0 fills。**两种顺序各输一次**，说明不是顺序问题。
+
+**真因**：两张不同网络的铺铜在同一层重叠时，后建的那张会被按间距规则
+裁掉；面积小的必然全灭。
+
+**正解**（两层板）：
+
+* **GND 铺整板**（双面）+ 缝合过孔（见 §3.23）
+* **其它电源网不铺铜**，按 **20 mil 宽走线**（`router.Rules.width_for()` 对
+  `GND/VCC/VDD/+3V3/VBUS/…` 自动加宽）
+* **≥4 层板**才有意义：`_run_pour` 会把额外电源网铺到**内层**（layer ≥3），
+  并且明确记 `power_nets` 与 `copper_layers`
+
+**判别**：`pourFills == 0` 而坐标明明对 → 先看**同层有没有别的铺铜**，
+再怀疑坐标（手册 §19.2 的口诀要补这一条）。
+
+---
+
+### 3.27 「铺铜前判连通」= 用错时机，会把能打板的板判成断开
+
+**症状**：12 焊盘的 GND，引擎只布了一部分，布线段判 `split`（4 个孤岛）；
+用户看到 `route: not_ready`，以为板子没做出来。
+
+**真相**：真实板上 **GND 靠铺铜连，不靠走线**。铺铜一上，那 4 个孤岛
+并成一片 —— 最终 `verify` 判 4/4 全连通。
+
+**约定**：`route` 段只报"布了多少段 / 铺铜前连通几条"，**最终结论由
+`verify` 段（铺铜之后）下**。这就是 §0.3 的同一条教训换了个位置：
+**用错的时机验，得到的是错的结论**。
+
+---
+
+### 3.28 几何判定对**矩形焊盘**不能用 `min(hw, hh)`
+
+**症状**：判定器说断开，而 EDA 里明明连着。
+
+**根因**：0402 的焊盘是 16×17 mil。拿短边当半径（8 mil），从**长边方向**
+贴上来的走线（距离 17 mil）就被判成没接触。手册 §22 第一轮踩的是 POLYGON
+取到 `NaN`，这里是"取短边"——同一类错误的另一种形态。
+
+**修法**：`pcb_geo._seg_rect_gap()` 算**线段到矩形**的真实距离（端点在内、
+边相交都算 0），焊盘-焊盘用矩形间距，过孔用"矩形距离减半径"。
+
+---
+
+### 3.29 布局检查的单位必须**全程 mil**（我在报告里把 mil 标成 mm）
+
+**症状**：报告写 `(1535.4, 236.2) mm 的封装占位超出板内 40 mil 边距` ——
+1535 mm 的板显然荒唐。
+
+**根因**：`_size_mil()` 返回的是 **mil**，而 `Placement.x_mm` 是 **mm**。
+第一版把两者混在一个表达式里（`pw / _MM_TO_MIL / 2.0` 得 mm，又拿去和
+mil 的 `EDGE_MARGIN_MIL` 比），判据永远成立 → 每个件都"超出边距"。
+
+**约定**：进 `pcb_layout` 的坐标**先统一乘 `_MM_TO_MIL` 换成 mil**，
+只在拼接给人看的字符串时换回 mm。验收 `check_p26` 的 4a/4d 守着这条
+（正常摆放必须 ok）。
+
+---
+
+### 3.30 原理图**没 save()** 就去导入 PCB → 立创会静默漏器件
+
+**症状**：3 个器件，`sch_SourcePrimitiveComponent.add` 全部 ok、`placed` 报了 3 个、
+`sch_Document.save()` 之后也返回 true —— 但 PCB 上只有 **2 个**，
+`parity.missing = 2`（缺的是同一个器件的两个引脚）。
+
+**真因**：`pcb_Document.importChanges()` 读的是**已提交的原理图源码**。
+分批发射把「装器件」「接线」拆成了两次 `invoke`，两次之间**没有 save**，
+于是最后一次改动还没提交；`importChanges` 就按"老版本"导入，少一个器件。
+
+**两处修法（都要）**：
+
+1. 接线之后显式 `sch_Document.save()`，并把返回值当闸门：
+   返假 → `pcb` 段 `not_ready`（不许假装导入成功）
+2. `save()` 返回 true 之后**再等 1.2 秒**（`settleMs`）—— 实测不等这一下
+   仍会偶发少导一个（`save` 是同步返回、提交是异步的）
+
+**判别**：`placed` 数对、`components_on_pcb` 少、`parity.missing` 非空 ——
+三者凑齐就是它。**只有 parity 能抓到**（其它三项都"成功"）。
+
+---
+
+### 3.31 图元/标签接口「返回 ok」≠「生效」：写完必须回读
+
+**症状**：`sch_SourcePrimitiveWire.add` 和 `addNetLabel` 全部返回 `ok`，
+`wired` 也报了 4 条；但**第一根**线对应的引脚在网络表里仍是空 net
+（实测 `R1.1` 的 `A1` 丢了，PCB 上只剩 1 个 A1 焊盘，parity `missing=1`）。
+
+**根因**：`openDocument` 之后**立刻**发第一条 mutation，EDA 会吞掉它。
+先后两次 `add` 都"成功"只是因为返回值来自中间层。
+
+**修法（两件都要）**：
+
+1. 接线脚本在 `openDocument` 之后**再等 600ms** 才发第一条
+2. 接线完**回读** `sch_Netlist.getNetlist('JLCEDA')`，逐引脚核对；
+   不一致的引脚**重试一次**，仍不对就 `not_ready`（不许记 ok）
+
+**判别**：`wired` 数对、`parity.missing` 非空 → 就是它。
+**只有回读能抓到**（所有写接口都说 ok）。
+
+---
+
+### 3.32 Bridge 通道的真墙：单次 `/execute` 30 秒（实测能跑/不能跑什么）
+
+官方 `Run API Gateway 1.0.8` 的行为（从扩展源码读到、也在真机验过）：
+扫 49620–49629、握手 `service === "easyeda-bridge"`、随后发
+`{type:"register", windowId}`、重试 3s→30s **无限次**——和
+`easyeda-api` skill 的 `bridge-server.mjs` **协议完全对得上**。
+
+**本机实测（2026-11-22）**：
+
+| 操作 | 走 Bridge | 说明 |
+|---|---|---|
+| `/health`、`/eda-windows` | ✅ | `edaConnected: true`，1 个窗口 |
+| 单次 `invoke`（读工程/读网表） | ✅ | 毫秒级 |
+| **整条 8 段发射** | ✅ **一次**（76s） | 窗口空闲时成功，`channel.kind=bridge` |
+| 重复发射（窗口里已开着工程） | ❌ | `openProject` 变慢 → 撞 30 秒 → HTTP 500 |
+| 叠层/网络类/差分对 | ❌ | 单次就超 30 秒 |
+
+**约定**：Bridge 用来做「**必须在用户窗口里做的短操作**」；整条发射与长任务
+用 `--channel=cli`。遇到 HTTP 500 先把 body 读出来（已改）——真因通常在那
+（`openProject 连续两次返回 false`、`createProject 一直返回 undefined`…）。
+
+---
+
 ## 4. 测试与验收的约定
 
 ### 4.1 每条硬判据都要有退化验证
@@ -663,7 +878,7 @@ python -m hw_velxio.scripts.check_m1            # M1 硬验收
 python -m hw_velxio.scripts.check_units_links   # P5
 python -m hw_velxio.scripts.check_generate      # P6
 python -m hw_velxio.scripts.check_m3            # M3
-npm test                       # 729 项单测（test_design + test_phases）
+npm test                       # 751 项单测（test_design + test_phases）
 ```
 
 或 `npm run verify` / `verify:m2` / `verify:m3`。
@@ -733,14 +948,18 @@ P8 第一版把 I2C1 的 SCL 和 SDA 各记一条"链路"，
 | 能力表只有 14 个型号 | 表外型号 `explain_miss()` 会解释 | 用户扩表（我不替他猜 datasheet 数值） |
 | 哈希 `kind` 不为生成器补映射 | 生成器只对新工程有效 | **用户已决定如此，不要改** |
 | 立创自动布线**已通**（曾记错两次） | `route=native` → `2/2` 网布通、9 段 45° 单层、0 过孔、DRC 零违规。真因见 §3.20 | 已修 |
-| 立创产物落盘被权限拦 | 生成正常，写盘报「未启用扩展和独立脚本的外部交互权限」 | 人在立创设置里开一次 |
+| 立创产物落盘**已解决** | `saveFileToFileSystem` 被拦时改读 `File.arrayBuffer()` → base64 → Python 写盘；实测 7 个产物全落盘 | 已修 |
 | PCB 的 Y 轴（**已对照**） | 板框 `R` 模式原点是**左上角**、向 −Y 延伸；写错不报错、只让布线 0 段（见 §3.20） | 已修 |
 | 立创只认 lcsc/mpn | `r3demo` 4 个元件全 `no_symbol`（EasyEDA 哈希 kind） | **P19 已给数据源**，但回填要人指定 lcsc（导入器不补） |
+| 工程只存在立创库里 | `getProjectsPaths` 被外部权限拦着 → 磁盘上没有 `.eprj3` 文件夹 | 已补 `.epro2` 备份（合法 zip） |
+| 电源网不铺铜（**物理约束**） | 2 层板同层多张铺铜互相吃光（§3.26）→ 地铺整板、电源按 20 mil 宽走线；≥4 层板自动铺内层 | 若真要电源平面：改 4 层板 |
 | 能力表 `fills`/`provides` 只能人给 | 目录里有尺寸/封装，没有「它是什么」「它能干什么」 | `parts-promote --role --needs`（猜语义 = 假通过） |
 | BGA 等特殊封装没尺寸 | `package_sizes` 查不到 → `unknown` 且尺寸全 0 | 需要时人工录一行 |
 | MCU 的 AF 复用表没录 | `pins.h` 只给引脚，不给"这个脚能做 I2C 吗" | 逐芯片从 datasheet AF 表录入（没抄就不写） |
 | 固件抽取只认 STM32 HAL | Arduino/AVR/ESP-IDF 报 `not_ready` | 加一族就加一张 `_API_KINDS` 表 |
 | 固件抽取是单行匹配 | 跨行写法抽不到，进 `unpaired` | 需要 AST 级分析（目前不做，不猜） |
+| 布局自动重排只保证不短路 | 不做电气分区/散热/装配顺序（那是人做的事） | 手工微调 |
+| Bridge 通道已验（**限短操作**） | 单次 invoke ✅；整条 8 段发射成功过一次（76s）；重复发射/叠层段撞 30s 上限 → 用 `--channel=cli` | 长任务走 cli |
 | `contact_sheet` 没跑过 | 本机没有 ffmpeg → 返回可执行命令行 | 装 ffmpeg 后粘那条命令 |
 | 校准默认用 V7 判 | V7 只判翻倒，不判具体场景（爬台阶…） | 传自己的 `Runner` |
 | 校准是贪心、不回溯 | 一条失败最多动 2 个参数 | 参数空间大时要做实验设计 |
@@ -955,7 +1174,7 @@ io.open("run.cmd", "wb").write(s.encode("ascii"))
 ```bash
 cd <repo-root>                    # 必须在这里，不在 hw_velxio/
 
-npm test                                         # 729 项单测
+npm test                                         # 751 项单测
 python -m hw_velxio.scripts.check_m1             # M1 四条硬验收
 python -m hw_velxio.scripts.check_units_links    # P5
 python -m hw_velxio.scripts.check_generate       # P6
@@ -976,6 +1195,7 @@ python -m hw_velxio.scripts.check_p2             # P2 按对象聚合（索引 +
 python -m hw_velxio.scripts.check_p3             # P3 参数敏感度（接线扫描 + 两层扰动）
 python -m hw_velxio.scripts.check_p4             # P4 固件矩阵（每脚一行 + 四类状态）
 python -m hw_velxio.scripts.check_p5             # P5 需求草稿 + 从零开局（38 条）
+python -m hw_velxio.scripts.check_p26            # 几何/连通/自研布线/布局/通道（28 条，全离线）
 ```
 
 **立创侧诊断脚本**（不是验收，是「说不清就量一遍」用的）：

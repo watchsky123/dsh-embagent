@@ -3506,23 +3506,32 @@ export function registerTools(ctx: Context): Array<() => void> {
   disposers.push(tools.register(defineTool({
     name: 'hw_emit',
     description:
-      '把 design.json 发射成立创EDA专业版工程（`.eprj3`，原理图 + PCB + 板框）。'
-      + '四段可选：project / schematic / pcb / route / outputs。'
+      '把 design.json 发射成立创EDA专业版工程（原理图 + PCB + 板框 + 布线 + 铺铜）。'
+      + '六段可选：project / schematic / pcb / route / pour / outputs（默认全跑）。'
       + '器件按 lcsc 精确匹配（模糊命中会被 Supplier Part 回核剔除），'
       + '搜不到的进 unresolved 且**其余继续**。'
-      + '回读立创 PCB 网表与 design.json 逐引脚比对（parity），'
-      + '不一致就是两个系统分叉。'
-      + '实测限制：自动布线引擎在本机拒绝执行 → route 段是 not_ready；'
-      + '导出文件落盘要人去立创设置里开外部交互权限。写 emit.json。',
+      + '回读立创 PCB 网表与 design.json 逐引脚比对（parity）。'
+      + 'route=native 用立创引擎（实测 2/2 布通），route=ours 用自研栅格 A* 兜底；'
+      + '两档的**连通性判定都量几何**（并查集），不读引擎自述。'
+      + 'pour 铺双面 GND 铜并放缝合过孔，只认 getCopperRegion() 有铜。'
+      + 'outputs 把 Gerber/BOM/坐标/`.epro2` 落盘（默认 <工程>/artifacts）。写 emit.json。',
     parameters: {
       project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
       jobs: {
         type: 'string',
-        description: '要跑哪几段，逗号分隔（project,schematic,pcb,route,outputs）',
+        description: '要跑哪几段：project,layout,schematic,pcb,route,pour,verify,outputs',
       },
       route: { type: 'string', description: 'native（默认）/ ours / none' },
       reuse: { type: 'boolean', description: '接管磁盘上已有的同名立创工程' },
-      saveDir: { type: 'string', description: '产物落盘目录（需要立创开放外部权限）' },
+      autolayout: {
+        type: 'boolean',
+        description: '按封装占位重排一次（只保证不短路，不做电气分区/散热/装配顺序）',
+      },
+      channel: {
+        type: 'string',
+        description: 'cli（默认，长任务）/ auto（有 Bridge 就用）/ bridge（用户窗口，30s 上限）',
+      },
+      saveDir: { type: 'string', description: '产物落盘目录（默认 <工程>/artifacts）' },
       maxParts: { type: 'number', description: '最多装多少个器件（默认 260）' },
     },
     output: {

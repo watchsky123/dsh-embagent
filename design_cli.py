@@ -1638,6 +1638,8 @@ def cmd_emit(args: list[str]) -> dict[str, Any]:
     save_dir = ""
     max_parts = emit_lceda.MAX_PARTS
     name = ""
+    autolayout = False
+    channel = "cli"
     for i, item in enumerate(args[1:]):
         if item.startswith("--jobs="):
             jobs = [x for x in item.split("=", 1)[1].split(",") if x]
@@ -1651,10 +1653,20 @@ def cmd_emit(args: list[str]) -> dict[str, Any]:
             max_parts = int(item.split("=", 1)[1])
         elif item.startswith("--name="):
             name = item.split("=", 1)[1]
+        elif item == "--autolayout":
+            autolayout = True
+        elif item.startswith("--channel="):
+            channel = item.split("=", 1)[1]
+
+    # 默认落盘位置：``<工程>/artifacts``。不给它的话 `outputs` 段永远只能
+    # 报「生成成功、saved=0」—— 那份报告对"能不能打板"毫无用处。
+    if not save_dir:
+        save_dir = str(store.dir / "artifacts")
 
     report = emit_lceda.emit(design, project_name=name or args[0], jobs=jobs,
                              route=route, reuse=reuse, save_dir=save_dir,
-                             max_parts=max_parts)
+                             max_parts=max_parts, autolayout=autolayout,
+                             channel=channel)
     payload = report.to_dict()
     payload["project_id"] = args[0]
     store.write("emit.json", payload)

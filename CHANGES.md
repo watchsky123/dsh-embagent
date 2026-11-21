@@ -2206,6 +2206,142 @@ hw_generate(requirement=<project>/req.json)       # 出候选
 | 面板看不到工作区草稿 | `snapshot` 按工程走；工程不存在时面板不渲染 `req`。CLI `req-draft --list` 能列，会话里 `hw_req_draft(action="list")` 也能列 |
 | 建工程的板卡默认 `custom` | 给的是诚实的 50×30 通用板；要别的板就 `--board=arduino-uno` 之类 |
 
+## P24–P32 — 从「画得出来」到「能打板」（2026-11-21 晚）
+
+> 起点：拿到大佬手册后重测 P17，发现「自动布线布不出来」的真因是自己板框 Y 写反
+> （见上面 P17 的 F8 更正）。修掉之后整条出板链才可能闭环，于是这一轮把
+> **多板 / 自研布线 / 几何判定 / 铺铜 / 制造输出 / DRC 分级** 一次做完。
+
+### 实测结果（一块 2 板 4 件的合成板，两步都真跑）
+
+| 段 | 结果 | 证据 |
+|---|---|---|
+| project | ok | 2 块板，`createProject` 竞态已修（等用户态 + 24 次重试）|
+| schematic | ok | 4 件装成 / 8 条短线+网名 / `unresolved=0` |
+| pcb | ok | 板框 2/2、元件 4/4 按设计坐标、`importChanges` 轮询到位 |
+| route=native | **ok** | 4/4 网、16 段走线、0 过孔、`split_nets=0`（几何判定）|
+| route=ours | **ok** | 栅格 158×119 / 79×60，4/4 网、12~25 段、0 过孔 |
+| pour | **ok** | 双面都有铜：顶层 7/4 fills、底层 1/1 fills（放 6 个缝合过孔之后）|
+| outputs | **ok** | 7 个产物全部落盘：Gerber zip 14.2KB × 2、BOM 6.7KB、坐标 6.9KB、`.epro2` 35.9KB |
+| drc | 结论 **ok** | 可信类别（clearance/netlist/physical）**0 条**；Connection Error 4 条（不可信）|
+
+### 这一段新增的能力
+
+| 能力 | 文件 | 关键判据 |
+|---|---|---|
+| 几何回读 | `design/pcb_geo.py` | 焊盘/走线/过孔/板框源数组，落 `pcb_geometry` 形状 |
+| **连通性判定** | `design/pcb_geo.connectivity` | 并查集，**不依赖 DRC**；空输入 → `not_ready` |
+| 自研布线器 | `design/router.py` | 栅格 A*，8 邻域只出 0/45/90 度；栅格超限要明说 |
+| 缝合过孔 | `router.stitch_sites` | 避开别的网络的铜；板挤就返回空并照实说 |
+| 铺铜 | `emit._run_pour`（新 job `pour`） | `getCopperRegion()` 有铜才算成 |
+| 制造输出 | `emit._run_outputs` | 生成 File → `arrayBuffer` → base64 → **Python 写盘** |
+| DRC 分级 | `emit._drc_categories` | clearance/netlist/physical 可信，connection 只提示 |
+
+### 这一轮踩到 / 修掉的 6 个坑（都写进 AGENTS 了）
+
+| # | 症状 | 根因 |
+|---|---|---|
+| 1 | `createProject` 抛 `Cannot read properties of undefined (reading 'username')` | 会话刚开、用户态还没装载（等 5 秒就正常）。第一版没包 try/catch，整个发射在第 1 步 failed |
+| 2 | 多板时第一块板的网络一条走线都没有（"布通 2/3"） | `openDocument` 返回 true ≠ 文档已激活；换板后只等 900ms 就布线，布在了上一块板上 |
+| 3 | 底层铺铜 `pourFills = 0`（顶层 7） | 孤岛被丢弃（`preserveSilos:false`）：底层那片铜和任何焊盘无电气连接。要放**缝合过孔** |
+| 4 | DRC 分类 4 条全落进 `other` | 分组树里网络名（GND/A1）也是带 `name` 的节点，把父节点的「Connection Error」覆盖了 |
+| 5 | 产物名 `bom.xlsx.xlsx`、`src.epro2.epro2` | `File.name` 已经带扩展名，又拼了一次 |
+| 6 | 工程只存在立创库里，磁盘上没有 `.eprj3` 文件夹（`getProjectsPaths` 被拒） | 补导出 `.epro2`（实测是合法 zip：`project2.json` + `IMAGE/`） |
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p26     # 20 条，全离线（几何 + 连通性 + 布线器）
+python -m hw_velxio.scripts.check_p17     # 26 条（真机那几条要装 lceda）
+npm test                                  # 742 项（新增 13 条 pcb_geo/router 单测）
+```
+
+## P24–P32 续 — 分批发射 / 多板稳定 / 布局规则 / 通道封装（2026-11-21 深夜）
+
+> 用户原话：**「我允许运行时间长很多,但需要多板能成功运行」**。所以这一轮
+> 一切以"多板 + 大板都不整段失败"为准，验收用的是 **2 块板 × 12 个器件**
+> （24 件、48 根引脚线、两条网络各 12 焊盘）的合成板。
+
+### 实测结果（一条命令跑完 8 段，耗时 181s）
+
+| 段 | 状态 | 计数 |
+|---|---|---|
+| project | ok | 2 块板 |
+| **layout** | ok | 检查 24 件；`--autolayout` 前 6 处违规 → 后 **0**（重排 24 个）|
+| schematic | ok | 装 24 件 / 48 根接线 / **分 4 批** |
+| pcb | ok | 板框 2/2、元件 24/24（**分 4 批**摆放）、`save=true` |
+| route=native | ok | 113 段走线、0 过孔、铺铜前 4/4 连通 |
+| pour | ok | 2 块板、GND 双面 + 缝合过孔 |
+| **verify** | ok | **4/4 条网几何连通（含铺铜）**，两块板都 ok |
+| outputs | ok | 7 个产物全落盘 |
+
+### 新增/改动的能力
+
+| 能力 | 位置 | 关键点 |
+|---|---|---|
+| 器件分批 | `_JS_SCHEMATIC` + `SCH_PART_BATCH=6` | 每批 ≤6 件，失败只损失一批 |
+| 接线的分批 | `_JS_SCHEMATIC_WIRE` + `SCH_WIRE_BATCH=12` | 与装器件**分成两段**（耗时差 10 倍）|
+| 摆放分批 | `_JS_PCB_MOVE` + `PCB_MOVE_BATCH=6` | 141 件也不整段超时 |
+| 导入补导 | `_run_pcb` | 12 件里偶尔 1 件 8s 才落地；补导一次（幂等）|
+| **布局规则** | `design/pcb_layout.py`（新） | 连接器出板 / 中心距 120 mil / 包围盒重叠 / 边距 |
+| 自动重排 | `pcb_layout.autoplace` + `--autolayout` | 只保证不短路，不冒充"最优摆放" |
+| **通道封装** | `design/lceda_channel.py`（新） | CLI + Bridge 同一套 `invoke`；不可用就抛、不偷偷降级 |
+| **verify 段** | `_run_verify`（新 job） | 铺铜**之后**的最终连通性 |
+
+### 这一轮又修掉的 5 个坑
+
+| # | 症状 | 根因 |
+|---|---|---|
+| 1 | 12 件的板只报 11 件（`missing_on_pcb: 0` 却自相矛盾）| `importChanges` 之后图元**陆续落地**，只等 6 秒不够；且元件数用了第一次读的快照 |
+| 2 | 多板时 Board2 的 GND 判成 4 个孤岛 | 引擎对 12 焊盘的地网只布了一部分；而**铺铜才是地的通路** → 判定必须在铺铜之后（新增 verify 段）|
+| 3 | 判定器对矩形焊盘用 `min(hw,hh)` → 误报断开 | 0402 是 16×17 mil，从长边贴上来的线被算成没接触；改成**线段到矩形**的真实距离 |
+| 4 | 先铺地再铺 3V3，3V3 一片铜都没有（`pourFills=0`）| 同层多张铺铜**互相吃光**；反过来的顺序则地没了。两层板的正解：**地铺整板，其它电源按 20 mil 宽走线** |
+| 5 | 布局检查报 `(1535.4, 236.2) mm` 这种坐标 | 内部换成了 mil，打印时没换回 mm（单位混用，AGENTS §3.3 的变体）|
+| 6 | 3 个器件 `placed=3`/`save=true`，PCB 上只有 2 个，`parity.missing=2` | 分批把「装器件」「接线」拆开后**没在导入前 save 原理图**；`importChanges` 读的是已提交源码，且 save 之后还要等 ~1.2s（AGENTS §3.30）|
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p26   # 28 条，全离线（几何/连通/布线/布局/通道）
+npm test                                # 751 项（新增 9 条：布局 6 + 通道 3）
+```
+
+## P24 — Bridge 通道真机验证（2026-11-22 凌晨）
+
+> 用户装好官方扩展后，第一次真机把 `--channel=bridge` 跑到了底。
+
+### 先排掉的两个误会
+
+| 现象 | 真相 |
+|---|---|
+| 扩展报 `Daemon not found — retrying` | 用户先装的是**第三方 EDA Agent Connector 1.18.0**（`zhoushoujian`），它要自己的 `easyeda-agent`（代码里 `DAEMON_PORT = 60832`）。我们的是 `easyeda-bridge`（49620–49629）——**不是同一个 daemon** |
+| `edaConnected: false` | 官方 **Run API Gateway 1.0.8**（EasyEDA）装上后，握手 `service === "easyeda-bridge"`、`register {windowId}` 与我们的 `bridge-server.mjs` **完全对得上**；勾「允许外部交互」+ 完全重启后即 `true` |
+
+### 实测能跑 / 不能跑
+
+| 操作 | 结果 |
+|---|---|
+| `/health`、`/eda-windows` | ✅ `edaConnected: true`，1 窗口 `4c056d72…` |
+| 单次 `invoke`（读工程/读网表） | ✅ 毫秒级 |
+| **整条 8 段发射** | ✅ **一次**（76s）：project/layout/schematic/pcb/route/pour/verify/outputs 全 ok，`channel.kind=bridge` |
+| 重复发射（窗口里已开着工程） | ❌ 撞 30s：`openProject 连续两次返回 false` → 失败 |
+| 叠层/网络类/差分对 | ❌ 单次就超 30s |
+
+⇒ 结论写进代码与报告：**Bridge 用于「必须在用户窗口里做的短操作」，长任务用 CLI**。
+`emit` 里 bridge 通道会自带一句说明；`BridgeChannel.invoke` 现在**把 HTTP 500 的 body 读出来**
+（原来只报 "HTTP 500"，等于什么都没说）。
+
+### 同一轮修掉的真 bug：原理图第一根 label 被吞
+
+| 症状 | 根因 | 修法 |
+|---|---|---|
+| `wired=4` 全 ok，但 `parity.missing=1`（R1.1 的 `A1` 没了），`verify` 只判 1 条网还报 ok | `openDocument` 之后**立刻**发第一条 `addNetLabel`，EDA 吞掉它（返回值仍是 ok） | ① 接线前再等 600ms ② **写完回读** `sch_Netlist.getNetlist('JLCEDA')` 逐引脚核对，不一致重试一次，仍不对 → `not_ready` |
+
+修后 CLI 实测：`pin_nets_ok=4 / pin_nets_bad={}`、`parity ok(0)`、`verify 2/2`。
+另外把两个"静默"堵上：**parity 不一致 → pcb 段 not_ready**；
+**设计里有、板上不足 2 焊盘的网 → verify 记 `not_connected_vs_design` 并 not_ready**。
+
+
 ---
 
 ## 参考对照（历史阶段，摘要）

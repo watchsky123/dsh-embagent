@@ -52,6 +52,10 @@ from hw_velxio.design import (
     sensitivity,
     firmware_matrix,
     req_draft,
+    pcb_geo,
+    pcb_layout,
+    router,
+    lceda_channel,
 )
 from hw_velxio.design.fwgen import drivers as fw_drivers
 from hw_velxio.design.fwgen import mcus as fw_mcus
@@ -1651,6 +1655,232 @@ class TestHandoffExternal(unittest.TestCase):
         rows = [{"id": "pt-1", "test": "t", "result": "fail", "observed": "x"}]
         for item in handoff._external(None, None, None, rows):  # noqa: SLF001
             self.assertEqual(item.category, "external")
+
+
+class TestPcbGeo(unittest.TestCase):
+    """几何回读 + 连通性判定（P26/P27）。离线，不碰立创。"""
+
+    def _payload(self) -> dict:
+        return {
+            "docType": 3, "nets": ["N1"],
+            "outlines": [["R", 0.0, 1574.8, 1968.5, 1574.8, 0, 0]],
+            "components": [
+                {"d": "R1", "x": 400.0, "y": 500.0, "layer": 1, "rot": 0,
+                 "pads": [{"net": "N1", "num": "1", "x": 400.0, "y": 500.0,
+                           "layer": 1, "hole": False, "hw": 16.0, "hh": 17.0,
+                           "shape": "RECT", "assumed": False}]},
+                {"d": "R2", "x": 1000.0, "y": 500.0, "layer": 1, "rot": 0,
+                 "pads": [{"net": "N1", "num": "1", "x": 1000.0, "y": 500.0,
+                           "layer": 1, "hole": False, "hw": 16.0, "hh": 17.0,
+                           "shape": "RECT", "assumed": False}]},
+            ],
+            "tracks": [{"net": "N1", "x1": 416.0, "y1": 500.0, "x2": 984.0,
+                        "y2": 500.0, "layer": 1, "width": 10.0}],
+            "vias": [], "errors": {},
+        }
+
+    def test_parse_counts(self) -> None:
+        geo = pcb_geo.parse(self._payload())
+        self.assertEqual(len(geo.pads), 2)
+        self.assertEqual(len(geo.tracks), 1)
+        self.assertEqual(len(geo.outlines), 1)
+
+    def test_outline_r_mode_y_range(self) -> None:
+        """AGENTS §3.20：R 的左上角 + 向 -Y → y 区间是 [y-h, y]。"""
+        geo = pcb_geo.parse(self._payload())
+        box = geo.outline_box
+        self.assertIsNotNone(box)
+        self.assertAlmostEqual(box[1], 0.0, places=6)
+        self.assertAlmostEqual(box[3], 1574.8, places=3)
+
+    def test_connected(self) -> None:
+        got = pcb_geo.connectivity(pcb_geo.parse(self._payload()))
+        self.assertEqual(got["status"], "ok")
+        self.assertEqual(got["connected"], ["N1"])
+
+    def test_split_when_track_short(self) -> None:
+        payload = self._payload()
+        payload["tracks"][0]["x2"] = 700.0
+        got = pcb_geo.connectivity(pcb_geo.parse(payload))
+        self.assertEqual(got["status"], "not_ready")
+        self.assertEqual(got["split"], ["N1"])
+        self.assertEqual(got["detail"]["N1"]["groups"], 2)
+
+    def test_empty_is_not_ready(self) -> None:
+        got = pcb_geo.connectivity(pcb_geo.BoardGeometry())
+        self.assertEqual(got["status"], "not_ready")
+
+    def test_single_pad_net_not_in_denominator(self) -> None:
+        geo = pcb_geo.parse(self._payload())
+        geo.pads.append(pcb_geo.Pad(net="ONLY1", number="1", ref="R9",
+                                    x=1500.0, y=900.0, layer=1))
+        geo.nets.append("ONLY1")
+        got = pcb_geo.connectivity(geo)
+        self.assertEqual(got["checked"], 1)
+        self.assertEqual(got["single"], ["ONLY1"])
+
+    def test_polygon_pad_half_is_finite(self) -> None:
+        payload = self._payload()
+        payload["components"][0]["pads"][0].update(
+            {"shape": "POLYGON", "hw": 20.0, "hh": 10.0})
+        self.assertEqual(pcb_geo.parse(payload).pads[0].half, 10.0)
+
+
+class TestRouter(unittest.TestCase):
+    """自研布线器（P28）。离线。"""
+
+    def _geo(self) -> pcb_geo.BoardGeometry:
+        geo = pcb_geo.BoardGeometry(board="probe")
+        geo.outlines = [["R", 0.0, 1574.8, 1968.5, 1574.8, 0, 0]]
+        for net, x0, y0 in (("N1", 400.0, 500.0), ("GND", 400.0, 700.0)):
+            geo.nets.append(net)
+            for i in range(2):
+                geo.pads.append(pcb_geo.Pad(
+                    net=net, number=str(i + 1), ref=f"{net}{i}",
+                    x=x0 + 600.0 * i, y=y0, layer=1, hw=16.0, hh=17.0))
+        return geo
+
+    def test_plan_routes_all(self) -> None:
+        planned = router.plan(self._geo())
+        self.assertEqual(planned.unrouted, [])
+        self.assertEqual(sorted(planned.routed), ["GND", "N1"])
+
+    def test_only_45_or_orthogonal(self) -> None:
+        for seg in router.plan(self._geo()).segments:
+            if abs(seg.x2 - seg.x1) < 1e-6 or abs(seg.y2 - seg.y1) < 1e-6:
+                continue
+            self.assertAlmostEqual(abs(seg.x2 - seg.x1), abs(seg.y2 - seg.y1),
+                                   places=3)
+
+    def test_no_outline_reports_unrouted(self) -> None:
+        geo = self._geo()
+        geo.outlines = []
+        planned = router.plan(geo)
+        self.assertTrue(planned.unrouted)
+        self.assertTrue(planned.notes)
+
+    def test_grid_cap_reports_reason(self) -> None:
+        geo = self._geo()
+        geo.outlines = [["R", 0.0, 40000.0, 40000.0, 40000.0, 0, 0]]
+        planned = router.plan(geo, rules=router.Rules(max_cells=1000))
+        self.assertTrue(planned.unrouted)
+        self.assertTrue(any("超限" in n for n in planned.notes))
+
+    def test_plan_result_passes_connectivity(self) -> None:
+        geo = self._geo()
+        planned = router.plan(geo)
+        replay = pcb_geo.BoardGeometry(board="probe", pads=list(geo.pads),
+                                       nets=list(geo.nets),
+                                       outlines=list(geo.outlines))
+        for seg in planned.segments:
+            replay.tracks.append(pcb_geo.Track(
+                net=seg.net, x1=seg.x1, y1=seg.y1, x2=seg.x2, y2=seg.y2,
+                layer=seg.layer, width=seg.width))
+        for via in planned.vias:
+            replay.vias.append(pcb_geo.Via(net=via.net, x=via.x, y=via.y,
+                                          diameter=via.diameter))
+        self.assertEqual(pcb_geo.connectivity(replay)["status"], "ok")
+
+    def test_stitch_sites_avoid_other_nets(self) -> None:
+        geo = self._geo()
+        geo.tracks.append(pcb_geo.Track(net="SIG", x1=280, y1=760,
+                                        x2=1700, y2=760, layer=1, width=10))
+        sites = router.stitch_sites(geo, "N1", count=6, inset_mil=40.0)
+        self.assertTrue(sites)
+        for _x, y in sites:
+            self.assertGreater(abs(y - 760.0), 20.0)
+
+
+class TestPcbLayout(unittest.TestCase):
+    """布局规则（P30 布局）。离线。"""
+
+    def _design(self, *, close: bool, connector_inside: bool) -> Any:
+        from hw_velxio.design.model import Board, DesignModel, Part, Placement
+
+        d = DesignModel(title="layout")
+        d.board = Board(kind="generic", name="b",
+                        outline=[(0.0, 0.0), (40.0, 0.0), (40.0, 30.0), (0.0, 30.0)],
+                        size_mm={"w": 40, "h": 30}, thickness_mm=1.6)
+        gap = 0.6 if close else 4.0
+        d.add_part(Part(ref="R1", kind="resistor", lcsc="C1523",
+                        size_mm={"w": 1.0, "h": 0.5},
+                        placement=Placement(x_mm=10.0, y_mm=10.0), pins=["1", "2"]))
+        d.add_part(Part(ref="R2", kind="resistor", lcsc="C1523",
+                        size_mm={"w": 1.0, "h": 0.5},
+                        placement=Placement(x_mm=10.0 + gap, y_mm=10.0),
+                        pins=["1", "2"]))
+        d.add_part(Part(ref="J1", kind="connector", lcsc="C1523",
+                        size_mm={"w": 6.0, "h": 4.0},
+                        placement=Placement(
+                            x_mm=20.0 if connector_inside else 1.8, y_mm=15.0),
+                        pins=["1", "2"]))
+        return d
+
+    def test_clean_layout_passes(self) -> None:
+        report = pcb_layout.audit(self._design(close=False, connector_inside=False))
+        self.assertEqual(report.status, "ok", [f.to_dict() for f in report.blockers])
+
+    def test_close_passives_overlap_or_too_close(self) -> None:
+        report = pcb_layout.audit(self._design(close=True, connector_inside=False))
+        codes = {f.code for f in report.blockers}
+        self.assertTrue(codes & {"overlap", "too_close"}, codes)
+        self.assertNotEqual(report.status, "ok")
+
+    def test_connector_inside_board_is_blocker(self) -> None:
+        report = pcb_layout.audit(self._design(close=False, connector_inside=True))
+        self.assertIn("connector_in_board", {f.code for f in report.blockers})
+
+    def test_autoplace_fixes_blockers(self) -> None:
+        design = self._design(close=True, connector_inside=True)
+        self.assertNotEqual(pcb_layout.audit(design).status, "ok")
+        for board in design.board_list():
+            plan = pcb_layout.autoplace(design, board=board)
+            for part in design.parts:
+                if design.board_of(part) is not board:
+                    continue
+                pos = plan.get(str(part.ref))
+                if pos and part.placement is not None:
+                    part.placement.x_mm, part.placement.y_mm = pos
+        self.assertEqual(pcb_layout.audit(design).status, "ok",
+                         [f.to_dict() for f in pcb_layout.audit(design).blockers])
+
+    def test_missing_size_is_not_silently_ok(self) -> None:
+        design = self._design(close=False, connector_inside=False)
+        design.parts[0].size_mm = {}
+        report = pcb_layout.audit(design)
+        self.assertTrue(any(f.code == "unknown_size" for f in report.findings))
+
+    def test_empty_design_is_not_ready(self) -> None:
+        from hw_velxio.design.model import Board, DesignModel
+
+        d = DesignModel(title="empty")
+        d.board = Board(kind="generic", name="b", size_mm={"w": 10, "h": 10})
+        self.assertEqual(pcb_layout.audit(d).status, "not_ready")
+
+
+class TestLcedaChannel(unittest.TestCase):
+    """通道层（P24）。**不联网、不启动立创**：只验"不可用时怎么报"。"""
+
+    def test_probe_shape(self) -> None:
+        got = lceda_channel.probe(exe=[])
+        self.assertIn("cli", got)
+        self.assertIn("bridge", got)
+        self.assertIn("recommended", got)
+        self.assertIsInstance(got["bridge"]["missing"], list)
+
+    def test_bridge_unavailable_raises_with_instructions(self) -> None:
+        # 本机 Bridge 没连上（扩展没点 Reconnect）→ 必须是**明确的**错误，
+        # 不能静默降级成 CLI（那会让人以为"用的就是 Bridge"）。
+        probe = lceda_channel.probe()
+        if probe["bridge"]["edaConnected"]:
+            self.skipTest("Bridge 已连上，这条测不到不可用分支")
+        with self.assertRaises(lceda_channel.ChannelError) as ctx:
+            lceda_channel.open_channel("bridge")
+        self.assertIn("Bridge", str(ctx.exception))
+
+    def test_unknown_prefer_rejected(self) -> None:
+        with self.assertRaises(lceda_channel.ChannelError):
+            lceda_channel.open_channel("carrier-pigeon")
 
 
 if __name__ == "__main__":
