@@ -1,0 +1,154 @@
+{
+ "schema": "hw_velxio.design/1",
+ "units": "mm",
+ "id": "untitled",
+ "title": "tiny-blink",
+ "board": {
+  "kind": "generic",
+  "name": "tiny-blink",
+  "outline": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    60.0,
+    0.0
+   ],
+   [
+    60.0,
+    40.0
+   ],
+   [
+    0.0,
+    40.0
+   ]
+  ],
+  "size_mm": {
+   "w": 60.0,
+   "h": 40.0
+  },
+  "thickness_mm": 1.6,
+  "mount_holes": [],
+  "px_per_mm": 3.7795
+ },
+ "parts": [
+  {
+   "ref": "U1",
+   "kind": "mcu",
+   "label": "mcu",
+   "role": "component",
+   "size_mm": {
+    "w": 5.0,
+    "h": 5.0,
+    "d": 1.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 20.0,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2",
+    "3",
+    "4"
+   ]
+  },
+  {
+   "ref": "R1",
+   "kind": "resistor",
+   "label": "resistor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 35.0,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "D1",
+   "kind": "led",
+   "label": "led",
+   "role": "component",
+   "size_mm": {
+    "w": 2.0,
+    "h": 1.2,
+    "d": 0.8
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 45.0,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  }
+ ],
+ "nets": [
+  {
+   "net": "D13",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "1"
+    },
+    {
+     "ref": "R1",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "LED_A",
+   "pins": [
+    {
+     "ref": "R1",
+     "pin": "2"
+    },
+    {
+     "ref": "D1",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "pins": [
+    {
+     "ref": "D1",
+     "pin": "2"
+    },
+    {
+     "ref": "U1",
+     "pin": "2"
+    }
+   ]
+  }
+ ],
+ "wires": [],
+ "meta": {}
+}

@@ -1,0 +1,896 @@
+{
+ "schema": "hw_velxio.design/1",
+ "units": "mm",
+ "id": "untitled",
+ "title": "dense-0402",
+ "board": {
+  "kind": "generic",
+  "name": "dense-0402",
+  "outline": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    80.0,
+    0.0
+   ],
+   [
+    80.0,
+    60.0
+   ],
+   [
+    0.0,
+    60.0
+   ]
+  ],
+  "size_mm": {
+   "w": 80.0,
+   "h": 60.0
+  },
+  "thickness_mm": 1.6,
+  "mount_holes": [],
+  "px_per_mm": 3.7795
+ },
+ "parts": [
+  {
+   "ref": "U1",
+   "kind": "mcu",
+   "label": "mcu",
+   "role": "component",
+   "size_mm": {
+    "w": 5.0,
+    "h": 5.0,
+    "d": 1.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 10.0,
+    "y_mm": 10.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8"
+   ]
+  },
+  {
+   "ref": "C1",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 20.0,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C2",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 25.5,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C3",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 31.0,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C4",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 36.5,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C5",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 42.0,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C6",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 47.5,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C7",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 53.0,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C8",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 58.5,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C9",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 64.0,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C10",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 69.5,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C11",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 20.0,
+    "y_mm": 28.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C12",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 25.5,
+    "y_mm": 28.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C13",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 31.0,
+    "y_mm": 28.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C14",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 36.5,
+    "y_mm": 28.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C15",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 42.0,
+    "y_mm": 28.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C16",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 47.5,
+    "y_mm": 28.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C17",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 53.0,
+    "y_mm": 28.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C18",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 58.5,
+    "y_mm": 28.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C19",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 64.0,
+    "y_mm": 28.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "C20",
+   "kind": "capacitor",
+   "label": "capacitor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.0,
+    "h": 0.5,
+    "d": 0.5
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 69.5,
+    "y_mm": 28.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  }
+ ],
+ "nets": [
+  {
+   "net": "N1",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "1"
+    },
+    {
+     "ref": "C1",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "pins": [
+    {
+     "ref": "C1",
+     "pin": "2"
+    },
+    {
+     "ref": "C2",
+     "pin": "2"
+    },
+    {
+     "ref": "C3",
+     "pin": "2"
+    },
+    {
+     "ref": "C4",
+     "pin": "2"
+    },
+    {
+     "ref": "C5",
+     "pin": "2"
+    },
+    {
+     "ref": "C6",
+     "pin": "2"
+    },
+    {
+     "ref": "C7",
+     "pin": "2"
+    },
+    {
+     "ref": "C8",
+     "pin": "2"
+    },
+    {
+     "ref": "C9",
+     "pin": "2"
+    },
+    {
+     "ref": "C10",
+     "pin": "2"
+    },
+    {
+     "ref": "C11",
+     "pin": "2"
+    },
+    {
+     "ref": "C12",
+     "pin": "2"
+    },
+    {
+     "ref": "C13",
+     "pin": "2"
+    },
+    {
+     "ref": "C14",
+     "pin": "2"
+    },
+    {
+     "ref": "C15",
+     "pin": "2"
+    },
+    {
+     "ref": "C16",
+     "pin": "2"
+    },
+    {
+     "ref": "C17",
+     "pin": "2"
+    },
+    {
+     "ref": "C18",
+     "pin": "2"
+    },
+    {
+     "ref": "C19",
+     "pin": "2"
+    },
+    {
+     "ref": "C20",
+     "pin": "2"
+    }
+   ]
+  },
+  {
+   "net": "N2",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "2"
+    },
+    {
+     "ref": "C2",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N3",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "3"
+    },
+    {
+     "ref": "C3",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N4",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "4"
+    },
+    {
+     "ref": "C4",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N5",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "5"
+    },
+    {
+     "ref": "C5",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N6",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "6"
+    },
+    {
+     "ref": "C6",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N7",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "7"
+    },
+    {
+     "ref": "C7",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N8",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "8"
+    },
+    {
+     "ref": "C8",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N9",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "1"
+    },
+    {
+     "ref": "C9",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N10",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "2"
+    },
+    {
+     "ref": "C10",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N11",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "3"
+    },
+    {
+     "ref": "C11",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N12",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "4"
+    },
+    {
+     "ref": "C12",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N13",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "5"
+    },
+    {
+     "ref": "C13",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N14",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "6"
+    },
+    {
+     "ref": "C14",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N15",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "7"
+    },
+    {
+     "ref": "C15",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N16",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "8"
+    },
+    {
+     "ref": "C16",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N17",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "1"
+    },
+    {
+     "ref": "C17",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N18",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "2"
+    },
+    {
+     "ref": "C18",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N19",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "3"
+    },
+    {
+     "ref": "C19",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "N20",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "4"
+    },
+    {
+     "ref": "C20",
+     "pin": "1"
+    }
+   ]
+  }
+ ],
+ "wires": [],
+ "meta": {}
+}

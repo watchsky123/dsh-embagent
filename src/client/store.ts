@@ -16,6 +16,7 @@ import type {
   ExportPayload,
   ProjectSummary,
   SnapshotPayload,
+  EntityProfile,
 } from '../shared/types.js'
 import type { WorkbenchFace } from './rpc.js'
 
@@ -32,6 +33,10 @@ export type PanelId = 'health' | 'delivery' | 'velxio'
 
 /** 分组内的分区（保留原来的 8 个语义，一个都没丢）。 */
 export type SectionId =
+  | 'verdict'
+  | 'params'
+  | 'firmware'
+  | 'req'
   | 'checks'
   | 'budget'
   | 'deferred'
@@ -49,8 +54,8 @@ const LAYOUTS = ['split', '2d', '3d'] as const
 
 /** 每个分组里有哪几个分区，顺序即分段控件的顺序。 */
 export const SECTIONS: Readonly<Record<PanelId, readonly SectionId[]>> = {
-  health: ['checks', 'budget', 'deferred', 'crosscheck', 'blocks'],
-  delivery: ['export', 'evidence'],
+  health: ['verdict', 'params', 'checks', 'budget', 'deferred', 'crosscheck', 'blocks'],
+  delivery: ['export', 'firmware', 'req', 'evidence'],
   velxio: ['velxio', 'sim'],
 }
 
@@ -59,14 +64,20 @@ export const GROUP_LABEL: Readonly<Record<PanelId, string>> = {
 }
 
 export const SECTION_LABEL: Readonly<Record<SectionId, string>> = {
-  checks: '判定', budget: '预算', deferred: '未决', crosscheck: '核对',
-  blocks: '积木', export: '制造', evidence: '证据/轨迹',
+  verdict: '结论', params: '参数', checks: '判定', budget: '预算', deferred: '未决', crosscheck: '核对',
+  blocks: '积木', export: '制造', firmware: '固件', req: '需求', evidence: '证据/轨迹',
   velxio: '后端', sim: '仿真',
 }
 
 /** 每个分组的默认分区 —— 打开就该看到最常用的那个。 */
 export const DEFAULT_SECTION: Readonly<Record<PanelId, SectionId>> = {
-  health: 'checks', delivery: 'export', velxio: 'velxio',
+  health: 'verdict', delivery: 'export', velxio: 'velxio',
+}
+
+/** 是不是一个已知分区。**别猜**：host 的 `view` 是自由字符串。 */
+export function isSectionId(value: string): boolean {
+  return (Object.values(SECTIONS) as readonly (readonly string[])[])
+    .some((list) => list.includes(value))
 }
 
 /** 分区属于哪个分组。由 `SECTIONS` 反推，避免两处各写一份对不齐。 */
@@ -146,6 +157,20 @@ export interface HwState {
   readonly layout: Layout
   readonly selectedRef: string
   readonly panel: PanelId
+  /**
+   * 要聚焦的设计字段路径（如 `electrical.power_w`）。
+   *
+   * 「下一步」按钮（P1）用它把用户送到 Inspector 里**那个输入框**，
+   * 而不只是选中元件。空串 = 不聚焦。
+   * 用完不清空：人可能再点一次同一个字段。
+   */
+  readonly focusField: string
+  /**
+   * 选中元件的完整画像（P2 按对象聚合）。**按需加载**——
+   * 快照里只有一行摘要，正文走 `entity` RPC，否则 316 个件会把快照撑爆。
+   */
+  readonly entity: EntityProfile | null
+  readonly entityLoading: boolean
   /** 当前分组里的分区（与 3D 的 `section` 剖面开关**不同**，故用 panelSection）。 */
   readonly panelSection: SectionId
   readonly hintSeq: number
@@ -226,6 +251,9 @@ const INITIAL: HwState = {
   layout: readStoredEnum('layout', LAYOUTS, 'split'),
   selectedRef: '',
   panel: 'health',
+  focusField: '',
+  entity: null,
+  entityLoading: false,
   panelSection: 'checks',
   hintSeq: 0,
   lastExport: null,
@@ -312,6 +340,20 @@ export class HwStore {
       } else {
         await this.reloadProjects()
       }
+      // **工具跑完要把面板切到该看的那一页**。宿主早就把 `view` 带过来了
+      // （`service.ts` 的 `hintState.view`），但客户端一直只读 `project`——
+      // 于是 `viewHint(project, 'checks')` 那 14 处调用全是死代码，
+      // 用户跑完 `hw_ladder` 还得自己点页签。
+      //
+      // 只认**已知的分区**：未知字符串忽略而不是猜。切分区同时切分组，
+      // 否则会出现"选中了不在当前分组里的分区"这种错位状态。
+      const view = hint.view
+      if (typeof view === 'string' && view !== '' && isSectionId(view)) {
+        if (view !== this.state.panelSection || groupOf(view) !== this.state.panel) {
+          this.setPanelSection(view as SectionId)
+          this.setPanel(groupOf(view as SectionId))
+        }
+      }
     } catch {
       // 轮询失败不打扰用户：下一次成功会自愈
     }
@@ -342,7 +384,7 @@ export class HwStore {
       // 勘察摘要与工作区一起拉：它决定评审 prompt 里"这里到底有什么"。
       void this.loadSurvey()
       if (keep !== '') await this.open(keep)
-      else this.set({ snapshot: null, project: '' })
+      else this.set({ snapshot: null, project: '', entity: null })
     } catch (error) {
       this.set({ loading: false, ready: true, error: message(error) })
     }
@@ -562,8 +604,39 @@ export class HwStore {
     this.set({ grid3d: value })
   }
 
+  /** 选中元件 + 指定要聚焦的字段（空串 = 只选中）。 */
+  selectField(ref: string, field: string): void {
+    this.set({ selectedRef: ref, focusField: field })
+    void this.loadEntity(ref)
+  }
+
   select(ref: string): void {
-    this.set({ selectedRef: ref === this.state.selectedRef ? '' : ref })
+    const next = ref === this.state.selectedRef ? '' : ref
+    this.set({ selectedRef: next })
+    void this.loadEntity(next)
+  }
+
+  /**
+   * 拉一个元件的画像。**失败不抛**：画布上点一下不该弹错误框，
+   * 画像区自己显示"读不到"。
+   */
+  private async loadEntity(ref: string): Promise<void> {
+    const face = this.state.face
+    const project = this.state.project
+    if (ref === '' || face === null || project === '') {
+      this.set({ entity: null, entityLoading: false })
+      return
+    }
+    this.set({ entityLoading: true })
+    try {
+      const profile = await face.entity(project, ref)
+      // 用户可能在等待期间又点了别的件：**只认最后一次**
+      if (this.state.selectedRef !== ref) return
+      this.set({ entity: profile.status === 'ok' ? profile : null, entityLoading: false })
+    } catch {
+      if (this.state.selectedRef !== ref) return
+      this.set({ entity: null, entityLoading: false })
+    }
   }
 
   clearNotice(): void { this.set({ notice: null, error: null }) }
@@ -684,10 +757,22 @@ export class HwStore {
       error: null,
       notice: notes.length === 0 ? summary : `${summary} · ${notes.join(' · ')}`,
       panel: 'health',
-      panelSection: 'checks',
+      focusField: '',
+  entity: null,
+  entityLoading: false,
+  panelSection: 'checks',
     })
     await this.open(project)
     await this.reloadProjects()
+  }
+
+  /** 应用需求草稿（P5）。**这里就是"人确认"那一下**，不做自动调用。 */
+  applyReqDraft(): Promise<void> {
+    return this.edit('应用需求草稿', async (face, project) => {
+      const result = await face.applyReqDraft(project, true)
+      this.set({ panel: 'delivery', panelSection: 'req' })
+      return result
+    })
   }
 
   lockDecision(name: string, value: string): Promise<void> {

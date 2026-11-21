@@ -140,6 +140,26 @@ export class HwVelxioGateway extends TypertRemoteService {
 
   // -- 设计 ---------------------------------------------------------------
 
+  /** 一个元件的完整画像（P2 按对象聚合）。只读，不跑判定。 */
+  @Remote('entity')
+  async entity(project: string, ref: string): Promise<Record<string, unknown>> {
+    const payload = await design('entity', project, ref)
+    return payload as unknown as Record<string, unknown>
+  }
+
+  /**
+   * 把需求草稿变成真需求（P5）。**`confirm` 是人的确认**，不是布尔开关的装饰：
+   * 它为 `false` 时 Python 侧直接拒（`req_draft.apply` 的第三道闸门）。
+   */
+  @Remote('applyReqDraft')
+  async applyReqDraft(project: string, confirm: boolean): Promise<Record<string, unknown>> {
+    const args = ['req-draft', project, '--apply']
+    if (confirm) args.push('--confirm')
+    const payload = await design(...args)
+    noteHint(project, 'req')
+    return payload as unknown as Record<string, unknown>
+  }
+
   @Remote('snapshot')
   async snapshot(project: string, pitchMm?: number): Promise<SnapshotPayload> {
     const payload = await design('snapshot', project, '--pitch', String(pitchMm ?? DEFAULT_PITCH_MM))

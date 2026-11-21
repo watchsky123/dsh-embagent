@@ -51,7 +51,10 @@ from typing import Any
 from .model import DesignModel
 
 #: 五类的顺序 = 报告里的顺序 = "先看哪个"的顺序。
-CATEGORIES = ("blocking", "missing_data", "assumed", "unverifiable", "orphan")
+#: 六类。**第五类 `external` 是本轮新增**：外部工具（立创EDA DRC、
+#: MuJoCo 轨迹）给出的证据。它**不进阻断** —— 理由见 `_external()`。
+CATEGORIES = ("blocking", "missing_data", "assumed", "unverifiable",
+              "orphan", "external")
 
 CATEGORY_TITLE = {
     "blocking": "一、必须修好才能打板（阻断）",
@@ -59,6 +62,7 @@ CATEGORY_TITLE = {
     "assumed": "三、机器用了默认值（需替换或确认）",
     "unverifiable": "四、这套系统不会验，只能你自己实测",
     "orphan": "五、生成了但没接线（确认是否故意）",
+    "external": "六、外部工具的结论（立创EDA DRC / 仿真，作参考不阻断）",
 }
 
 
@@ -76,9 +80,17 @@ class Item:
     action: str = ""
     risk: str = ""
     basis: str = ""            # 这条从哪儿来的（文件 + 字段）
+    #: 结构化的"该怎么改"。`nextstep.NEEDS` 把它翻成可点的动作
+    #: （`edit_field` / `move_part` / `run_command` / `external`）。
+    #: **空 = 这条没有机械可做的动作**，UI 退回显示 `action` 自由文本。
+    fix: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
+    def to_dict(self, *, project: str = "") -> dict[str, Any]:
+        from . import nextstep
+
+        step = nextstep.for_item({"fix": self.fix, "category": self.category,
+                                  "status": self.status}, project=project)
+        out: dict[str, Any] = {
             "category": self.category,
             "title": self.title,
             "status": self.status,
@@ -86,6 +98,11 @@ class Item:
             "risk": self.risk,
             "basis": self.basis,
         }
+        if self.fix:
+            out["fix"] = dict(self.fix)
+        if step is not None:
+            out["next"] = step
+        return out
 
 
 @dataclass
@@ -112,7 +129,7 @@ class Handoff:
             "sources": dict(self.sources),
             "counts": {c: len(self.by_category(c)) for c in CATEGORIES},
             "checked": dict(self.checked),
-            "items": [i.to_dict() for i in self.items],
+            "items": [i.to_dict(project=self.project) for i in self.items],
             "summary": self.summary(),
         }
         return out
@@ -186,18 +203,62 @@ def _blocking(ladder: dict | None, claims: dict | None,
             title = str(level.get("title") or "")
             if status != "fail":
                 continue
+            # **V7/V8 归 external，不进阻断。**
+            # 实测踩坑：第一版只加了 `_external()` 的收集，
+            # 没在 `_blocking()` 里排除这两层 → 同一个 V7 失败
+            # **同时出现在阻断和外部证据里**，`deliverable` 也被它否决。
+            # 那等于"外部工具的标准"变成了"我们的硬判定"，
+            # 正是把 `_external` 单列的意义抵消掉。
+            if name in ("V7", "V8"):
+                continue
             if name == "V2":
                 v2_failed = True
-            findings = [_finding_text(f) for f in (level.get("findings") or [])]
-            out.append(Item(
-                category="blocking",
-                title=f"{name} {title} 失败",
-                status="fail",
-                action="；".join(findings[:4]) or "修好该层报出的问题",
-                risk=("板子会烧或网表根本不成立"
-                      if name in ("V0", "V1") else
-                      "该层的判据不成立"),
-                basis=f"ladder.json:{name}.status=fail"))
+            findings = [f for f in (level.get("findings") or []) if isinstance(f, dict)]
+            fixes = [f for f in findings if isinstance(f.get("fix"), dict)
+                     and f["fix"].get("need")]
+            plain = [f for f in findings if f not in fixes]
+
+            # **一条 finding 一条待办**，带上它自己的 `fix`。
+            #
+            # 原来把这些拼进一个"V2 失败"的总条目里（`action` 是四个 message
+            # 用分号连起来）。后果是：10 个几何问题挤在一句话里，
+            # 人没法"点其中一条去改"。而 `physical.py` 本来就给每条
+            # finding 带了 `fix={"need": "move_apart", "refs": [...]}`。
+            #
+            # **不是"总条目 + 细分条目"两张表**：同一批问题报两遍，人会
+            # 以为有 20 个（AGENTS §4.3）。层的信息放进标题前缀。
+            for item_finding in fixes:
+                merged_fix = dict(item_finding["fix"])
+                # `physical` 常把 refs 放**finding 顶层**、fix 里不带。
+                # 不合并的话，下一步只能显示「把 ? 分开」——问号是"丢信息"
+                # 的样子，比没有按钮更让人怀疑工具。
+                said = [str(x) for x in (item_finding.get("refs") or [])]
+                if said and not merged_fix.get("refs"):
+                    merged_fix["refs"] = said
+                out.append(Item(
+                    category="blocking",
+                    title=f"{name} · {_finding_text(item_finding)}",
+                    status="fail",
+                    action=_finding_text(item_finding),
+                    risk=("板子会烧或网表根本不成立"
+                          if name in ("V0", "V1") else
+                          "该层的判据不成立"),
+                    basis=f"ladder.json:{name}.findings",
+                    fix=merged_fix))
+            if plain or not fixes:
+                rows = [_finding_text(f) for f in plain]
+                out.append(Item(
+                    category="blocking",
+                    title=f"{name} {title} 失败",
+                    status="fail",
+                    action="；".join(rows[:4]) or "修好该层报出的问题",
+                    risk=("板子会烧或网表根本不成立"
+                          if name in ("V0", "V1") else
+                          "该层的判据不成立"),
+                    basis=f"ladder.json:{name}.status=fail",
+                    # 没 fix 的层（V0/V1/V3…）至少能给"重跑"——
+                    # 但重跑不是修，所以只给 `external`（说清谁做）。
+                    fix={"need": "fix_design_manually", "what": name} if plain else {}))
         if stopped:
             out.append(Item(
                 category="blocking",
@@ -271,7 +332,10 @@ def _missing_data(design: DesignModel, budget: dict | None,
             status=f"{declared}/{total}",
             action="给出每个耗电器件的电流；至少给出各电源轨的总负载",
             risk="电源预算、压降、温升全部算不出来——不是通过，是没算",
-            basis="design.json:parts[].electrical 全空"))
+            basis="design.json:parts[].electrical 全空",
+            # **不给 refs**：这是"整个设计一个申报都没有"，没有哪个件是可点的
+            # 靶子。挑第一个件当靶子是猜——点"去改"会把人送到一个随机元件上。
+            fix={"need": "declare_electrical"}))
 
     # 2. 预算置信度。**产物不存在时也要说**——第一次写这段只处理了
     # `budget is not None` 的情况，于是"根本没有 budget.json"时
@@ -287,7 +351,8 @@ def _missing_data(design: DesignModel, budget: dict | None,
                 status="confidence=none",
                 action="补 `electrical` 申报，或显式给出各项上限",
                 risk="功率/热/EMC/时序/成本五条全部未知",
-                basis="budget.json:confidence=none"))
+                basis="budget.json:confidence=none",
+                fix={"need": "declare_electrical"}))
         elif confidence == "partial":
             out.append(Item(
                 category="missing_data",
@@ -295,7 +360,8 @@ def _missing_data(design: DesignModel, budget: dict | None,
                 status="confidence=partial",
                 action="补齐未覆盖元件的申报（见 budget.json:coverage.uncovered）",
                 risk="未被覆盖的部分可能超限而不会被发现",
-                basis="budget.json:coverage"))
+                basis="budget.json:coverage",
+                fix={"need": "declare_electrical"}))
     else:
         out.append(Item(
             category="missing_data",
@@ -303,7 +369,8 @@ def _missing_data(design: DesignModel, budget: dict | None,
             status="missing",
             action="跑一次 `hw_budget`；在那之前五轨预算完全未知",
             risk="功率/热/EMC/时序/成本从未被计算过，不是'通过'",
-            basis="budget.json 缺失"))
+            basis="budget.json 缺失",
+            fix={"need": "run_budget"}))
 
     # 3. 归一化：连网表都没有的元件，归因无法进行
     if justify:
@@ -318,7 +385,8 @@ def _missing_data(design: DesignModel, budget: dict | None,
                         "只给出元件清单无法判定这些件的作用"),
                 risk=("这些元件的存在理由无法验证；删掉它们系统也不会报错"
                       "（断言机制覆盖不到没有网表的元件）"),
-                basis="justify.json:missing_data.no_netlist"))
+                basis="justify.json:missing_data.no_netlist",
+                fix={"need": "import_netlist"}))
 
     # 4. 尺寸来源：估算值不能当精确值
     estimated = [p.ref for p in design.parts
@@ -331,7 +399,8 @@ def _missing_data(design: DesignModel, budget: dict | None,
             action=("查 datasheet 替换为实测尺寸；估算值只能用来发现"
                     "明显重叠，不能用来判断装配"),
             risk="按估算尺寸排的布局可能装不进去",
-            basis="design.json:parts[].physical_source"))
+            basis="design.json:parts[].physical_source",
+            fix={"need": "import_datasheet_or_measure", "refs": estimated[:6]}))
 
     return out
 
@@ -349,7 +418,8 @@ def _assumed(coverify: dict | None, ladder: dict | None) -> list[Item]:
                 status="default",
                 action="给出实际数值，替换默认值后重跑协同验证",
                 risk="协同验证的结论建立在默认值上；默认值不成立时结论作废",
-                basis="coverify 的 not_verified"))
+                basis="coverify 的 not_verified",
+                fix={"need": "declare_requirement"}))
         provenance = coverify.get("provenance") or {}
         defaults = [f"{k}={v}" for k, v in provenance.items()
                     if isinstance(v, str) and "默认值" in v]
@@ -396,7 +466,8 @@ def _unverifiable(ladder: dict | None, checks: dict | None) -> list[Item]:
                 status="not_run",
                 action=action,
                 risk=f"{name} 能发现的问题，这一版完全没查",
-                basis=f"ladder.json:{name}.status=not_run"))
+                basis=f"ladder.json:{name}.status=not_run",
+                fix={"need": "install_toolchain", "what": name}))
     if checks:
         for note in (checks.get("unverified") or []):
             out.append(Item(
@@ -442,7 +513,8 @@ def _link_gaps(links_payload: dict | None,
                         "写清 a/b 两端的外设名、协议、电平、波特率"),
                 risk=("协议/电平/波特率三条检查从未执行；"
                       "两块板插上才发现不通"),
-                basis="links.json:checked.declared_links=0"))
+                basis="links.json:checked.declared_links=0",
+                fix={"need": "apply_inferred_links"}))
 
         orphans = links_payload.get("orphans") or {}
         counts = orphans.get("counts") or {}
@@ -457,7 +529,8 @@ def _link_gaps(links_payload: dict | None,
                 status="orphan",
                 action="补链路：" + ", ".join(r for r in rows if r),
                 risk="这是隐性假设——网表上通，但两端可能根本不匹配",
-                basis="links.json:orphans.declared_unlinked"))
+                basis="links.json:orphans.declared_unlinked",
+                fix={"need": "declare_link", "peripheral": ", ".join(r for r in rows if r)}))
 
         observed_unlinked = int(counts.get("observed_unlinked") or 0)
         if observed_unlinked:
@@ -481,7 +554,8 @@ def _link_gaps(links_payload: dict | None,
                 status="missing",
                 action="重新导入这些板的网表；只给元件清单无法判断它们的对外接口",
                 risk="板间链路无从推导，这些单元的角色也判不出",
-                basis="links.json:orphans.units_without_nets"))
+                basis="links.json:orphans.units_without_nets",
+                fix={"need": "import_netlist"}))
 
     if units_payload:
         missing = units_payload.get("missing_data") or {}
@@ -496,7 +570,8 @@ def _link_gaps(links_payload: dict | None,
                 status="missing",
                 action="补这几块板的网表",
                 risk="单元角色判不出（是缺数据，不是算法判不出）",
-                basis="units.json:missing_data.no_netlist"))
+                basis="units.json:missing_data.no_netlist",
+                fix={"need": "import_netlist"}))
         if total and judgeable == 0:
             out.append(Item(
                 category="missing_data",
@@ -504,7 +579,239 @@ def _link_gaps(links_payload: dict | None,
                 status="unknown",
                 action="给关键网络起名字（OSC_IN / SCL / USART1_TX 之类）",
                 risk="单元层只剩'分了组'，没有'这组干什么'",
-                basis="units.json:judgeable=0"))
+                basis="units.json:judgeable=0",
+                fix={"need": "name_networks"}))
+
+    return out
+
+
+def _external(sim: dict | None, ladder: dict | None,
+              emit: dict | None = None,
+              physical: list[dict] | None = None) -> list[Item]:
+    """第六类：外部工具的结论。**不进阻断。**
+
+    ## 为什么单列、且不阻断
+
+    `blocking` 是"我们自己的判定证明它坏了"。外部工具（立创EDA DRC、
+    MuJoCo 轨迹）用的是**别人的标准**：
+
+    * 立创的层规则/安全间距/焊盘补偿与我们不同
+    * MuJoCo 的翻倒阈值是我们定的口径，不是物理定律
+
+    混进阻断会让人分不清"这是谁说的"。而且外部工具**可能误报**：
+    RoboBuilder 的仿真器在修好 135 个参数前，15 个仿真通过的真机全灭。
+
+    所以这一类的语义是"另一双眼睛看到的，供参考"。
+    `deliverable` 不看这一类。
+    """
+    out: list[Item] = []
+
+    if ladder:
+        for level in ladder.get("levels") or []:
+            if not isinstance(level, dict):
+                continue
+            name = str(level.get("level") or "")
+            if name not in ("V7", "V8"):
+                continue
+            status = str(level.get("status") or "")
+            if status == "not_run":
+                continue
+            checked = int(level.get("checked") or 0)
+            title = str(level.get("title") or "")
+            if status == "fail":
+                findings = [f for f in (level.get("findings") or [])
+                            if isinstance(f, dict)]
+                out.append(Item(
+                    category="external",
+                    title=f"{name} {title} 判失败（外部口径）",
+                    status=status,
+                    action=("要么改设计，要么确认这个外部判据对你成立："
+                            + "；".join(str(f.get("message") or "")[:60]
+                                       for f in findings[:3])),
+                    risk=("外部工具的标准未必等于你的验收标准——"
+                          "这条不阻断打板，但值得看一眼"),
+                    basis=f"ladder.json:{name}"))
+            elif checked:
+                out.append(Item(
+                    category="external",
+                    title=f"{name} {title} 跑了 {checked} 项（{status}）",
+                    status=status,
+                    action="无需动作；这是一条外部证据记录",
+                    risk="外部工具的结论不替代我们的判定",
+                    basis=f"ladder.json:{name}.checked"))
+
+    if sim:
+        for row in sim.get("domains") or []:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("status") or "") != "unknown":
+                continue
+            out.append(Item(
+                category="external",
+                title=f"{row.get('label') or row.get('domain')} 域 unknown",
+                status="unknown",
+                action=str(row.get("reason") or "")[:120] or "该域没有结论",
+                risk="unknown 不是通过——这一域的问题这一版没查",
+                basis=f"sim.json:domains[{row.get('domain')}]"))
+        no_model = [str(d) for d in (sim.get("no_model") or [])]
+        if no_model:
+            out.append(Item(
+                category="external",
+                title=f"{len(no_model)} 个物理域没有模型",
+                status="no_model",
+                action="只能实测：" + ", ".join(no_model),
+                risk="没有模型就不可能说这些域通过",
+                basis="sim.json:no_model"))
+
+    # -- 立创EDA：DRC / parity / 布线引擎 ---------------------------------
+    #
+    # 这些是**别人工具里的结果**，所以同样只提示、不阻断。
+    # 注意 `emit.json` 里的 `drc.pass` 可能为 False 而 `route` 是 not_ready
+    # （没布线当然连不通）——两件事，不合并成一条。
+    if isinstance(emit, dict):
+        drc = emit.get("drc") or {}
+        if drc.get("status") != "not_ready" and drc.get("boards"):
+            failed = [b for b in drc.get("boards") or [] if not b.get("pass")]
+            if failed:
+                total = sum(int(b.get("violations") or 0) for b in failed)
+                groups = sorted({g for b in failed for g in (b.get("groups") or [])})
+                out.append(Item(
+                    category="external",
+                    title=f"立创EDA DRC 未通过（{len(failed)} 块板 / {total} 处）",
+                    status="fail",
+                    action=("在立创里看 DRC 明细并改板；类别："
+                            + "、".join(groups[:4])
+                            if groups else "在立创里看 DRC 明细"),
+                    risk=("立创的层规则/安全间距取值与我们不同，所以这条不进阻断；"
+                          "但打板前应该清零"),
+                    basis="emit.json:drc"))
+            else:
+                out.append(Item(
+                    category="external",
+                    title="立创EDA DRC 通过",
+                    status="pass",
+                    action="可以打板（本类不阻断，只供参考）",
+                    risk="外部规则未必覆盖你的工艺要求",
+                    basis="emit.json:drc"))
+
+        parity = emit.get("parity") or {}
+        counts = parity.get("counts") or {}
+        if parity.get("status") == "not_ready" and parity.get("checked"):
+            out.append(Item(
+                category="external",
+                title=(f"立创回读网表与 design.json 不一致"
+                       f"（缺 {counts.get('missing', 0)} / 错 {counts.get('wrong', 0)}"
+                       f" / 多 {counts.get('extra', 0)}）"),
+                status="fail",
+                action="两个系统已分叉；以 design.json 为准，先查装配再看布线",
+                risk="分叉说明发射没忠实反映设计，别拿立创工程去打板",
+                basis="emit.json:parity"))
+
+        # 板上一块元件都没有时，DRC 的 pass 没有意义（P17 踩过的假绿）。
+        # 沉默也不对——要说「这块板根本没有东西可查」。
+        if drc.get("status") == "not_ready" and drc.get("checked") == 0:
+            out.append(Item(
+                category="external",
+                title="立创PCB 上没有任何元件，DRC 无法作证",
+                status="not_ready",
+                action="先解决器件符号解析（见下一条 unresolved），再重发射",
+                risk="空板的 DRC 当然通过——把它当证据是假的",
+                basis="emit.json:drc.checked=0"))
+
+        unresolved = emit.get("unresolved") or []
+        if unresolved:
+            reasons: dict[str, int] = {}
+            for row in unresolved:
+                if isinstance(row, dict):
+                    key = str(row.get("reason") or "?")
+                    reasons[key] = reasons.get(key, 0) + 1
+            sample = "、".join(str(r.get("ref")) for r in unresolved[:6]
+                              if isinstance(r, dict))
+            out.append(Item(
+                category="external",
+                title=(f"{len(unresolved)} 个器件在立创系统库里找不到符号"
+                       f"（原理图没装上去）"),
+                status="not_ready",
+                action=("给这些器件补 lcsc/mpn（P19 的 LCSC 数据源），或换用库里有"
+                        f"的型号；样例：{sample}"),
+                risk=("立创只认 LCSC 编号/厂商型号；EasyEDA 的哈希 kind 不是型号。"
+                      f"原因分布：{reasons}"),
+                basis="emit.json:unresolved"))
+
+        route_job = (emit.get("jobs") or {}).get("route") or {}
+        if route_job.get("status") == "not_ready" and route_job.get("note"):
+            out.append(Item(
+                category="external",
+                title="自动布线没有完成",
+                status="not_ready",
+                action="在立创界面里手动布线，或等自研路由器（M9）",
+                risk="未布线的板不能直接打板；DRC 的连通性错误也会一直是红的",
+                basis="emit.json:jobs.route"))
+
+    # -- 实物测试：**最高一级证据**（人做过、拍下来了）------------------
+    #
+    # 它进 external 而不是 blocking，理由和上面一样：一条"我试过，挂了"
+    # 是**别人在现场看到的**，不是我们的判定器算出来的。但它比仿真强，
+    # 所以渲染时会排在前面（`_order` 里 external 按 status 排）。
+    if physical:
+        rows = [t for t in physical if isinstance(t, dict)]
+        by_result: dict[str, int] = {}
+        unreproduced: list[str] = []
+        for row in rows:
+            result = str(row.get("result") or "unknown")
+            by_result[result] = by_result.get(result, 0) + 1
+            if result == "fail" and row.get("sim_reproduced") is False:
+                unreproduced.append(str(row.get("id") or "?"))
+        for row in rows:
+            result = str(row.get("result") or "unknown")
+            tid = str(row.get("id") or "?")
+            title = str(row.get("test") or "(未写测试内容)")
+            implicated = [str(x) for x in (row.get("implicated") or [])]
+            observed = str(row.get("observed") or "")
+            repro = row.get("sim_reproduced")
+            if result == "fail":
+                repro_text = ("仿真**复现**了" if repro is True
+                              else "仿真**没复现**" if repro is False
+                              else "没试过仿真复现")
+                out.append(Item(
+                    category="external",
+                    title=f"实测失败：{title}",
+                    status="fail",
+                    action=(f"现象：{observed[:80]}"
+                            + (f"；牵涉 {', '.join(implicated[:4])}" if implicated else "")
+                            + f"；{repro_text}"),
+                    risk=("实物失败是最硬的证据，但它不进阻断——"
+                          "阻断只放我们判定器算出来的结论"),
+                    basis=f"design.json:physical_tests[{tid}]"))
+            elif result == "pass":
+                out.append(Item(
+                    category="external",
+                    title=f"实测通过：{title}",
+                    status="pass",
+                    action="这条是三级证据里最高的一档（真机做过）",
+                    risk="一次通过不等于稳定；要压边界值得多跑几次",
+                    basis=f"design.json:physical_tests[{tid}]"))
+            else:
+                out.append(Item(
+                    category="external",
+                    title=f"实测没结论：{title}",
+                    status="not_ready",
+                    action=(observed[:80] or "没写现象；补一条带现象的记录"),
+                    risk="unknown 既不是通过也不是失败，别让它悄悄算成通过",
+                    basis=f"design.json:physical_tests[{tid}]"))
+
+        if unreproduced:
+            out.append(Item(
+                category="external",
+                title=(f"{len(unreproduced)} 条实测失败仿真复现不出来"
+                       f"（{', '.join(unreproduced[:4])}）"),
+                status="fail",
+                action=("承认仿真模型缺了这块物理：补候选参数并跑 "
+                        "`calibrate`（采纳标准是「旧设计复现」，不是「新设计通过」）"),
+                risk=("这说明「仿真通过」在这一类失败上**没有预测力**；"
+                      "RoboBuilder 在修好 135 个参数前，15 个仿真通过的实车全灭"),
+                basis="design.json:physical_tests[].sim_reproduced=false",
+                fix={"need": "calibrate_sim"}))
 
     return out
 
@@ -528,7 +835,8 @@ def _orphan(design: DesignModel, justify: dict | None) -> list[Item]:
                 action="确认它是机械件（安装孔/支架）还是漏接线",
                 risk=("若是漏接线，该功能整体缺失且不会被任何检查发现"
                       if ref else ""),
-                basis=str(justification.get("why") or "")))
+                basis=str(justification.get("why") or ""),
+                fix={"need": "confirm_unconnected", "refs": [ref]}))
     return out
 
 
@@ -566,6 +874,13 @@ def build(store: Any) -> Handoff:
     deferred = store.read("deferred.json")
     justify = store.read("justify.json")
     links_payload = store.read("links.json")
+    sim_payload = store.read("sim.json")
+    # P17 的产物：立创 DRC / parity / 布线结果。缺了就少一类，不会假装查过。
+    emit_payload = store.read("emit.json")
+    # 实物测试存在 design.json 里（`physical_tests`），不是单独产物：
+    # 它是**设计的一部分**（"这个设计在真机上表现如何"），不该和判定产物混放。
+    physical_tests = [t for t in (design.physical_tests or [])
+                      if isinstance(t, dict)]
     units_payload = store.read("units.json")
 
     # coverify 有自己的产物 `coverify.json`。
@@ -583,6 +898,7 @@ def build(store: Any) -> Handoff:
         _blocking(ladder, claims, checks, deferred)
         + _missing_data(design, budget, justify)
         + _link_gaps(links_payload, units_payload)
+        + _external(sim_payload, ladder, emit_payload, physical_tests)
         + _assumed(coverify, ladder)
         + _unverifiable(ladder, checks)
         + _orphan(design, justify)
@@ -611,6 +927,8 @@ def build(store: Any) -> Handoff:
         "coverify.json": _fingerprint(coverify),
         "units.json": _fingerprint(units_payload),
         "links.json": _fingerprint(links_payload),
+        "sim.json": _fingerprint(sim_payload),
+        "emit.json": _fingerprint(emit_payload),
     }
     return result
 
@@ -732,7 +1050,7 @@ def describe() -> dict[str, Any]:
         "module": "hw_velxio.design.handoff",
         "categories": list(CATEGORIES),
         "titles": {c: CATEGORY_TITLE[c] for c in CATEGORIES},
-        "artifacts_read": ["design.json", "ladder.json", "claims.json",
+        "artifacts_read": ["design.json", "ladder.json", "claims.json", "emit.json",
                            "checks.json", "budget.json", "deferred.json",
                            "justify.json", "coverify.json",
                            "units.json", "links.json"],

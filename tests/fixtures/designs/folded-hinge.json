@@ -1,0 +1,195 @@
+{
+ "schema": "hw_velxio.design/1",
+ "units": "mm",
+ "id": "untitled",
+ "title": "folded-hinge",
+ "board": {
+  "kind": "generic",
+  "name": "左",
+  "outline": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    40.0,
+    0.0
+   ],
+   [
+    40.0,
+    30.0
+   ],
+   [
+    0.0,
+    30.0
+   ]
+  ],
+  "size_mm": {
+   "w": 40.0,
+   "h": 30.0
+  },
+  "thickness_mm": 1.6,
+  "mount_holes": [],
+  "px_per_mm": 3.7795,
+  "id": "B_left"
+ },
+ "boards": [
+  {
+   "kind": "generic",
+   "name": "左",
+   "outline": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     40.0,
+     0.0
+    ],
+    [
+     40.0,
+     30.0
+    ],
+    [
+     0.0,
+     30.0
+    ]
+   ],
+   "size_mm": {
+    "w": 40.0,
+    "h": 30.0
+   },
+   "thickness_mm": 1.6,
+   "mount_holes": [],
+   "px_per_mm": 3.7795,
+   "id": "B_left"
+  },
+  {
+   "kind": "generic",
+   "name": "右",
+   "outline": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     40.0,
+     0.0
+    ],
+    [
+     40.0,
+     30.0
+    ],
+    [
+     0.0,
+     30.0
+    ]
+   ],
+   "size_mm": {
+    "w": 40.0,
+    "h": 30.0
+   },
+   "thickness_mm": 1.6,
+   "mount_holes": [],
+   "px_per_mm": 3.7795,
+   "id": "B_right"
+  }
+ ],
+ "parts": [
+  {
+   "ref": "U1",
+   "kind": "mcu",
+   "label": "mcu",
+   "role": "component",
+   "size_mm": {
+    "w": 5.0,
+    "h": 5.0,
+    "d": 1.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 20.0,
+    "y_mm": 15.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top",
+    "board_id": "B_left"
+   },
+   "pins": [
+    "1",
+    "2",
+    "3",
+    "4"
+   ]
+  },
+  {
+   "ref": "S1",
+   "kind": "sensor",
+   "label": "sensor",
+   "role": "component",
+   "size_mm": {
+    "w": 5.0,
+    "h": 5.0,
+    "d": 1.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 20.0,
+    "y_mm": 15.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top",
+    "board_id": "B_right"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  }
+ ],
+ "nets": [
+  {
+   "net": "SPI_MOSI",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "1"
+    },
+    {
+     "ref": "S1",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "SPI_SCK",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "2"
+    },
+    {
+     "ref": "S1",
+     "pin": "2"
+    }
+   ]
+  }
+ ],
+ "wires": [],
+ "meta": {},
+ "joints_list": [
+  {
+   "a": "B_left",
+   "b": "B_right",
+   "kind": "hinge",
+   "source": "declared",
+   "params": {
+    "axis": "z",
+    "min_deg": -90,
+    "max_deg": 90
+   }
+  }
+ ]
+}

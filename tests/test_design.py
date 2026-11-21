@@ -3935,6 +3935,229 @@ class TestGenerate(unittest.TestCase):
         self.assertEqual(report["candidates"], [])
 
 
+class TestVectorTable(unittest.TestCase):
+    """P7：从 .bin 头推加载地址。猜地址比不给地址更危险。"""
+
+    @staticmethod
+    def _bin(tmp, sp, reset):
+        import struct
+        from pathlib import Path
+        path = Path(tmp) / "fw.bin"
+        path.write_bytes(struct.pack("<II", sp, reset) + b"\x00" * 64)
+        return path
+
+    def test_valid_vector_table(self) -> None:
+        import tempfile
+        from hw_velxio.design import renode
+
+        with tempfile.TemporaryDirectory() as tmp:
+            info = renode.vector_table(self._bin(tmp, 0x20005000, 0x080033F5))
+            self.assertTrue(info["ok"], info.get("reason"))
+            self.assertEqual(info["load_address"], "0x08000000")
+            self.assertEqual(info["ram_hint_kb"], 20)
+
+    def test_rejects_sp_outside_sram(self) -> None:
+        import tempfile
+        from hw_velxio.design import renode
+
+        with tempfile.TemporaryDirectory() as tmp:
+            info = renode.vector_table(self._bin(tmp, 0x12345000, 0x08000101))
+            self.assertFalse(info["ok"])
+            self.assertIn("SP", info["reason"])
+
+    def test_rejects_non_thumb_reset(self) -> None:
+        import tempfile
+        from hw_velxio.design import renode
+
+        with tempfile.TemporaryDirectory() as tmp:
+            info = renode.vector_table(self._bin(tmp, 0x20005000, 0x08000100))
+            self.assertFalse(info["ok"])
+            self.assertIn("Thumb", info["reason"])
+
+    def test_rejects_short_file(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from hw_velxio.design import renode
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tiny.bin"
+            path.write_bytes(b"\x00\x01")
+            info = renode.vector_table(path)
+            self.assertFalse(info["ok"])
+
+    def test_platform_mapping(self) -> None:
+        from hw_velxio.design import renode
+
+        self.assertEqual(renode._platform_for("STM32F103C8T6"), "stm32f103")
+        self.assertEqual(renode._platform_for("STM32H743IIT6"), "stm32h743")
+        self.assertIsNone(renode._platform_for("ESP32"),
+                          "判不出必须返回 None，不能猜")
+
+
+class TestRenodeScript(unittest.TestCase):
+    """P7：.resc 结构与纪律。"""
+
+    @staticmethod
+    def _two_board(link_source: str = "declared") -> DesignModel:
+        from hw_velxio.design.model import Board, Part, Placement
+
+        b0 = Board(kind="custom", name="A", size_mm={"w": 40, "h": 40}, id="A")
+        b1 = Board(kind="custom", name="B", size_mm={"w": 40, "h": 40}, id="B")
+        design = DesignModel(id="t", title="t", board=b0, boards=[b0, b1])
+        design.parts = [
+            Part(ref="U1", kind="STM32F103C8T6", label="a", role="mcu",
+                 size_mm={"w": 7, "h": 7, "d": 1},
+                 physical_source="datasheet",
+                 placement=Placement(x_mm=5, y_mm=5, board_id="A"),
+                 pins=["1"]),
+            Part(ref="U2", kind="STM32F103C8T6", label="b", role="mcu",
+                 size_mm={"w": 7, "h": 7, "d": 1},
+                 physical_source="datasheet",
+                 placement=Placement(x_mm=5, y_mm=5, board_id="B"),
+                 pins=["1"]),
+        ]
+        design.links_list = [{
+            "id": "link:SPI1:A->B",
+            "a": {"unit": "A", "peripheral": "SPI1"},
+            "b": {"unit": "B", "peripheral": "SPI1"},
+            "protocol": "spi", "source": link_source,
+        }]
+        return design
+
+    def test_declared_link_becomes_connector(self) -> None:
+        from hw_velxio.design import renode
+
+        report = renode.build_resc(self._two_board("declared"))
+        self.assertEqual(len(report["connectors"]), 1)
+        self.assertTrue(report["connectors"][0].startswith("connector Connect "))
+        self.assertIn("m0.sysbus.spi1", report["connectors"][0])
+
+    def test_inferred_link_not_connected(self) -> None:
+        from hw_velxio.design import renode
+
+        report = renode.build_resc(self._two_board("inferred"))
+        self.assertEqual(report["connectors"], [],
+                         "推断的链路不能接线：接错了比不接更糟")
+        self.assertTrue(any("inferred" in w for w in report["warnings"]))
+
+    def test_connector_before_start(self) -> None:
+        from hw_velxio.design import renode
+
+        script = renode.build_resc(self._two_board())["script"]
+        self.assertGreater(script.find("connector Connect"),
+                           -1, "没有 connector")
+        self.assertLess(script.find("connector Connect"),
+                        script.find("\nstart"),
+                        "connector 必须在 start 之前")
+
+    def test_runnable_here_is_honest(self) -> None:
+        from hw_velxio.design import renode
+
+        report = renode.report(self._two_board())
+        self.assertIn("runnable_here", report)
+        self.assertIs(report["runnable_here"], False,
+                      "本机沙箱拦截，必须如实报 False")
+        self.assertTrue(any("DSH 外" in n for n in report["notes"]))
+
+
+class TestIocLinks(unittest.TestCase):
+    """P8：.ioc 解析与配对纪律。"""
+
+    IOC = """#MicroXplorer Configuration settings - do not modify
+Mcu.UserName=STM32F401RCTx
+PA2.Mode=Asynchronous
+PA2.Signal=USART2_TX
+PA3.Mode=Asynchronous
+PA3.Signal=USART2_RX
+PB6.Mode=I2C
+PB6.Signal=I2C1_SCL
+PB7.Mode=I2C
+PB7.Signal=I2C1_SDA
+PA15.GPIO_Label=VL53-PWR-EN
+PA15.Signal=GPIO_Output
+"""
+
+    def _write(self, tmp, name, body=None):
+        from pathlib import Path
+        path = Path(tmp) / f"{name}.ioc"
+        path.write_text(body or self.IOC, encoding="utf-8")
+        return path
+
+    def test_parse_endpoints(self) -> None:
+        import tempfile
+        from hw_velxio.design import ioc_links
+
+        with tempfile.TemporaryDirectory() as tmp:
+            row = ioc_links.parse_ioc(self._write(tmp, "A"))
+            self.assertEqual(row["mcu"], "STM32F401RCTx")
+            roles = {(ep.peripheral, ep.role) for ep in row["endpoints"]}
+            self.assertIn(("USART2", "tx"), roles)
+            self.assertIn(("USART2", "rx"), roles)
+            self.assertIn(("I2C1", "scl"), roles)
+            # 纯 GPIO 不算链路端点
+            self.assertNotIn("GPIO_Output",
+                             {ep.peripheral for ep in row["endpoints"]})
+
+    def test_tx_pairs_with_rx(self) -> None:
+        import tempfile
+        from hw_velxio.design import ioc_links
+
+        # B 板把 TX/RX 交换（正常接法）
+        swapped = self.IOC.replace("PA2.Signal=USART2_TX", "PA2.Signal=USART2_RX") \
+                           .replace("PA3.Signal=USART2_RX", "PA3.Signal=USART2_TX")
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, "A")
+            self._write(tmp, "B", swapped)
+            report = ioc_links.extract(tmp)
+            links = report["draft"]["links"]
+            uart = [l for l in links if l["protocol"] == "uart"]
+            self.assertTrue(uart, f"没配出 UART 链路：{links}")
+            for link in uart:
+                roles = {(link["a"]["role"]), (link["b"]["role"])}
+                self.assertEqual(roles, {"tx", "rx"},
+                                 "UART 必须 TX↔RX，不能 TX↔TX")
+
+    def test_inferred_never_lands_by_default(self) -> None:
+        import tempfile
+        from hw_velxio.design import ioc_links
+        from hw_velxio.design.model import Board
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, "A")
+            self._write(tmp, "B", self.IOC.replace(
+                "PA2.Signal=USART2_TX", "PA2.Signal=USART2_RX"))
+            report = ioc_links.extract(tmp)
+            draft = ioc_links.Draft(links=report["draft"]["links"])
+            design = DesignModel(id="t", title="t",
+                                 board=Board(kind="custom",
+                                             size_mm={"w": 10, "h": 10}))
+            added = ioc_links.apply_draft(design, draft, only_declared=True)
+            self.assertEqual(added, 0, "inferred 默认不能落地")
+            self.assertEqual(design.links_list, [])
+
+    def test_empty_dir_is_not_ready(self) -> None:
+        import tempfile
+        from hw_velxio.design import ioc_links
+
+        with tempfile.TemporaryDirectory() as tmp:
+            report = ioc_links.extract(tmp)
+            self.assertEqual(report["status"], "not_ready")
+            self.assertIn("没有", report["reason"])
+
+    def test_all_links_are_inferred(self) -> None:
+        import tempfile
+        from hw_velxio.design import ioc_links
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, "A")
+            self._write(tmp, "B", self.IOC.replace(
+                "PA2.Signal=USART2_TX", "PA2.Signal=USART2_RX"))
+            report = ioc_links.extract(tmp)
+            for link in report["draft"]["links"]:
+                self.assertEqual(link["source"], "inferred")
+                self.assertTrue(link.get("evidence"), "每条都要能追溯")
+
+
 class TestPutAutoLock(unittest.TestCase):
     """`put` 必须和 `new`/`import` 一样自动锁板卡型号。"""
 

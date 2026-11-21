@@ -1,0 +1,292 @@
+{
+ "schema": "hw_velxio.design/1",
+ "units": "mm",
+ "id": "untitled",
+ "title": "quadrotor",
+ "board": {
+  "kind": "generic",
+  "name": "quadrotor",
+  "outline": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    120.0,
+    0.0
+   ],
+   [
+    120.0,
+    120.0
+   ],
+   [
+    0.0,
+    120.0
+   ]
+  ],
+  "size_mm": {
+   "w": 120.0,
+   "h": 120.0
+  },
+  "thickness_mm": 1.6,
+  "mount_holes": [],
+  "px_per_mm": 3.7795
+ },
+ "parts": [
+  {
+   "ref": "U1",
+   "kind": "mcu",
+   "label": "mcu",
+   "role": "component",
+   "size_mm": {
+    "w": 5.0,
+    "h": 5.0,
+    "d": 1.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 2.0,
+    "y_mm": 2.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8"
+   ]
+  },
+  {
+   "ref": "M1",
+   "kind": "motor",
+   "label": "motor",
+   "role": "component",
+   "size_mm": {
+    "w": 28.0,
+    "h": 28.0,
+    "d": 10.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 20.0,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ],
+   "mass_g": 30.0
+  },
+  {
+   "ref": "M2",
+   "kind": "motor",
+   "label": "motor",
+   "role": "component",
+   "size_mm": {
+    "w": 28.0,
+    "h": 28.0,
+    "d": 10.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 72.0,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ],
+   "mass_g": 30.0
+  },
+  {
+   "ref": "M3",
+   "kind": "motor",
+   "label": "motor",
+   "role": "component",
+   "size_mm": {
+    "w": 28.0,
+    "h": 28.0,
+    "d": 10.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 20.0,
+    "y_mm": 72.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ],
+   "mass_g": 30.0
+  },
+  {
+   "ref": "M4",
+   "kind": "motor",
+   "label": "motor",
+   "role": "component",
+   "size_mm": {
+    "w": 28.0,
+    "h": 28.0,
+    "d": 10.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 72.0,
+    "y_mm": 72.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ],
+   "mass_g": 30.0
+  },
+  {
+   "ref": "B1",
+   "kind": "battery",
+   "label": "battery",
+   "role": "component",
+   "size_mm": {
+    "w": 20.0,
+    "h": 20.0,
+    "d": 10.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 50.0,
+    "y_mm": 50.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ],
+   "mass_g": 120.0
+  }
+ ],
+ "nets": [
+  {
+   "net": "PWM1",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "1"
+    },
+    {
+     "ref": "M1",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "pins": [
+    {
+     "ref": "M1",
+     "pin": "2"
+    },
+    {
+     "ref": "M2",
+     "pin": "2"
+    },
+    {
+     "ref": "M3",
+     "pin": "2"
+    },
+    {
+     "ref": "M4",
+     "pin": "2"
+    }
+   ]
+  },
+  {
+   "net": "PWM2",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "2"
+    },
+    {
+     "ref": "M2",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "PWM3",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "3"
+    },
+    {
+     "ref": "M3",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "PWM4",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "4"
+    },
+    {
+     "ref": "M4",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "BATT",
+   "pins": [
+    {
+     "ref": "B1",
+     "pin": "1"
+    },
+    {
+     "ref": "U1",
+     "pin": "8"
+    }
+   ]
+  }
+ ],
+ "wires": [],
+ "meta": {},
+ "program": {
+  "steps": [
+   {
+    "t_s": 0.0,
+    "actuator": "M1",
+    "value": 0.5
+   }
+  ],
+  "loop": true
+ }
+}

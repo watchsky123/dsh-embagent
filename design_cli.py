@@ -196,6 +196,16 @@ def snapshot(project_id: str, *, pitch_mm: float = 0.5) -> dict[str, Any]:
 
     try:
         checks = physical.run_checks(design, pitch_mm=pitch_mm)
+        # **每条 finding 带上可点的下一步**（P1）。`physical` 早就给了
+        # `fix={"need": "move_apart", "refs": [...]}`；这里只做翻译，
+        # 不重新判断"该怎么改"。翻译表在 `design/nextstep.py`（唯一一处）。
+        from .design import nextstep as nextstep_module
+        for row in checks.get("findings") or []:
+            if isinstance(row, dict) and isinstance(row.get("fix"), dict):
+                step = nextstep_module.build(row["fix"], project=project_id,
+                                             refs=row.get("refs"))
+                if step is not None:
+                    row["next"] = step
         out["checks"] = checks
     except RuntimeError as exc:
         out["checks"] = {"ok": None, "status": "not_ready", "error": str(exc),
@@ -289,6 +299,126 @@ def snapshot(project_id: str, *, pitch_mm: float = 0.5) -> dict[str, Any]:
         out["phase"] = {"phase": "partial",
                         "reason": f"阶段推导失败：{type(exc).__name__}: {exc}",
                         "veto": [], "counts": {}}
+
+    # **需求草稿摘要**（P5）：草稿在不在、过没过校验、应用了没。
+    #
+    # 只做聚合，**不跑 generate**（那要几秒）。首屏只需要一句话：
+    # "有一份草稿，3 个角色 2 条接口，校验过了但还没应用"。
+    try:
+        from .design import req_draft as req_module
+        draft = req_module.load(store)
+        validation = req_module.validate(draft) if draft is not None else None
+        applied = isinstance(store.read(req_module.REQ_FILE), dict)
+        scope = req_module.draft_scope(store)
+        exists = store.exists()
+        out["req"] = {
+            "draft": None if draft is None else draft.to_dict(),
+            "validation": validation,
+            "applied": applied,
+            # **草稿落在哪一层**：工程级 / 工作区级（从零开局）/ 没有
+            "scope": scope,
+            "project_exists": exists,
+            "files": {"draft": req_module.DRAFT_FILE,
+                      "requirement": req_module.REQ_FILE},
+            "next": (
+                "还没有草稿：用 hw_req_draft 写一份" if draft is None
+                else "草稿没通过校验，按 problems 改" if not validation["ok"]
+                else ("草稿合法（工程还不存在，apply 时会顺手建工程），"
+                      "等人在面板上确认" if not exists
+                      else "草稿合法，等人在面板上确认后 apply")
+                if not applied
+                else "已应用，可以 hw_generate"),
+        }
+    except Exception as exc:  # noqa: BLE001
+        out["req"] = {"draft": None, "validation": None, "applied": False,
+                      "error": f"{type(exc).__name__}: {exc}"}
+
+    # **固件矩阵摘要**（P4）：引脚 × (配置/使用/结论) 的**计数与前几行问题**。
+    #
+    # 这里要算 `extract_uses`（扫源码）+ `crosscheck`（判定），所以有成本；
+    # 但它回答的是"固件和硬件对不对得上"，那是首屏该有的信息。
+    # 没有 `.ioc` 或没有源码时如实 `not_ready`——不是"全对"。
+    try:
+        from .design import firmware_matrix as matrix_module
+        from .design.fwgen import pinmap as pm_module
+        ioc_path = _first_ioc(store.dir)
+        if ioc_path is None:
+            out["firmware"] = {
+                "status": "not_ready",
+                "reason": "工作区里没有 .ioc，硬件侧没有可核对的引脚配置",
+                "counts": {}, "rows": [], "checked": 0, "used_pins": 0}
+        else:
+            pins = pm_module.parse_pins(ioc_path)
+            roots = sorted(p for p in (store.dir / "src").rglob("*")
+                           if p.suffix.lower() in (".c", ".h", ".cpp", ".hpp")) \
+                if (store.dir / "src").is_dir() else []
+            if not roots:
+                roots = sorted(p for p in store.dir.rglob("*")
+                               if p.suffix.lower() in (".c", ".h")
+                               and p.name != "")
+                roots = [p for p in roots if "node_modules" not in str(p)][:40]
+            extracted = pm_module.extract_uses(roots, root=store.dir)
+            if extracted.get("status") != "ok":
+                out["firmware"] = {
+                    "status": "not_ready",
+                    "reason": extracted.get("reason") or "固件侧没有可核对的内容",
+                    "counts": {}, "rows": [], "checked": 0, "used_pins": 0,
+                    "unknown": len(extracted.get("unpaired") or [])}
+            else:
+                full = matrix_module.matrix(pins, extracted["uses"],
+                                            source=Path(ioc_path).name)
+                out["firmware"] = matrix_module.summarize(full)
+    except Exception as exc:  # noqa: BLE001
+        out["firmware"] = {"status": "not_ready",
+                           "reason": f"{type(exc).__name__}: {exc}",
+                           "counts": {}, "rows": [], "checked": 0, "used_pins": 0}
+
+    # **参数敏感度**（P3）：只有模型层的**分类与计数**进快照。
+    #
+    # 为什么不放整张 136 行表：那是"打开工程"时最贵的一步（要逐个 build
+    # MJCF），而首屏只需要一句话——"136 个参数里只有 2 个真的驱动模型"。
+    # 完整表走 `sensitivity` 命令按需取。
+    try:
+        from .design import sensitivity as sensitivity_module
+        from .design import sim_params as sim_params_module
+        params = sim_params_module.effective(design)
+        sen = sensitivity_module.report(design, params)
+        out["params"] = {
+            "total": sen["params_total"],
+            "counts": sen["counts"],
+            "priority": [{"key": row["key"], "group": row["group"],
+                          "value": row["value"], "changed": row["changed"]}
+                         for row in sen["priority"]],
+            "note": ("只有 wired 类才真的驱动模型；unwired 是「没有任何代码读」，"
+                     "不是「低敏感」"),
+        }
+    except Exception as exc:  # noqa: BLE001
+        out["params"] = {"total": 0, "counts": {}, "priority": [],
+                         "error": f"{type(exc).__name__}: {exc}"}
+
+    # **实体索引**（P2）：每个位号一行三态摘要。2D 画布按它着色、
+    # Inspector 按它显示"这个件验到哪一步"。
+    # 只放计数与三态，**不放正文**——316 个元件的正文会把快照撑到几 MB。
+    try:
+        from .design import entity as entity_module
+        out["entities"] = entity_module.index(
+            design, claims=store.read("claims.json"),
+            checks=out.get("checks"))
+    except Exception as exc:  # noqa: BLE001
+        out["entities"] = {}
+        out.setdefault("warnings", []).append(
+            f"实体索引生成失败：{type(exc).__name__}: {exc}")
+
+    # **结论**：前端首屏就是它。只投影已有产物（不重跑判定），
+    # 所以这一步很便宜——而 `checks`/`tiers` 那几步是贵的。
+    # 出错也不挡其它字段：一屏结论挂了不该让整个工作台打不开。
+    try:
+        from .design import verdict as verdict_module
+        out["verdict"] = verdict_module.compose(store)
+    except Exception as exc:  # noqa: BLE001
+        out["verdict"] = {"status": "not_ready",
+                          "error": f"{type(exc).__name__}: {exc}",
+                          "levels": [], "counts": {}, "next": []}
 
     return out
 
@@ -945,6 +1075,12 @@ def cmd_ladder(args: list[str]) -> dict[str, Any]:
         return {"status": "ok", **ladder_module.describe()}
 
     levels: list[str] | None = None
+    if "--with-sim" in args:
+        # **默认不跑 V7**：实测 V7 进默认序列会让 266 项单测从 1.4s 变 394s
+        # （几乎每个测试都 run_ladder，而 V7 每次要跑 3 次扰动）。
+        # 要仿真就得说要——这是"成本可见"。
+        levels = list(ladder_module.DEFAULT_LEVELS) + list(
+            ladder_module.SIM_LEVELS)
     if "--levels" in args:
         try:
             raw = args[args.index("--levels") + 1]
@@ -1118,6 +1254,132 @@ def cmd_handoff(args: list[str]) -> dict[str, Any]:
     return {"status": "ok", **payload}
 
 
+def cmd_renode(args: list[str]) -> dict[str, Any]:
+    """``renode [status|<id>] [--check-cpu] [--write]`` —— Renode 接入。
+
+    不给参数或 `status` 时只探测（Renode / ARM 工具链 / 能否加载 CPU 平台）。
+    给工程名时生成 `.resc` 与 `run.cmd`。
+
+    **本机实测无法在 DSH 内加载 CPU 平台**（Renode 要独占打开锁文件，
+    沙箱拒绝）。所以这个命令的价值是**产出可外部执行的完整脚本**，
+    而不是假装能跑。`runnable_here` 字段如实报告。
+    """
+    from .design import renode as renode_module
+
+    if not args or args[0] == "status":
+        result = renode_module.probe(check_cpu="--check-cpu" in args)
+        return {"status": "ok", **result.to_dict(),
+                "describe": renode_module.describe()}
+
+    store, design = _load(args[0])
+
+    firmware: dict[str, str] = {}
+    if "--firmware" in args:
+        try:
+            raw = args[args.index("--firmware") + 1]
+        except IndexError:
+            return {"status": "failed", "findings": ["--firmware 需要 JSON"]}
+        try:
+            firmware = {str(k): str(v) for k, v in json.loads(raw).items()}
+        except ValueError as exc:
+            return {"status": "failed",
+                    "findings": [f"--firmware 需要 JSON 对象：{exc}"]}
+
+    ioc_root = None
+    if "--ioc-root" in args:
+        try:
+            ioc_root = args[args.index("--ioc-root") + 1]
+        except IndexError:
+            return {"status": "failed",
+                    "findings": ["--ioc-root 需要目录"]}
+
+    explicit: dict[str, str] = {}
+    if "--board-mcu" in args:
+        try:
+            raw = args[args.index("--board-mcu") + 1]
+            explicit = {str(k): str(v) for k, v in json.loads(raw).items()}
+        except (IndexError, ValueError) as exc:
+            return {"status": "failed",
+                    "findings": [f"--board-mcu 需要 JSON 对象：{exc}"]}
+
+    report = renode_module.report(
+        design, firmware=firmware, check_cpu="--check-cpu" in args,
+        ioc_root=ioc_root, explicit_mcu=explicit)
+    report["project"] = args[0]
+    store.write("renode.json", report)
+
+    written: list[str] = []
+    if "--write" in args:
+        store.write_text(f"{design.id}.resc", report["resc"]["script"])
+        written.append(f"{design.id}.resc")
+        for name, body in (report.get("runner") or {}).items():
+            store.write_text(name, body)
+            written.append(name)
+    report["written"] = written
+
+    status = "ok" if report["ok"] else "not_ready"
+    return {"status": status, **report}
+
+
+def cmd_ioc_links(args: list[str]) -> dict[str, Any]:
+    """``ioc-links --root <dir> [--apply <id>] [--json]`` —— 从 .ioc 抽板间链路。
+
+    默认**只读**：扫描 `--root` 下所有 `.ioc`，配出链路草稿并打印。
+    `--apply <工程>` 时才把 `source=declared` 的写进那个工程的
+    `links_list`（推断的一条都不写——推断会错，不能判人 fail）。
+    """
+    from .design import ioc_links as ioc_module
+
+    if not args:
+        return {"status": "ok", **ioc_module.describe()}
+
+    if "--root" not in args:
+        return {"status": "failed",
+                "findings": ["需要 --root <目录>：从哪里找 .ioc"]}
+    try:
+        root = args[args.index("--root") + 1]
+    except IndexError:
+        return {"status": "failed", "findings": ["--root 需要目录路径"]}
+
+    report = ioc_module.extract(root)
+
+    report["review"] = ioc_module.review_list(
+        ioc_module.Draft(links=report["draft"]["links"]))
+
+    applied = 0
+    if "--apply" in args:
+        try:
+            project = args[args.index("--apply") + 1]
+        except IndexError:
+            return {"status": "failed", "findings": ["--apply 需要工程名"]}
+        store, design = _load(project)
+        draft = ioc_module.Draft(
+            links=report["draft"]["links"],
+            unpaired=report["draft"]["unpaired"],
+            boards=report["draft"]["boards"],
+            counts=report["counts"])
+        # `--promote` 才提升为 declared；不给就只写本来已 declared 的
+        if "--promote" in args:
+            try:
+                raw = args[args.index("--promote") + 1]
+                ids = None if raw == "all" else [x.strip() for x in raw.split(",") if x.strip()]
+            except IndexError:
+                ids = None
+            report["promoted"] = ioc_module.promote(draft, ids)
+        applied = ioc_module.apply_draft(design, draft, only_declared=True)
+        if applied:
+            store.save(design)
+        report["applied"] = applied
+        report["applied_project"] = project
+        if applied == 0:
+            report["apply_note"] = (
+                "没有写入：全部链路都是 inferred。"
+                "要落地必须先由人确认（改 source 为 declared，"
+                "或显式调用 apply_draft(only_declared=False)）")
+
+    return {"status": report.get("status", "not_ready"), **report}
+
+
 def cmd_capability(args: list[str]) -> dict[str, Any]:
     """``capability [--needs a,b] [--role mcu] [--area 100] [--exclude x]``
 
@@ -1209,6 +1471,1265 @@ def cmd_generate(args: list[str]) -> dict[str, Any]:
         req, max_candidates=budget, run_ladder="--fast" not in args)
     report["requirement_file"] = str(path)
     return {"status": report.get("status", "not_ready"), **report}
+
+
+def cmd_sim(args: list[str]) -> dict[str, Any]:
+    """``sim [status|<id>] [--domain X] [--infer] [--duration N] [--params PATH]``
+
+    分域仿真。不给工程名时只报各域可用性（**没有模型的域标 unknown**）。
+
+    `--domain kinematic` 真跑 MuJoCo；其余域调本机已有判定器。
+    参数表默认用 `sim_params_default.json`（136 项，全 public 级）。
+    """
+    from .design import sim_dispatch, sim_params, mujoco_backend
+
+    if not args or args[0].startswith("-"):
+        rows = [d.to_dict() for d in sim_dispatch.domains()]
+        return {"status": "ok", "domains": rows,
+                "mujoco": mujoco_backend.available(),
+                "params": sim_params.describe(),
+                "describe": sim_dispatch.describe()}
+
+    store, design = _load(args[0])
+
+    domain = ""
+    if "--domain" in args:
+        try:
+            domain = args[args.index("--domain") + 1]
+        except IndexError:
+            return {"status": "failed", "findings": ["--domain 需要域名"]}
+
+    params = None
+    if "--params" in args:
+        try:
+            params = sim_params.load(args[args.index("--params") + 1])
+        except (IndexError, FileNotFoundError) as exc:
+            return {"status": "failed", "findings": [f"--params: {exc}"]}
+    else:
+        params = sim_params.effective(design)
+
+    duration = 3.0
+    if "--duration" in args:
+        try:
+            duration = float(args[args.index("--duration") + 1])
+        except (IndexError, ValueError):
+            return {"status": "failed", "findings": ["--duration 需要数字"]}
+
+    if domain:
+        kw = {"duration_s": duration, "params": params}
+        if "--weld" in args:
+            kw["weld_parts"] = True
+            kw["free_bodies"] = True
+        row = sim_dispatch.run_domain(design, domain, **kw)
+        row["project"] = args[0]
+        row["params"] = params.summary()
+        store.write("sim.json", row)
+        status = ("ok" if row["status"] == "ok" else
+                  "failed" if row["status"] == "failed" else "not_ready")
+        return {"status": status, **row}
+
+    report = sim_dispatch.report(design)
+    report["project"] = args[0]
+    report["params"] = params.summary()
+    store.write("sim.json", report)
+    return {"status": "ok" if report["ok"] else "not_ready", **report}
+
+
+def cmd_joints(args: list[str]) -> dict[str, Any]:
+    """``joints <id> [--infer] [--apply] [--promote]`` —— 机械关系表。
+
+    - 不带参数：报告声明的 + 推断的候选 + 校验结果
+    - `--apply`：把 declared 的写进 design.json（inferred 不写）
+    - `--promote`：把推断的提升为 declared（**人确认动作**），
+      与 `--apply` 联用才会落地
+    """
+    from .design import joints as joints_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **joints_module.describe()}
+
+    store, design = _load(args[0])
+    report = joints_module.report(design)
+    store.write("joints.json", report)
+
+    applied = 0
+    promoted = 0
+    if "--apply" in args or "--promote" in args:
+        inference = joints_module.infer(design)
+        if "--promote" in args:
+            promoted = joints_module.promote(inference)
+        declared = [j for j in inference.joints if j.source == "declared"]
+        # 同时把已有的声明也纳入（保持幂等）
+        existing = [joints_module.Joint.from_dict(j)
+                    for j in (design.joints_list or [])
+                    if isinstance(j, dict)]
+        applied = joints_module.apply(
+            design, existing + declared, only_declared=True)
+        if applied or promoted:
+            store.save(design)
+    report["applied"] = applied
+    report["promoted"] = promoted
+
+    status = "ok" if report["status"] == "ok" else "not_ready"
+    return {"status": status, **report}
+
+
+def cmd_lceda(args: list[str]) -> dict[str, Any]:
+    """``lceda [status|probe|sessions|close]`` —— 立创EDA 通道自检。
+
+    - 无参 / `status`：探测 exe、版本、关键类与方法、单位换算
+    - `probe`：额外逐条核对四段需要的方法，缺哪个点名
+    - `sessions`：列出当前 lceda-pro 会话
+    """
+    from .design import lceda as lceda_module
+
+    action = args[0] if args and not args[0].startswith("-") else "status"
+    if action == "status":
+        return lceda_module.report()
+    if action == "probe":
+        found = lceda_module.probe()
+        found["capabilities"] = {
+            job: [f"{c}.{m}" for c, m in items]
+            for job, items in lceda_module.CAPABILITIES.items()
+        }
+        return found
+    if action == "sessions":
+        exe = lceda_module.find_exe()
+        if not exe:
+            return {"status": "not_ready",
+                    "findings": ["没有 lceda-pro 可执行文件"]}
+        sessions = lceda_module.LcedaSession.list_sessions(exe)
+        return {"status": "ok", "count": len(sessions), "sessions": sessions}
+    if action == "close":
+        exe = lceda_module.find_exe()
+        if not exe:
+            return {"status": "not_ready", "findings": ["没有 lceda-pro"]}
+        target = ""
+        for item in args:
+            if item.startswith("--session="):
+                target = item.split("=", 1)[1]
+        if not target:
+            return {"status": "not_ready",
+                    "findings": ["要指定 --session=<id>（先跑 sessions 看列表）"]}
+        session = lceda_module.LcedaSession(exe=exe, session_id=target)
+        result = session.close(destroy=True)
+        return {"status": "ok" if result.get("ok") else "not_ready",
+                "result": result}
+    return {"status": "failed",
+            "findings": [f"未知动作 {action!r}；可用 status / probe / sessions / close"]}
+
+
+def cmd_emit(args: list[str]) -> dict[str, Any]:
+    """``emit <id> [--jobs a,b] [--route native|ours|none] [--reuse]
+    [--save-dir DIR] [--max-parts N] [--name NAME]`` —— 发射到立创EDA。
+
+    落盘为 ``<工程>/emit.json``。**不抛异常**：缺 lceda 是 ``not_ready``，
+    某一段失败是 ``failed``，两种情况都会写产物。
+    """
+    from .design import emit_lceda
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **emit_lceda.describe()}
+
+    store, design = _load(args[0])
+    jobs = list(emit_lceda.JOBS)
+    route = "native"
+    reuse = False
+    save_dir = ""
+    max_parts = emit_lceda.MAX_PARTS
+    name = ""
+    for i, item in enumerate(args[1:]):
+        if item.startswith("--jobs="):
+            jobs = [x for x in item.split("=", 1)[1].split(",") if x]
+        elif item.startswith("--route="):
+            route = item.split("=", 1)[1]
+        elif item == "--reuse":
+            reuse = True
+        elif item.startswith("--save-dir="):
+            save_dir = item.split("=", 1)[1]
+        elif item.startswith("--max-parts="):
+            max_parts = int(item.split("=", 1)[1])
+        elif item.startswith("--name="):
+            name = item.split("=", 1)[1]
+
+    report = emit_lceda.emit(design, project_name=name or args[0], jobs=jobs,
+                             route=route, reuse=reuse, save_dir=save_dir,
+                             max_parts=max_parts)
+    payload = report.to_dict()
+    payload["project_id"] = args[0]
+    store.write("emit.json", payload)
+    return payload
+
+
+def cmd_readback(args: list[str]) -> dict[str, Any]:
+    """``readback <id> [--path=<eprj3>]`` —— 只回读（不发射）：PCB 网表 parity + DRC。
+
+    审查入口。工程从哪来：``--path`` 优先；否则用 ``emit.json`` 里记的
+    上次发射路径（那是**磁盘上的真工程**，能直接重开）。两者都没有就
+    ``not_ready`` 并说清——不猜。
+    """
+    from .design import emit_lceda
+    from .design import lceda as lceda_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **emit_lceda.describe()}
+    store, design = _load(args[0])
+    path = ""
+    for item in args[1:]:
+        if item.startswith("--path="):
+            path = item.split("=", 1)[1]
+    if not path:
+        emit = store.read("emit.json") or {}
+        path = str((emit.get("project") or {}).get("path") or "")
+    if not path or not Path(path).exists():
+        return {"status": "not_ready",
+                "findings": ["没有可回读的立创工程：先跑 emit，或给 --path=<*.eprj3>"]}
+    exe = lceda_module.find_exe()
+    if not exe:
+        return {"status": "not_ready", "findings": ["没有 lceda-pro 可执行文件"]}
+    session = lceda_module.LcedaSession(exe=exe)
+    try:
+        session.open(path=path, headless=True)
+        ready = session.wait_project_ready()
+        boards = [b for b in (ready.get("boards") or []) if b.get("pcbUuid")]
+        if not boards:
+            return {"status": "not_ready",
+                    "findings": [f"工程里没有可回读的 PCB：{path}"]}
+        result = emit_lceda.read_back(session, design, boards=boards)
+        ok = result["parity"].get("status") == "ok"
+        payload = {"status": "ok" if ok else "not_ready",
+                   "project_id": args[0], "project_path": path, **result}
+        store.write("emit_readback.json", payload)
+        return payload
+    except lceda_module.CliError as exc:
+        return {"status": "not_ready", "findings": [str(exc)]}
+    finally:
+        session.close()
+
+
+def _parts_cache(project_id: str = ""):
+    """缓存放哪：有工程 → 工程级 `parts_cache.json`；没有 → 临时目录。
+
+    临时目录不是"随便放"：目录数据是**全局**的（跟工程无关），
+    放在系统临时目录能跨工程复用，又不往用户工作区扔文件。
+    """
+    from .design import parts_catalog
+
+    if project_id:
+        store = _store(project_id)
+        if store.dir.is_dir():
+            return parts_catalog.PartCache(store.path("parts_cache.json"))
+    import tempfile
+    return parts_catalog.PartCache(Path(tempfile.gettempdir()) / "hwv_parts_cache.json")
+
+
+def cmd_parts_search(args: list[str]) -> dict[str, Any]:
+    """``parts-search <关键词> [--limit N] [--page N]`` —— 目录搜索（免 key）。
+
+    返回每条的 lcsc / mpn / 封装 / 库存 / 分级。**搜不到是 ok**（`items=[]`），
+    只有拿不到结果（网络/接口形状变了）才是 `not_ready`。
+    """
+    from .design import parts_catalog
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **parts_catalog.describe()}
+    keyword = args[0]
+    limit, page = 10, 1
+    for item in args[1:]:
+        if item.startswith("--limit="):
+            limit = int(item.split("=", 1)[1])
+        elif item.startswith("--page="):
+            page = int(item.split("=", 1)[1])
+    result = parts_catalog.search(keyword, limit=limit, page=page)
+    if result.get("status") != "ok":
+        return {"status": "not_ready",
+                "findings": [result.get("reason") or "搜索失败"], **result}
+    return {"status": "ok", **result}
+
+
+def cmd_parts_enrich(args: list[str]) -> dict[str, Any]:
+    """``parts-enrich <lcsc> [--project <id>] [--refs R1,U1] [--save-catalog] [--offline]``
+
+    查一个编号的详情。``--project`` 给了就把结果**回填**到该工程里
+    所有引用这个 lcsc 的元件（`physical_source=catalog`，公式估的标
+    `estimated`）。``--save-catalog`` 写进能力表的目录覆盖层，
+    让它出现在 `explain_miss.rejected` 里（**不进选型**）。
+    """
+    from .design import parts_catalog
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **parts_catalog.describe()}
+    lcsc = args[0]
+    project_id = ""
+    refs: list[str] = []
+    save_catalog = False
+    no_network = False
+    for item in args[1:]:
+        if item.startswith("--project="):
+            project_id = item.split("=", 1)[1]
+        elif item.startswith("--refs="):
+            refs = [x.strip() for x in item.split("=", 1)[1].split(",") if x.strip()]
+        elif item == "--save-catalog":
+            save_catalog = True
+        elif item == "--offline":
+            no_network = False  # 语义交给环境变量，这里只是显式提示
+            no_network = True
+
+    result = parts_catalog.enrich(
+        lcsc, cache=_parts_cache(project_id), allow_network=not no_network)
+    payload: dict[str, Any] = {"lcsc": parts_catalog.normalize_lcsc(lcsc), **result}
+    if result.get("status") != "ok":
+        payload["status"] = "not_ready"
+        payload.setdefault("findings", [result.get("reason") or "查不到"])
+        return payload
+
+    part = result.get("part") or {}
+    fields = parts_catalog.to_design_fields(part)
+    payload["design_fields"] = fields
+
+    # -- 回填到工程 ------------------------------------------------------
+    if project_id:
+        store, design = _load(project_id)
+        touched: list[str] = []
+        for row in design.parts:
+            if refs and row.ref not in refs:
+                continue
+            if not refs and (row.lcsc or "").upper() != fields.get("lcsc"):
+                continue
+            if "size_mm" in fields:
+                row.size_mm = dict(fields["size_mm"])
+                row.physical_source = str(fields.get("physical_source") or "catalog")
+            if fields.get("pins") and not row.pins:
+                row.pins = list(fields["pins"])
+            if fields.get("lcsc"):
+                row.lcsc = fields["lcsc"]
+            touched.append(row.ref)
+        if touched:
+            store.save(design)
+        payload["updated"] = touched
+        payload["updated_source"] = fields.get("physical_source", "")
+        if not touched:
+            payload.setdefault("findings", []).append(
+                "工程里没有引用这个 lcsc 的元件（用 --refs 指定）")
+
+    # -- 写进能力表的目录层（未确认） -------------------------------------
+    if save_catalog:
+        from .design import capability as capability_module
+        key = str(part.get("mpn") or "").strip().lower()
+        if not key:
+            payload.setdefault("findings", []).append("没有型号，无法写进能力表")
+        else:
+            entry = {
+                "fills": set(),
+                "provides": set(),
+                "requires": set(),
+                "footprint_mm2": (
+                    round(float((part.get("size_mm") or {}).get("w", 0.0))
+                          * float((part.get("size_mm") or {}).get("h", 0.0)), 3)
+                    or None),
+                "pins": {},
+                "clock_hz": None,
+                "lcsc": part.get("lcsc"),
+                "mpn": part.get("mpn"),
+                "package": part.get("package"),
+                "datasheet_url": part.get("datasheet_url"),
+                "note": (f"目录回填（{part.get('package') or '封装未知'}）；"
+                         "fills/provides 未确认，所以不进选型"),
+                "source": "catalog",
+            }
+            if capability_module.save_catalog_entry(key, _jsonable(entry)):
+                payload["catalog_key"] = key
+                payload["catalog_note"] = (
+                    "已写进能力表的目录层：会出现在 explain_miss.rejected，"
+                    "但**不会**进 candidates（source=catalog）")
+
+    payload["status"] = "ok"
+    return payload
+
+
+def cmd_parts_promote(args: list[str]) -> dict[str, Any]:
+    """``parts-promote <型号|lcsc> --datasheet <url> --role <role> [--needs a,b]``
+
+    目录级 → datasheet 级。**必须给手册页 URL 留痕**，否则不写。
+    升级后它会进 `capability.candidates()` 的硬选型——所以 `--role`
+    与 `--needs` 是这个动作真正的内容：人（或 agent 读完手册）说
+    "它是什么"和"它能干什么"，目录里没有这两项。
+    """
+    from .design import capability as capability_module
+    from .design import parts_catalog
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", "how": "parts-promote <型号|lcsc> --datasheet=<url> "
+                                      "--role=<role> [--needs=a,b,c]"}
+    key = args[0].strip()
+    datasheet = ""
+    role = ""
+    needs: list[str] = []
+    for item in args[1:]:
+        if item.startswith("--datasheet="):
+            datasheet = item.split("=", 1)[1]
+        elif item.startswith("--role="):
+            role = item.split("=", 1)[1]
+        elif item.startswith("--needs="):
+            needs = [x.strip() for x in item.split("=", 1)[1].split(",") if x.strip()]
+
+    catalog_key = key.lower()
+    if parts_catalog.normalize_lcsc(key):
+        enriched = parts_catalog.enrich(key, cache=_parts_cache())
+        mpn = str((enriched.get("part") or {}).get("mpn") or "").strip()
+        if mpn:
+            catalog_key = mpn.lower()
+    if not role:
+        return {"status": "not_ready",
+                "findings": ["--role 必填：目录里没有「它是什么」这项，"
+                             "不替你猜它是 mcu 还是 sensor"]}
+    result = capability_module.promote_entry(
+        catalog_key,
+        {"fills": {role}, "provides": set(needs)}, datasheet)
+    if not result.get("ok"):
+        return {"status": "not_ready", "findings": [result.get("reason") or "promote 失败"],
+                "key": catalog_key}
+    entry = result.get("entry") or {}
+    return {
+        "status": "ok",
+        "key": catalog_key,
+        "datasheet": datasheet,
+        "role": role,
+        "needs": needs,
+        "source": entry.get("source"),
+        "trusted": capability_module.trusted(catalog_key),
+        "in_candidates": catalog_key in capability_module.candidates(
+            set(needs), role=role) if needs else None,
+        "note": ("已升级为 datasheet 级：现在参与硬选型。"
+                 "fills/provides 来自你给的值，不是目录" ),
+    }
+
+
+def _jsonable(value: Any) -> Any:
+    """set → sorted list，供写 JSON。"""
+    if isinstance(value, set):
+        return sorted(value)
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    return value
+
+
+def _resolve_under(project_dir: Path, raw: str) -> Path:
+    """相对路径的实际所指：绝对路径 → cwd → **工程目录**。
+
+    试的顺序按"人写命令行时的直觉"：`--ioc=board.ioc` 显然指工程里那个；
+    `--ioc=somedir/board.ioc` 从 cwd 能找到就用 cwd 的。都不存在时返回
+    `工程目录/raw`（报错信息里就是这个路径，人能看出我们试了什么）。
+    """
+    path = Path(raw)
+    if path.is_absolute() or path.is_file() or path.is_dir():
+        return path
+    under_project = project_dir / raw
+    return under_project if under_project.exists() else path if path.exists() else under_project
+
+
+def _first_ioc(project_dir: Path) -> Path | None:
+    """工程目录里找 `.ioc`（含子目录）。找不到返回 None —— **不猜路径**。"""
+    if not project_dir.is_dir():
+        return None
+    hits = sorted(p for p in project_dir.rglob("*.ioc") if p.is_file())
+    return hits[0] if hits else None
+
+
+def _resolve_ioc(store, ioc: str) -> tuple[str, list[str]]:
+    """定 `.ioc`：显式给 → 工程目录里唯一一个 → 工作区里唯一一个。
+
+    工作区有多个时**不猜**（板名与 `.ioc` 名无交集，AGENTS §2.3），
+    返回候选清单让人选。
+    """
+    if ioc:
+        return ioc, []
+    in_project = _first_ioc(store.dir)
+    if in_project is not None:
+        return str(in_project), []
+    from .design import ioc_links
+    from .design.store import project_root
+    found = ioc_links.discover(project_root())
+    if len(found) == 1:
+        return str(found[0]), []
+    return "", [str(p) for p in found]
+
+
+def _pinmap_from_project(design, project_dir: Path, ioc: str, ref: str):
+    """拿到一份 `PinMap`：`.ioc` 优先，没有就退回 design.json 的网表。"""
+    from .design.fwgen import netlist as nl_module
+    from .design.fwgen import pinmap as pm_module
+
+    path: Path | None = _resolve_under(project_dir, ioc) if ioc else _first_ioc(project_dir)
+    if path is not None and not path.is_file():
+        return None, {"origin": "ioc", "reason": f"没有这个 .ioc：{path}"}
+    if path is not None:
+        pm, info = pm_module.from_ioc(path, ref=ref or "U1")
+        return pm, {**info, "origin": "ioc"}
+    try:
+        net = nl_module.from_design(design)
+    except nl_module.NetlistError as exc:
+        return None, {"origin": "design.json", "reason": str(exc)}
+    try:
+        pm = pm_module.build_pinmap(net, ref=ref or None)
+    except nl_module.NetlistError as exc:
+        return None, {"origin": "design.json", "reason": str(exc)}
+    return pm, {"origin": "design.json", "assignments": len(pm.assignments)}
+
+
+def cmd_pinmap_gen(args: list[str]) -> dict[str, Any]:
+    """``pinmap-gen <id> [--ioc=PATH] [--ref=U1] [--out=DIR] [--alias=HWV_]``
+
+    生成 `pins.h`（默认写 `<工程>/firmware/`）+ `pinmap.json`。
+
+    来源优先 `.ioc`（它带 label 与信号名），没有就退回 `design.json` 的网表。
+    两边都没有 → `not_ready`，**不编一张引脚表**。
+    """
+    from .design.fwgen import pinmap as pm_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", "mcu_count": len(pm_module.MCUS),
+                "header_files": dict(pm_module.HEADER_FILES),
+                "note": "用法：pinmap-gen <id> [--ioc=PATH] [--ref=U1] [--out=DIR]"}
+    store, design = _load(args[0])
+    ioc, ref, out, alias, style = "", "U1", "", "HWV_", "c"
+    for item in args[1:]:
+        if item.startswith("--ioc="):
+            ioc = item.split("=", 1)[1]
+        elif item.startswith("--ref="):
+            ref = item.split("=", 1)[1]
+        elif item.startswith("--out="):
+            out = item.split("=", 1)[1]
+        elif item.startswith("--alias="):
+            alias = item.split("=", 1)[1]
+        elif item.startswith("--style="):
+            style = item.split("=", 1)[1]
+
+    ioc, options = _resolve_ioc(store, ioc)
+    if options:
+        return {"status": "not_ready", "project_id": args[0],
+                "findings": [f"工作区里有 {len(options)} 个 .ioc，"
+                             "用 --ioc=<路径> 指定（板名与文件名无交集，不猜）"],
+                "options": options}
+    pm, info = _pinmap_from_project(design, store.dir, ioc, ref)
+    if pm is None:
+        return {"status": "not_ready", "project_id": args[0], "info": info,
+                "findings": [info.get("reason") or "没有可用的引脚来源"
+                             "（工程里没有 .ioc，design.json 也没有网表）"]}
+
+    # --out 的相对路径按**工程目录**解析：这些是工程产物，不该落到 cwd
+    target_dir = (store.dir / out) if out and not Path(out).is_absolute() else (
+        Path(out) if out else store.dir / "firmware")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    filename = pm_module.HEADER_FILES.get(style, "pins.h")
+    header = pm_module.render_header(pm, style, source=info.get("path") or "design.json",
+                                     alias_prefix=alias)
+    (target_dir / filename).write_text(header, encoding="utf-8")
+    store.write("pinmap.json", {"status": "ok", "info": info, **pm.as_dict()})
+    payload = {
+        "status": "ok",
+        "project_id": args[0],
+        "mcu": pm.mcu.name,
+        "origin": info.get("origin"),
+        "assignments": len(pm.assignments),
+        "reserved_debug": info.get("reserved_debug") or [],
+        "header": str(target_dir / filename),
+        "macros": [f"PIN_{a.macro}" for a in pm.assignments][:40],
+        "warnings": (pm.warnings or [])[:10],
+    }
+    return payload
+
+
+def cmd_pinmap_check(args: list[str]) -> dict[str, Any]:
+    """``pinmap-check <id> [--ioc=PATH] [--src=DIR_or_file,...]``
+
+    固件引脚 vs 硬件配置的交叉核对。写 `pinmap_crosscheck.json`。
+
+    * 幽灵引脚（软件用了硬件没配）与方向冲突是 **fail**
+    * 闲置引脚是提示（`idle`），不拉低状态
+    """
+    from .design.fwgen import pinmap as pm_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", "note": "用法：pinmap-check <id> [--ioc=PATH] "
+                                        "[--src=DIR,...]"}
+    store, design = _load(args[0])
+    ioc, ref = "", "U1"
+    sources: list[str] = []
+    for item in args[1:]:
+        if item.startswith("--ioc="):
+            ioc = item.split("=", 1)[1]
+        elif item.startswith("--ref="):
+            ref = item.split("=", 1)[1]
+        elif item.startswith("--src="):
+            sources.extend(x for x in item.split("=", 1)[1].split(",") if x.strip())
+
+    ioc, options = _resolve_ioc(store, ioc)
+    if options:
+        return {"status": "not_ready", "project_id": args[0],
+                "findings": [f"工作区里有 {len(options)} 个 .ioc，用 --ioc=<路径> 指定"],
+                "options": options}
+    pm, info = _pinmap_from_project(design, store.dir, ioc, ref)
+    if pm is None:
+        return {"status": "not_ready", "project_id": args[0], "info": info,
+                "findings": [info.get("reason") or "没有可用的硬件引脚配置"]}
+
+    roots: list[Path] = []
+    for raw in sources:
+        candidate = _resolve_under(store.dir, raw)
+        if candidate.is_dir():
+            roots.extend(sorted(p for p in candidate.rglob("*")
+                                if p.suffix.lower() in (".c", ".h", ".cpp", ".hpp")))
+        elif candidate.is_file():
+            roots.append(candidate)
+    extracted = pm_module.extract_uses(roots, root=store.dir)
+    if extracted.get("status") != "ok":
+        payload = {"status": "not_ready", "project_id": args[0],
+                   "mcu": pm.mcu.name, "extract": extracted,
+                   "findings": [extracted.get("reason") or "固件侧没有可核对的内容"]}
+        store.write("pinmap_crosscheck.json", payload)
+        return payload
+
+    # 用 .ioc 的 IocPin（有 mode）做硬件侧；没有 .ioc 时退回 PinMap
+    ioc_path = _resolve_under(store.dir, ioc) if ioc else _first_ioc(store.dir)
+    if ioc_path is not None:
+        pins = pm_module.parse_pins(ioc_path)
+        basis = f"{Path(ioc_path).name}"
+    else:
+        pins = pm
+        basis = "design.json"
+
+    report = pm_module.crosscheck(pins, extracted["uses"], source=basis)
+    # `crosscheck` 的三态是 ok/fail（判定用语），CLI 的三态是 ok/not_ready/failed。
+    # **先摘掉再翻译**：否则 `**report` 会把 status 又覆盖回 "fail"，
+    # 而工具层只认 "failed"（这一条实测踩过：CLI 报 fail、TS 判成异常）。
+    verdict = str(report.pop("status", "ok"))
+    payload = {
+        "status": "ok" if verdict == "ok" else "failed",
+        "verdict": verdict,
+        "project_id": args[0],
+        "mcu": pm.mcu.name,
+        "extract": {k: extracted.get(k) for k in
+                    ("files", "uses", "unpaired_count", "unpaired", "status")},
+        **report,
+    }
+    store.write("pinmap_crosscheck.json", payload)
+    return payload
+
+
+def cmd_fw_driver(args: list[str]) -> dict[str, Any]:
+    """``fw-driver <PART> [--out=DIR] [--address=0x44]``
+
+    生成一个器件的 `<part>.h` / `<part>.c`（含寄存器地址与 datasheet 章节引用）。
+    器件不在表里 → `not_ready` 并列出支持的 7 个，**不写半成品代码**。
+    """
+    from .design.fwgen import drivers as drivers_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", "supported": drivers_module.supported_parts()}
+    part = args[0]
+    out = ""
+    address: int | None = None
+    for item in args[1:]:
+        if item.startswith("--out="):
+            out = item.split("=", 1)[1]
+        elif item.startswith("--address="):
+            try:
+                address = int(item.split("=", 1)[1], 0)
+            except ValueError:
+                return {"status": "failed",
+                        "findings": [f"--address 不是数字：{item}"]}
+    try:
+        files = drivers_module.generate_driver(part, address)
+    except KeyError:
+        return {"status": "not_ready",
+                "findings": [f"驱动表里没有 {part!r}；支持："
+                             f"{', '.join(drivers_module.supported_parts())}"]}
+    base = Path(out) if out else None
+    written: list[str] = []
+    if base is not None:
+        base.mkdir(parents=True, exist_ok=True)
+        for name, text in files.items():
+            path = base / name
+            path.write_text(text, encoding="utf-8")
+            written.append(str(path))
+    return {
+        "status": "ok",
+        "part": part,
+        "files": sorted(files),
+        "written": written,
+        "lines": {name: len(text.splitlines()) for name, text in files.items()},
+        "gen": {name: text for name, text in files.items()} if base is None else {},
+    }
+
+
+def cmd_fw_scaffold(args: list[str]) -> dict[str, Any]:
+    """``fw-scaffold <id> [--ioc=PATH] [--target=X] [--out=DIR] [--name=N]
+    [--drivers=A,B] [--overwrite]``
+
+    生成工程骨架（5 个 target：arduino / platformio / esp-idf / stm32 / avr）。
+    target 与 MCU 家族不匹配时报 `not_ready`（它靠 C 语义，不靠猜）。
+    """
+    from .design.fwgen import scaffold as scaffold_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", "targets": list(scaffold_module.TARGETS)}
+    store, design = _load(args[0])
+    ioc, ref, target, out, name = "", "U1", "", "", ""
+    drivers_list: list[str] = []
+    overwrite = False
+    for item in args[1:]:
+        if item.startswith("--ioc="):
+            ioc = item.split("=", 1)[1]
+        elif item.startswith("--ref="):
+            ref = item.split("=", 1)[1]
+        elif item.startswith("--target="):
+            target = item.split("=", 1)[1]
+        elif item.startswith("--out="):
+            out = item.split("=", 1)[1]
+        elif item.startswith("--name="):
+            name = item.split("=", 1)[1]
+        elif item.startswith("--drivers="):
+            drivers_list = [x.strip() for x in item.split("=", 1)[1].split(",") if x.strip()]
+        elif item == "--overwrite":
+            overwrite = True
+
+    ioc, options = _resolve_ioc(store, ioc)
+    if options:
+        return {"status": "not_ready", "project_id": args[0],
+                "findings": [f"工作区里有 {len(options)} 个 .ioc，用 --ioc=<路径> 指定"],
+                "options": options}
+    pm, info = _pinmap_from_project(design, store.dir, ioc, ref)
+    if pm is None:
+        return {"status": "not_ready", "project_id": args[0], "info": info,
+                "findings": [info.get("reason") or "没有可用的引脚来源"]}
+    resolved = target or scaffold_module.default_target(pm)
+    dest = ((store.dir / out) if out and not Path(out).is_absolute()
+            else (Path(out) if out else store.dir / "firmware" / f"scaffold-{resolved}"))
+    try:
+        files = scaffold_module.scaffold(
+            pm, dest, resolved, name or args[0], drivers_list or None,
+            source=info.get("path") or "design.json", overwrite=overwrite)
+    except scaffold_module.ScaffoldError as exc:
+        return {"status": "not_ready", "project_id": args[0], "mcu": pm.mcu.name,
+                "family": pm.mcu.family, "target": resolved,
+                "findings": [str(exc)]}
+    return {
+        "status": "ok",
+        "project_id": args[0],
+        "mcu": pm.mcu.name,
+        "target": resolved,
+        "out": str(dest),
+        "files": [str(p) for p in files],
+        "count": len(files),
+        "drivers": drivers_list,
+    }
+
+
+def cmd_physical(args: list[str]) -> dict[str, Any]:
+    """``physical <id> [--record --test=… --result=pass|fail|unknown --observed=…
+    --implicated=ref:U1,ref:W2 --video=PATH --frames=00:03,00:07
+    --sim-params=initial --reproduced=true|false|none]``
+
+    实物测试记录。不带 `--record` 时只读：列出记录 + 统计
+    （`reproduced` / `not_reproduced` / `untried` 三类分开数）。
+
+    **写进去就不许糊**：`fail` 必须有 `observed`；`implicated` 里的位号
+    必须在设计里存在；`sim_reproduced` 是三态（`none` = 没试过）。
+    """
+    from .design import real_tests
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **real_tests.describe()}
+    store, design = _load(args[0])
+    record = "--record" in args
+    fields: dict[str, str] = {}
+    for item in args[1:]:
+        if not item.startswith("--") or "=" not in item:
+            continue
+        key, value = item[2:].split("=", 1)
+        fields[key] = value
+
+    if not record:
+        tests = real_tests.load(design)
+        report = real_tests.summary(tests)
+        return {"status": "ok", "project_id": args[0], "tests": report,
+                "records": [t.to_dict() for t in tests]}
+
+    result = str(fields.get("result") or "unknown").strip().lower()
+    if result not in real_tests.RESULTS:
+        return {"status": "failed",
+                "findings": [f"--result={result!r} 非法（可用 {real_tests.RESULTS}）"]}
+    repro_raw = str(fields.get("reproduced") or "").strip().lower()
+    repro: bool | None = None
+    if repro_raw in ("true", "1", "yes"):
+        repro = True
+    elif repro_raw in ("false", "0", "no"):
+        repro = False
+    evidence: dict[str, Any] = {}
+    if fields.get("video"):
+        evidence["video"] = fields["video"]
+    if fields.get("frames"):
+        evidence["frames"] = [x for x in fields["frames"].split(",") if x]
+    if fields.get("contact-sheet"):
+        evidence["contact_sheet"] = fields["contact-sheet"]
+
+    record_obj, problems = real_tests.add(
+        design,
+        test=str(fields.get("test") or ""),
+        result=result,
+        observed=str(fields.get("observed") or ""),
+        implicated=[x for x in str(fields.get("implicated") or "").split(",") if x],
+        evidence=evidence,
+        subject=str(fields.get("subject") or ""),
+        sim_params=str(fields.get("sim-params") or ""),
+        sim_reproduced=repro,
+        by=str(fields.get("by") or ""),
+    )
+    blocking = [p for p in problems if "警告" not in p]
+    if blocking:
+        return {"status": "failed", "project_id": args[0],
+                "findings": problems, "not_written": True,
+                "draft": record_obj.to_dict()}
+    store.save(design)
+    return {"status": "ok", "project_id": args[0],
+            "recorded": record_obj.to_dict(), "warnings": problems,
+            "summary": real_tests.summary(real_tests.load(design))}
+
+
+def cmd_calibrate(args: list[str]) -> dict[str, Any]:
+    """``calibrate <id> --test=pt-001 --candidates='[{"key":值},…]'
+    [--old=<另一个工程>] [--archive] [--date=YYYY-MM-DD]``
+
+    用一条实物失败校准仿真参数。**采纳标准是「旧设计在新参数下复现录像里的失败」**，
+    不是「新设计能过」。
+    """
+    from .design import sim_calibration, sim_params
+    from .design import real_tests
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **sim_calibration.describe()}
+    store, design = _load(args[0])
+    fields: dict[str, str] = {}
+    for item in args[1:]:
+        if item.startswith("--") and "=" in item:
+            key, value = item[2:].split("=", 1)
+            fields[key] = value
+    test_id = str(fields.get("test") or "")
+    raw = str(fields.get("candidates") or "")
+    if not raw:
+        return {"status": "not_ready",
+                "findings": ["--candidates 必填：JSON 数组，每个元素是一组要试的参数"]}
+    try:
+        candidates = json.loads(raw)
+    except ValueError as exc:
+        return {"status": "failed", "findings": [f"--candidates 不是 JSON：{exc}"]}
+    if isinstance(candidates, dict):
+        candidates = [candidates]
+    if not isinstance(candidates, list):
+        return {"status": "failed", "findings": ["--candidates 必须是数组"]}
+
+    # 旧设计：给了 --old 就读那个工程；否则用同一个（如实说明）
+    old_design = design
+    old_note = ""
+    old_id = str(fields.get("old") or "")
+    if old_id:
+        _, old_design = _load(old_id)
+    else:
+        old_note = ("没给 --old，旧设计与新设计是同一份："
+                    "只能验「参数能不能复现这条失败」，验不了「新设计是否通过」")
+
+    params = sim_params.effective(design)
+    result = sim_calibration.calibrate(
+        old_design, design, test_id=test_id, params=params, candidates=candidates)
+    payload = {"status": "ok", "project_id": args[0], **result.to_dict()}
+    if old_note:
+        payload.setdefault("notes", []).append(old_note)
+
+    # 采纳了就回写三处：设计级覆盖、原测试记录的 sim_reproduced、可选的成对存档
+    if result.adopted and result.params is not None:
+        merged = dict(getattr(design, "sim_params", None) or {})
+        for key, value in result.adopted.items():
+            merged[key] = {"value": value, "source": "measured"}
+        design.sim_params = merged
+        store.save(design)
+        payload["written_to_design"] = sorted(result.adopted)
+        if test_id and real_tests.set_reproduced(design, test_id, True):
+            store.save(design)
+            payload["test_marked_reproduced"] = test_id
+    if "--archive" in args and result.params is not None:
+        payload["archive"] = sim_calibration.archive(
+            design, result.params, store.dir, date=str(fields.get("date") or ""))
+    store.write("calibration.json", payload)
+    return payload
+
+
+def cmd_contact_sheet(args: list[str]) -> dict[str, Any]:
+    """``contact-sheet <video> [--out=PATH] [--cols=4] [--frames=16]``
+
+    视频 → 单张 tile 缩略图（ffmpeg）。**本机实测没有 ffmpeg**，
+    所以这里返回的是「能直接粘走跑」的命令行 + `not_ready`。
+    """
+    from .design import real_tests
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **real_tests.describe()}
+    out = ""
+    cols, frames = 4, 16
+    for item in args[1:]:
+        if item.startswith("--out="):
+            out = item.split("=", 1)[1]
+        elif item.startswith("--cols="):
+            cols = int(item.split("=", 1)[1])
+        elif item.startswith("--frames="):
+            frames = int(item.split("=", 1)[1])
+    return real_tests.contact_sheet(args[0], out, columns=cols, frames=frames)
+
+
+def cmd_req_draft(args: list[str]) -> dict[str, Any]:
+    """``req-draft <id> [--set=<json>] [--validate] [--apply] [--confirm]
+    [--board=<kind>] [--title=<t>]``
+
+    **从零开局**：工程还不存在时，草稿写到 `<工作区>/_drafts/<id>.json`；
+    `--apply --confirm` 会顺手建一个空工程（`--board` 默认 `custom` → 50×30 通用板），
+    再写 `req.json`。所以"一句话 → 工程 + 需求"是一条命令链。
+
+    需求草稿（P5）：模型产出的结构化需求**先落成草稿**，校验通过 + 人确认
+    之后才成为 `generate` 的输入（`req.json`）。三个动作：
+
+    * `--set=<json>` 写草稿（模型可反复改）
+    * `--validate`    只校验，不落盘
+    * `--apply`       把草稿变成真需求 —— **必须同时 `--confirm`**
+
+    不给动作时返回 `describe()` + 当前草稿与校验结果。
+    """
+    from .design import req_draft as rd
+
+    if not args or args[0].startswith("-"):
+        # `--list` 单独可用：列工作区草稿（从零开局时工程还不存在的那些）
+        if "--list" in args:
+            rows = rd.list_workspace()
+            return {"status": "ok", "scope": "workspace",
+                    "count": len(rows), "drafts": rows,
+                    "note": (f"这些草稿在 <工作区>/{rd.DRAFT_DIR}/ 下，"
+                             "apply --confirm 会建工程") if rows
+                    else "工作区里没有草稿",
+                    **rd.describe()}
+        return {"status": "ok", **rd.describe()}
+    store = _store(args[0])
+    payload = ""
+    action = ""
+    confirm = False
+    board = "custom"
+    title = ""
+    for item in args[1:]:
+        if item.startswith("--set="):
+            payload = item.split("=", 1)[1]
+            action = action or "draft"
+        elif item.startswith("--validate"):
+            action = "validate"
+        elif item.startswith("--apply"):
+            action = "apply"
+        elif item.startswith("--confirm"):
+            confirm = True
+        elif item.startswith("--board="):
+            board = item.split("=", 1)[1]
+        elif item.startswith("--title="):
+            title = item.split("=", 1)[1]
+
+    if action == "draft":
+        try:
+            data = json.loads(payload)
+        except ValueError as exc:
+            return {"status": "failed",
+                    "findings": [f"--set 需要一个 JSON 对象：{exc}"]}
+        if not isinstance(data, dict):
+            return {"status": "failed", "findings": ["--set 必须是 JSON 对象"]}
+        saved = rd.save(store, rd.ReqDraft.from_dict(data))
+        report = saved["validation"]
+        out = {
+            "status": "ok" if report["ok"] else "failed",
+            "project_id": store.id, "action": "draft", "file": saved["file"],
+            # **scope 必须说清**：工程在 → 工程目录；工程还没有 → 工作区草稿。
+            # 不写的话人不知道这份草稿在"还没有工程"时放到了哪。
+            "scope": saved.get("scope"), "path": saved.get("path"),
+            "validation": report, "draft": rd.load(store).to_dict(),
+            "findings": [p["message"] for p in report["problems"]],
+        }
+        if saved.get("scope") == "workspace":
+            out["note"] = ("这个工程还不存在：草稿写在工作区 "
+                           f"{rd.DRAFT_DIR}/ 下。apply --confirm 时会顺手建工程。")
+        return out
+
+    if action == "validate":
+        draft = rd.load(store)
+        if draft is None:
+            return {"status": "not_ready",
+                    "reason": f"没有草稿（{rd.DRAFT_FILE} 不存在）"}
+        report = rd.validate(draft)
+        return {"status": "ok" if report["ok"] else "failed",
+                "project_id": store.id, "action": "validate",
+                "validation": report, "draft": draft.to_dict(),
+                "findings": [p["message"] for p in report["problems"]]}
+
+    if action == "apply":
+        result = rd.apply(store, confirm=confirm, board=board, title=title)
+        out = {"project_id": store.id, "action": "apply", **result}
+        if result.get("status") != "ok":
+            out.setdefault("findings", []).append(result.get("reason") or "")
+        return out
+
+    # 无动作：报当前状态（草稿在不在、过没过、应用了没）
+    draft = rd.load(store)
+    requirement = store.read(rd.REQ_FILE)
+    report = rd.validate(draft) if draft is not None else None
+    return {
+        "status": "ok", "project_id": store.id,
+        "draft": None if draft is None else draft.to_dict(),
+        "validation": report,
+        "scope": rd.draft_scope(store),
+        "project_exists": store.exists(),
+        "applied": isinstance(requirement, dict),
+        "requirement": requirement if isinstance(requirement, dict) else None,
+        **rd.describe(),
+    }
+
+
+def cmd_fw_matrix(args: list[str]) -> dict[str, Any]:
+    """``firmware <id> [--ioc=PATH] [--src=DIR_or_file] [--ref=U1]``
+
+    固件矩阵：**引脚 × (硬件配置 / 固件使用 / 结论)**，每脚一行。
+
+    与 `pinmap-check` 的分工：那个只报三张**问题表**，没有问题的脚不在任何
+    表里；这个按脚一行，才能回答"这个脚配没配、用没用"。
+    判定口径仍然只有 `pinmap.crosscheck` 一处，这里只做投影。
+    """
+    from .design import firmware_matrix as matrix_module
+    from .design.fwgen import pinmap as pm_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **matrix_module.describe()}
+    store, design = _load(args[0])
+    ioc, ref, sources = "", "U1", []
+    for item in args[1:]:
+        if item.startswith("--ioc="):
+            ioc = item.split("=", 1)[1]
+        elif item.startswith("--ref="):
+            ref = item.split("=", 1)[1]
+        elif item.startswith("--src="):
+            sources.extend(x for x in
+                           item.split("=", 1)[1].split(",") if x.strip())
+
+    ioc, options = _resolve_ioc(store, ioc)
+    if options:
+        return {"status": "not_ready", "project_id": store.id,
+                "findings": [f"工作区里有 {len(options)} 个 .ioc，"
+                             f"用 --ioc=<路径> 指定"],
+                "options": options}
+    pm_obj, info = _pinmap_from_project(design, store.dir, ioc, ref)
+    if pm_obj is None:
+        return {"status": "not_ready", "project_id": store.id, "info": info,
+                "findings": [info.get("reason") or "没有可用的硬件引脚配置"]}
+
+    roots: list[Path] = []
+    for raw in sources:
+        candidate = _resolve_under(store.dir, raw)
+        if candidate.is_dir():
+            roots.extend(sorted(p for p in candidate.rglob("*")
+                                if p.suffix.lower() in (".c", ".h", ".cpp", ".hpp")))
+        elif candidate.is_file():
+            roots.append(candidate)
+    extracted = pm_module.extract_uses(roots, root=store.dir)
+    if extracted.get("status") != "ok":
+        return {"status": "not_ready", "project_id": store.id,
+                "mcu": pm_obj.mcu.name, "extract": extracted,
+                "findings": [extracted.get("reason") or "固件侧没有可核对的内容"]}
+
+    ioc_path = _resolve_under(store.dir, ioc) if ioc else _first_ioc(store.dir)
+    if ioc_path is not None:
+        pins = pm_module.parse_pins(ioc_path)
+        basis = Path(ioc_path).name
+    else:
+        pins, basis = pm_obj, "design.json"
+
+    payload = matrix_module.matrix(pins, extracted["uses"], source=basis)
+    # `crosscheck` 的三态是 ok/fail（判定用语），CLI 的是 ok/not_ready/failed。
+    # **先摘掉再翻译**：否则 `**payload` 会把 status 覆盖回 "fail"（P20 踩过）。
+    verdict = str(payload.pop("status", "ok"))
+    out = {
+        "status": "ok" if verdict in ("ok", "not_ready") else "failed",
+        "verdict": verdict,
+        "project_id": store.id,
+        **payload,
+        "mcu": pm_obj.mcu.name,
+        "unpaired": extracted.get("unpaired") or [],
+        # **键名是 `files`，不是 `scanned`**：`extract_uses` 的返回值里
+        # 那个计数器叫 `files`（AGENTS §3.2：猜字段名，tsc 抓不到）。
+        # 这个数字必须带出来——否则"扫了 0 个文件"和"扫到了但没用引脚"
+        # 在报告里长得一模一样（§0.2）。
+        "scanned": int(extracted.get("files") or 0),
+        "unpaired_count": int(extracted.get("unpaired_count") or 0),
+    }
+    store.write("firmware_matrix.json", out)
+    return out
+
+
+def cmd_sensitivity(args: list[str]) -> dict[str, Any]:
+    """``sensitivity <id> [--verdict] [--keys k1,k2]`` —— 参数敏感度（P3）。
+
+    默认只做**模型层**：扰动每个参数，看 MJCF 文本变不变。不需要 MuJoCo。
+
+    `--verdict` 再跑**判定层**：只对模型层敏感的参数跑 V7，看结论翻不翻。
+    没有 MuJoCo 时那一层是 `unknown`，**不是「不敏感」**。
+
+    报四类，各报各的：`wired`（真的驱动模型）/ `wired_noop`（读了但本设计
+    里没有对应机制）/ `unwired`（**没有任何代码读**）/ `missing`（代码读了
+    但表里没这一项）。
+    """
+    from .design import sensitivity as sensitivity_module
+    from .design import sim_params
+
+    if not args:
+        return {"status": "ok", **sensitivity_module.describe()}
+    store, design = _load(args[0])
+    params = sim_params.effective(design)
+    keys = None
+    if "--keys" in args:
+        raw = args[args.index("--keys") + 1] if len(args) > args.index("--keys") + 1 else ""
+        keys = [k.strip() for k in raw.split(",") if k.strip()]
+
+    report = sensitivity_module.report(design, params, keys=keys)
+    report["project"] = store.id
+    if "--verdict" in args:
+        wired = [row["key"] for row in report["priority"]]
+        report["verdict_layer"] = sensitivity_module.sweep_verdict(
+            design, params, keys=wired or keys)
+    return report
+
+
+def cmd_entity(args: list[str]) -> dict[str, Any]:
+    """``entity <id> [<ref>]`` —— 一个元件的完整画像（P2 按对象聚合）。
+
+    不给 ref 时返回**紧凑索引**（每个位号一行），供 2D 画布着色与列表用。
+    给 ref 时返回完整画像：断言 / 归因 / 检查 / 实测 / 所属单元 / 网表。
+
+    只聚合已有产物，**不跑任何判定**——打开一个元件不该触发体素几何。
+    """
+    from .design import entity as entity_module
+
+    if not args:
+        return {"status": "ok", **entity_module.describe()}
+    store, design = _load(args[0])
+    claims = store.read("claims.json")
+    justify = store.read("justify.json")
+    checks = store.read("checks.json")
+    units = store.read("units.json")
+
+    if len(args) == 1:
+        return {"status": "ok", "project": store.id,
+                "entities": entity_module.index(design, claims=claims,
+                                                checks=checks)}
+
+    profile = entity_module.profile(design, args[1], claims=claims,
+                                    justify=justify, checks=checks, units=units)
+    payload: dict[str, Any] = {"project": store.id, **profile}
+    if profile.get("status") == "failed":
+        return payload
+    return payload
+
+
+def cmd_verdict(args: list[str]) -> dict[str, Any]:
+    """``verdict <id>`` —— 一屏结论：九层横条 + 六类计数 + 排好序的下一步。
+
+    只读已有产物，**不跑判定**（`ladder` 才跑）。所以它很快，
+    可以随时看；但也因此可能是**过期的**——`stale=true` 就是那个意思。
+    """
+    from .design import verdict as verdict_module
+
+    if not args:
+        return {"status": "ok", **verdict_module.describe()}
+    return verdict_module.compose(_store(args[0]))
+
+
+def cmd_agent(args: list[str]) -> dict[str, Any]:
+    """``agent "<任务>" [--project=] [--mode=read-only|ask|auto] [--script=FILE]
+    [--journal=PATH] [--resume=PATH] [--max-steps=N] [--approve=all|none]``
+
+    跑一轮 agent 循环。**模型永远是可替换的**：
+
+    * `--script=<file>`：用 `scripts/fake_model.ScriptedClient` 读一份脚本
+      （JSON 数组，每项 `{"tool": "...", "args": {...}}` 或 `{"text": "..."}`）。
+      **0 token**，能进回归。
+    * 不给 `--script` → `not_ready` 并说明"没有模型"（**不假装跑过**）。
+
+    审批：`--approve=all` 表示自动同意所有 ask（**仅用于回归**）；
+    默认没有审批回调 → 需要人的档一律拒绝。
+    """
+    from .design import agent_loop, agent_tools
+    from .scripts import fake_model
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", "loop": agent_loop.describe(),
+                "tools": agent_tools.describe()}
+
+    task = args[0]
+    fields: dict[str, str] = {}
+    for item in args[1:]:
+        if item.startswith("--") and "=" in item:
+            key, value = item[2:].split("=", 1)
+            fields[key] = value
+    mode = str(fields.get("mode") or "auto")
+    project = str(fields.get("project") or "")
+    max_steps = int(fields.get("max-steps") or agent_loop.MAX_STEPS)
+
+    resume_path = str(fields.get("resume") or "")
+    script_path = str(fields.get("script") or "")
+    if not resume_path and not script_path:
+        return {"status": "not_ready",
+                "findings": ["没有模型：给 --script=<file>（假模型，0 token）"
+                             "或用 --resume=<journal> 接着跑已中断的会话"],
+                "modes": ["read-only", "ask", "auto"]}
+
+    client = None
+    if script_path:
+        from pathlib import Path
+        try:
+            steps = json.loads(Path(script_path).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return {"status": "failed", "findings": [f"读不到脚本：{exc}"]}
+        built = []
+        for step in steps if isinstance(steps, list) else []:
+            if not isinstance(step, dict):
+                continue
+            if step.get("tool"):
+                built.append(fake_model.call(str(step["tool"]),
+                                             **dict(step.get("args") or {})))
+            elif "text" in step:
+                built.append(fake_model.text(str(step["text"])))
+        client = fake_model.ScriptedClient(built)
+
+    approve = str(fields.get("approve") or "")
+    approval = (lambda request: True) if approve == "all" else None
+
+    default_journal = ""
+    if project:
+        default_journal = str(_store(project).path("agent_journal.jsonl"))
+    journal = str(fields.get("journal") or default_journal)
+
+    if resume_path:
+        report = agent_loop.resume(resume_path, client, mode=mode,
+                                   approval=approval, max_steps=max_steps,
+                                   out=journal or None)
+    else:
+        report = agent_loop.run(client, task, project=project, mode=mode,
+                                journal=journal or None, approval=approval,
+                                max_steps=max_steps)
+    payload = {"status": report.get("status", "?"), **report}
+    if project:
+        payload["project_id"] = project
+    return payload
 
 
 def cmd_units(args: list[str]) -> dict[str, Any]:
@@ -1839,8 +3360,12 @@ COMMANDS = {
     "justify": cmd_justify,
     "handoff": cmd_handoff,
     "coverify": cmd_coverify,
+    "sim": cmd_sim,
+    "joints": cmd_joints,
     "units": cmd_units,
     "links": cmd_links,
+    "ioc-links": cmd_ioc_links,
+    "renode": cmd_renode,
     "capability": cmd_capability,
     "generate": cmd_generate,
     "budget": cmd_budget,
@@ -1862,6 +3387,25 @@ COMMANDS = {
     "semantics": cmd_semantics,
     "log": cmd_log,
     "serve": cmd_serve,
+    "lceda": cmd_lceda,
+    "emit": cmd_emit,
+    "readback": cmd_readback,
+    "parts-search": cmd_parts_search,
+    "parts-enrich": cmd_parts_enrich,
+    "parts-promote": cmd_parts_promote,
+    "pinmap-gen": cmd_pinmap_gen,
+    "pinmap-check": cmd_pinmap_check,
+    "fw-driver": cmd_fw_driver,
+    "fw-scaffold": cmd_fw_scaffold,
+    "physical": cmd_physical,
+    "calibrate": cmd_calibrate,
+    "contact-sheet": cmd_contact_sheet,
+    "agent": cmd_agent,
+    "verdict": cmd_verdict,
+    "entity": cmd_entity,
+    "sensitivity": cmd_sensitivity,
+    "fw-matrix": cmd_fw_matrix,
+    "req-draft": cmd_req_draft,
 }
 
 

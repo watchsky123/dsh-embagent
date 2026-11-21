@@ -47,7 +47,20 @@ from typing import Any, Callable
 
 from .model import DesignModel
 
-LEVELS = ("V0", "V1", "V2", "V3", "V4", "V5", "V6")
+LEVELS = ("V0", "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8")
+
+#: **默认跑的层**。不含 V7/V8。
+#:
+#: 实测教训：V7（MuJoCo）一加进默认，266 项单测从 **1.8s 变成 394s**
+#: —— 几乎每个测试都会 `run_ladder()`，而 V7 每次要跑 3 次扰动。
+#:
+#: 所以默认只跑"便宜且確定"的 V0–V6。V7/V8 是**可选增强**：
+#: 要跑必须显式 `levels=[...]`（CLI 的 `--with-sim`）。
+#: 这不是"隐藏功能"，是**成本可见**——想用仿真就得说要。
+DEFAULT_LEVELS = ("V0", "V1", "V2", "V3", "V4", "V5", "V6")
+
+#: 需要 MuJoCo 的层。它们不在默认序列里。
+SIM_LEVELS = ("V7",)
 
 #: 硬失败的层：失败后下游不再跑。V0/V1 都是"板子会烧/网表根本不成立"。
 HARD_LEVELS = ("V0", "V1")
@@ -60,6 +73,8 @@ LEVEL_TITLE = {
     "V4": "时序（波特率可达性）",
     "V5": "数字仿真（实跑固件）",
     "V6": "SPICE（模拟波形）",
+    "V7": "运动（MuJoCo 动力学 + 三次扰动）",
+    "V8": "制造（立创EDA DRC，外部证据）",
 }
 
 
@@ -661,6 +676,132 @@ def level_v6(design: DesignModel, **_kw: Any) -> LevelResult:
     return res
 
 
+#: V7 的零件数阈值。超过就缩短仿真时长——**性能预算，不是精度妥协**。
+#:
+#: 实测：316 元件的多板工程 weld 后跑 1 秒要 >300 秒墙钟
+#: （约束数 ~1 万个，arena 256MB）。V7 要跑 3 次扰动，不控的话
+#: 一次阶梯检查就是 15 分钟。降级后仍然跑 3 次，只是时长短。
+V7_LARGE_PARTS = 200
+V7_LARGE_DURATION_S = 0.4
+
+
+def level_v7(design: DesignModel, *,
+             duration_s: float = 0.0, **_kw: Any) -> LevelResult:
+    """V7 运动：MuJoCo 动力学 + **三次启动扰动**。
+
+    ## 为什么这一层默认 not_run 而不是硬跑
+
+    MuJoCo 是**可选增强**（装在项目内 `vendor/pylib`）。没装时这一层
+    必须 `not_run`，不能假装。而且跑物理仿真有成本：141 个元件的板
+    单次 0.5s 仿真墙钟 0.02s，但三次扰动 × 多候选就是数量级放大。
+
+    ## 判定链条
+
+    1. `robustness.triplicate("kinematic", run)` 跑三次扰动
+    2. 每次扰动跑 `mujoco_backend.run(..., weld_parts=True)`
+       —— **weld 是必须的**：PCB 元件焊死在板上，
+       不 weld 会让 141 个元件各自下落，数值爆炸（实测末速 61574 m/s）
+    3. 单次判定：翻倒（倾角 > 阈值）= fail；跑不起来 = unknown
+
+    合并规则交给 `robustness.combine()`：任一 fail → fail，
+    有 unknown → unknown，全 pass → pass。
+    """
+    res = LevelResult("V7")
+    try:
+        from . import mujoco_backend, robustness
+    except ImportError as exc:                            # noqa: BLE001
+        res.status = "not_run"
+        res.unknown.append(f"运动域不可用：{exc}")
+        return res
+
+    available, why = mujoco_backend.available()
+    if not available:
+        res.status = "not_run"
+        res.unknown.append(
+            f"MuJoCo 不可用（{why}）——本层没跑，**不是通过**")
+        return res
+
+    # 时长：显式给了就用；否则按零件数降级
+    effective_s = float(duration_s) if duration_s > 0 else (
+        V7_LARGE_DURATION_S if len(design.parts) > V7_LARGE_PARTS else 2.0)
+    if effective_s < 2.0:
+        # 降级必须**说出来**，但它是 info 不是 warning：
+        # 时长缩短不改变"稳不稳"的结论方向，只是分辨率降低。
+        # 放 `findings`（severity=info）而不是 `unknown`——
+        # 放 unknown 会让整层变成 unknown，那是另一种失真。
+        res.findings.append({
+            "check": "kinematic.perf_budget",
+            "ok": True,
+            "severity": "info",
+            "message": (f"零件数 {len(design.parts)} > {V7_LARGE_PARTS}，"
+                        f"仿真时长降到 {effective_s}s"
+                        f"（性能预算，仍跑 3 次扰动）"),
+        })
+
+    def _one(perturb: dict[str, Any]) -> tuple[str, str]:
+        try:
+            result = mujoco_backend.run(
+                design, duration_s=effective_s, free_bodies=True,
+                weld_parts=True)
+        except Exception as exc:                          # noqa: BLE001
+            return "unknown", f"{type(exc).__name__}: {exc}"
+        if not result.ok:
+            return "unknown", result.error
+        flipped = [ref for ref, tilt in result.max_tilt_deg.items()
+                   if tilt > mujoco_backend.FLIP_ANGLE_DEG]
+        if flipped:
+            return "fail", (f"{len(flipped)} 个刚体翻倒"
+                            f"（>{mujoco_backend.FLIP_ANGLE_DEG}°）："
+                            f"{', '.join(flipped[:4])}")
+        return "pass", ""
+
+    robust = robustness.triplicate("kinematic", _one)
+    res.checked = len(robust.attempts)
+    res.status = robust.status
+    for attempt in robust.attempts:
+        if attempt.status == "fail":
+            res.findings.append({
+                "check": "kinematic.stability",
+                "ok": False,
+                "severity": "error",
+                "message": (f"扰动 {attempt.name} 下失效：{attempt.detail}"),
+                "applied": dict(attempt.applied),
+            })
+        elif attempt.status == "unknown":
+            res.unknown.append(
+                f"扰动 {attempt.name} 没跑起来：{attempt.detail}")
+    if not robust.attempts:
+        res.status = "unknown"
+        res.unknown.append("没有任何运动扰动被执行")
+    return res
+
+
+def level_v8(design: DesignModel, **_kw: Any) -> LevelResult:
+    """V8 制造：立创EDA DRC。**外部证据，不是我们的判定。**
+
+    ## 为什么单列一层而不并进 V2
+
+    V2 是**我们自己**量的几何（重叠/越界/高度/走线可达）。
+    V8 是**别人**（立创EDA）的 DRC/DFM 结论。两者标准不同：
+    KiCad/立创的安全间距、层规则、焊盘补偿与我们不同。
+
+    混进同一层会让人分不清"谁说的"。所以：
+    * V2 findings 进 `handoff` 的 `blocking`
+    * V8 findings 进 `handoff` 的 `external`（**不进阻断**）
+
+    ## P17 之前一律 not_run
+
+    发射层（`emit_lceda`）还没写，所以现在**没有工程可 DRC**。
+    这一层保持 `not_run` 并说清"缺 P17"，不假装跑过。
+    """
+    res = LevelResult("V8", status="not_run",
+                      unknown=[
+                          "制造域未接入：需要 P17 的 emit_lceda 把设计发射成"
+                          ".eprj3 工程，才能跑立创EDA 的 DRC。"
+                          "本层没跑（不是通过）"])
+    return res
+
+
 # ---------------------------------------------------------------------------
 # 编排
 # ---------------------------------------------------------------------------
@@ -673,6 +814,8 @@ RUNNERS: dict[str, Callable[..., LevelResult]] = {
     "V4": level_v4,
     "V5": level_v5,
     "V6": level_v6,
+    "V7": level_v7,
+    "V8": level_v8,
 }
 
 
@@ -691,16 +834,45 @@ def _finish(res: LevelResult, checked: int) -> None:
     """按"有对象、有结论"的纪律定状态。
 
     顺序要紧：
-      1. 有 failed finding → fail（**即使没检查够也算 fail**：
-         已经证明坏了，就不需要更多证据）
+      1. 有 **error 级** failed finding → fail
+         （**即使没检查够也算 fail**：已经证明坏了，就不需要更多证据）
       2. 一个对象都没过 → unknown（空集通过不是通过）
-      3. 有未判项 → unknown（部分未知不能报通过）
+      3. 有未判项 / 有 warning → unknown（部分未知不能报通过）
       4. 都没有 → pass
+
+    ## 为什么 warning 不能判 fail（实测出的 bug）
+
+    第一版这里是 `any(not f.get("ok", True) ...)`——只看 `ok`，
+    **不看 `severity`**。于是 `consistency.provenance` 那条
+    "元件尺寸是估算值"的 **warning** 把整个 V2 判成 `fail`。
+
+    实测证据：`001-blink`（3 个元件）V2=fail，但失败项里
+    `error=0 / warning=1`——**几何上什么都没错**，只是 `btn1` 的
+    尺寸是估算的。这个判定是错的：
+
+      * "尺寸是估算值"不是"设计错了"，是"需要人确认"
+      * 报 fail 会让人去改本来正确的布局
+      * 更糟的是它污染了交接单的阻断项
+
+    warning 的语义是"结论有保留"，对应状态应是 **unknown**
+    （结论不确定），不是 **fail**（结论是否定）。
     """
     res.checked = checked
-    if any(not f.get("ok", True) for f in res.findings):
+    errors = [f for f in res.findings
+              if not f.get("ok", True)
+              and str(f.get("severity") or "error") == "error"]
+    warnings = [f for f in res.findings
+                if not f.get("ok", True)
+                and str(f.get("severity") or "") == "warning"]
+
+    if errors:
         res.status = "fail"
         return
+    # warning 进 unknown，让"未确认"可见但不算失败
+    for item in warnings:
+        message = str(item.get("message") or item.get("check") or "")
+        if message and message not in res.unknown:
+            res.unknown.append(message)
     if checked <= 0:
         res.status = "unknown"
         if not res.unknown:
@@ -716,7 +888,7 @@ def run_ladder(design: DesignModel, *, levels: list[str] | None = None,
 
     下游截断记 `not_run` + 一句"上游硬失败，本层未运行（结论无意义）"。
     """
-    seq = [lv.upper() for lv in (levels or LEVELS)]
+    seq = [lv.upper() for lv in (levels or DEFAULT_LEVELS)]
     bad = [lv for lv in seq if lv not in RUNNERS]
     if bad:
         raise ValueError(f"未知的层：{', '.join(bad)}（可用：{', '.join(LEVELS)}）")

@@ -29,6 +29,7 @@ import type {
   HintPayload,
   ProjectSummary,
   SnapshotPayload,
+  EntityProfile,
 } from '../shared/types.js'
 
 const CHANNEL = '/api'
@@ -79,6 +80,10 @@ async function call<T>(handle: ConnectionHandle, method: string,
 export interface WorkbenchFace {
   bootstrap(): Promise<BootstrapPayload>
   snapshot(project: string, pitchMm?: number): Promise<SnapshotPayload>
+  /** 把需求草稿变成真需求（P5）。`confirm` 必须由人点。 */
+  applyReqDraft(project: string, confirm: boolean): Promise<Record<string, unknown>>
+  /** 一个元件的完整画像（断言 / 归因 / 检查 / 实测 / 单元）。 */
+  entity(project: string, ref: string): Promise<EntityProfile>
   projects(): Promise<ProjectSummary[]>
   createProject(project: string, board: string, title: string): Promise<DesignDoc>
   importProject(project: string, path: string, bomPath?: string): Promise<DesignDoc>
@@ -144,6 +149,10 @@ export function createFace(
     snapshot: (project, pitchMm) =>
       call<SnapshotPayload>(handle, 'snapshot', pitchMm === undefined
         ? { project } : { project, pitchMm }),
+    entity: (project, ref) =>
+      call<EntityProfile>(handle, 'entity', { project, ref }),
+    applyReqDraft: (project, confirm) =>
+      call<Record<string, unknown>>(handle, 'applyReqDraft', { project, confirm }),
     projects: async () => {
       const payload = await call<{ projects: ProjectSummary[] }>(handle, 'projects')
       return payload.projects ?? []

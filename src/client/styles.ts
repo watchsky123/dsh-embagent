@@ -605,6 +605,96 @@ const CSS = `
 }
 .hwv-warn-line { font-size: 11px; color: var(--hwv-err); line-height: 1.7; }
 
+/* ── 结论（首屏）────────────────────────────────────────────────────
+ *
+ * 这一屏的回答顺序是：**这版行不行（一句）→ 九层各是什么状态（横条）
+ * → 六类各多少（计数）→ 先做什么（五条）**。
+ *
+ * 配色只用语义色（ok/warn/err/dim），**不用紫色**：紫是"估算/选中"的
+ * 唯一强调色（DESIGN.md §1.2），结论页里没有任何东西是"估算"，
+ * 借过来会稀释那个信号。 */
+.hwv-verdict-head {
+  display: flex; align-items: baseline; gap: var(--hwv-space-4);
+  flex-wrap: wrap; margin-bottom: var(--hwv-space-4);
+}
+.hwv-verdict-rollup {
+  flex: 0 0 auto; font-weight: 600; font-size: var(--hwv-fs-title);
+  padding: var(--hwv-space-1) var(--hwv-space-3);
+  border-radius: var(--hwv-radius-xs);
+  border: 1px solid var(--hwv-line); color: var(--hwv-dim);
+}
+.hwv-verdict-head:not(.blocked) .hwv-verdict-rollup {
+  color: var(--hwv-ok); border-color: color-mix(in srgb, var(--hwv-ok) 45%, transparent);
+}
+.hwv-verdict-head.blocked .hwv-verdict-rollup {
+  color: var(--hwv-err); border-color: color-mix(in srgb, var(--hwv-err) 50%, transparent);
+}
+.hwv-verdict-summary { flex: 1 1 260px; min-width: 0; line-height: 1.7; }
+
+/* 九层横条：每层一格，宽度等分。**不用饼图/环形图**——三态不是占比，
+   unknown 画成扇区等于说它"占了三分之一"。 */
+.hwv-ladder { display: flex; gap: var(--hwv-space-1); align-items: stretch; flex-wrap: wrap; margin-bottom: var(--hwv-space-2); }
+.hwv-ladder-cell {
+  flex: 1 1 44px; min-width: 44px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: var(--hwv-space-2) 0;
+  background: var(--hwv-panel-2);
+  border: 1px solid var(--hwv-line); border-radius: var(--hwv-radius-xs);
+  color: var(--hwv-text); font-family: inherit; cursor: pointer;
+  transition: var(--hwv-transition-color);
+}
+.hwv-ladder-cell:hover { border-color: var(--hwv-accent); }
+.hwv-ladder-cell .lv { font-size: var(--hwv-fs-caption); color: var(--hwv-dim); }
+.hwv-ladder-cell .st { font-size: var(--hwv-fs-title); line-height: 1.2; }
+.hwv-ladder-cell.pass { border-color: color-mix(in srgb, var(--hwv-ok) 45%, transparent); }
+.hwv-ladder-cell.pass .st { color: var(--hwv-ok); }
+.hwv-ladder-cell.fail { border-color: color-mix(in srgb, var(--hwv-err) 55%, transparent); }
+.hwv-ladder-cell.fail .st { color: var(--hwv-err); }
+.hwv-ladder-cell.unknown { border-color: color-mix(in srgb, var(--hwv-warn) 50%, transparent); }
+.hwv-ladder-cell.unknown .st { color: var(--hwv-warn); }
+.hwv-ladder-cell.not_run { border-style: dashed; }
+.hwv-ladder-cell.not_run .st { color: var(--hwv-dim); }
+.hwv-ladder-cell.truncated .st { color: var(--hwv-err); }
+.hwv-ladder-gap { font-size: var(--hwv-fs-caption); color: var(--hwv-dim); align-self: center; }
+
+.hwv-verdict-counts { display: flex; gap: var(--hwv-space-2); flex-wrap: wrap; margin-bottom: var(--hwv-space-4); }
+/* 计数 chip：为 0 时压暗（常驻的数字等于没信号），非 0 才给颜色。 */
+.hwv-chip.on {
+  color: var(--hwv-err);
+  border-color: color-mix(in srgb, var(--hwv-err) 45%, transparent);
+}
+.hwv-mark-num {
+  flex: 0 0 16px; width: 16px; text-align: center;
+  font-size: var(--hwv-fs-caption); color: var(--hwv-dim);
+  font-variant-numeric: tabular-nums;
+}
+.hwv-next-action { color: var(--hwv-dim); }
+
+/* 一步动作的按钮（P1）。它比普通按钮**小一号**：一屏里有五条待办，
+  正常尺寸的按钮会在视觉上盖过那句"为什么"。 */
+.hwv-step-btn {
+  flex: 0 0 auto; padding: 1px var(--hwv-space-3); font-size: 11px;
+  border-radius: var(--hwv-radius-xs);
+}
+/* 「由谁做」：external 类的补充说明。用 dim 而不是警告色——
+   它不是问题，是分工。 */
+.hwv-next-by { color: var(--hwv-dim); }
+
+/* ── 固件矩阵（P4）─────────────────────────────────────────────────
+ *
+ * 四类结论各一色。配色**只用语义色**：这里没有任何"估算/选中"的语义，
+ * 借紫色会稀释那个唯一强调色（DESIGN.md §1.2）。 */
+.hwv-fw-ghost { color: var(--hwv-err); font-weight: 600; }
+.hwv-fw-direction { color: var(--hwv-err); }
+.hwv-fw-idle { color: var(--hwv-warn); }
+.hwv-fw-ok { color: var(--hwv-ok); }
+/* 表格里的次要说明（标签、原因）：不抢主结论的颜色 */
+.hwv-danger-dim {
+  color: var(--hwv-dim);
+  font-size: var(--hwv-fs-caption);
+  line-height: 1.5;
+}
+
 /* ── 勘察摘要（条目数 / 读取覆盖度 / MCU）──────────────────────────────
    它的存在是为了回答"工作区里到底有多少东西、我看了多少"。
    上一版没有这块，用户只看到 2 个工程，就以为这就是全部资产。 */

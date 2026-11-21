@@ -1,5 +1,10 @@
 # hw_velxio 架构升级执行方案
 
+> **P9 之后的执行方案见 `execution-plan-v3.md`（P15–P23，41 天）。**
+> 本文只覆盖已交付的 P0–P8 与它们的实现偏差（§1.2–§1.4、§18）。
+> 两文冲突时以 v3 为准（它综合了 RoboBuilder / Traceforge / 立创EDA 三方源码）。
+
+
 > **本文是可执行方案，不是设计提案。** 设计提案见
 > [architecture-target.md](architecture-target.md)。
 >
@@ -49,10 +54,21 @@ M1 结束时你能得到：每个元件为什么在、删掉它会怎样、哪�
 | **P4** | 交接层 | `handoff.py` (~600) | 生成两份 md | 3 天 | ✅ 完成 |
 | **P5** | 单元层 + 板间 | `units.py`(~330) + `links.py`(~640) | 7 板可表达 | 8 天 | ✅ 完成 |
 | **P6** | 能力表 + 枚举生成 | `capability.py`(~330) + `generate.py`(~470) | 同需求出 3 候选 | 8 天 | ✅ 完成 |
-| **P7** | Renode 接入 | `renode.py` (~300) | 单板真跑出串口 | 5 天 | ⬜ 未开始 |
-| **P8** | `.ioc` → links 抽取 | `ioc_links.py` (~400) | 32 串口出草稿 | 5 天 | ⬜ 未开始 |
+| **P7** | Renode 接入 | `renode.py` (~640) | 产物正确（本机不跑） | 5 天 | ✅ 完成 |
+| **P8** | `.ioc` → links 抽取 | `ioc_links.py` (~560) | 7 .ioc → 13 条链路 | 5 天 | ✅ 完成 |
+| **P9** | LCSC 元件数据源 | `parts_source.py`(新) | 搜索可缓存、选出带尺寸的新型号 | 3–4 天 | ⬜ 规划 |
+| **P10** | 引脚网表化 pins+固件交叉核对 | `model.py` 扩展 + `pins.py` | pins.h 宏与网名一致，错网名必红 | 3 天 | ⬜ 规划 |
+| **P11** | 发射器 + 布线 + 回流 | `emit_kicad.py` + `router.py` | 两次发射逐字节同；故意交叉必报铜皮重叠 | 5–6 天 | ⬜ 规划 |
+| **P12** | Agent 循环（裁剪移植+grounding） | `agent_loop.py` + `agent_tools.py` | 假模型端到端；关 grounding 必红 | 4–5 天 | ⬜ 规划 |
+| **P13** | Z 轴堆叠 | `model.py` 扩展 | 叠板干涉分级；连接器对位 ±0.5mm | 3–4 天 | ⬜ 规划 |
+| **P14** | Renode 外部闭环 | `serial_report` | serial.log 回流，V5 从 unverifiable 变外部已验证 | 2 天 | ⬜ 规划 |
 
-**合计约 44 天**（单人，含测试）。**M1、M2 已完成。**
+**P0–P8 合计约 44 天**（单人，含测试），**M1、M2、M3 已完成**；P9–P14 再加约 21–26 天（详见 adoption-plan.md）。
+
+> 上表的"完成"指**该阶段的代码与验收脚本已交付**。
+> 真实数据上的覆盖率、仍缺什么、需要人确认什么，见 **§18 现状实测**。
+> P9–P14（吸收 Traceforge 布线器与 agent 循环、元件数据源、Z 轴堆叠）
+> 的详细方案见 **[adoption-plan.md](adoption-plan.md)**（规划，未执行）。
 
 一条命令验各阶段硬验收：
 
@@ -60,6 +76,7 @@ M1 结束时你能得到：每个元件为什么在、删掉它会怎样、哪�
 python -m hw_velxio.scripts.check_m1      # 或 npm run verify
 python -m hw_velxio.scripts.check_units_links   # M2 P5
 python -m hw_velxio.scripts.check_generate      # M2 P6
+python -m hw_velxio.scripts.check_m3            # M3 P7+P8
 ```
 
 ### 1.1 三个里程碑
@@ -69,6 +86,8 @@ python -m hw_velxio.scripts.check_generate      # M2 P6
 | **M1** | P0–P4 | 17.5 天 | **「能解释并审查现有设计」** |
 | **M2** | +P5–P6 | 33.5 天 | **「能从需求生成候选」** |
 | **M3** | +P7–P8 | 43.5 天 | **「能真跑固件 + 自动抽板间」** |
+| **M4** | +P9–P11 | ~55 天 | **「需求 → 选型 → 布好线的 KiCad 单板」** |
+| **M5** | +P12–P14 | ~65 天 | **「AI 驱动可测循环 + 叠板 + 仿真回流」** |
 
 **M1 是分水岭。** M1 之后工具立刻可用；M2 之后才有生成能力。
 
@@ -376,6 +395,122 @@ P5 的两个产物如果不进交接单，就只是两个没人看的 JSON。
 
 ---
 
+
+### 1.4 M3（P7–P8）实际交付与计划的偏差
+
+P7 交付 `renode.py`，P8 交付 `ioc_links.py`。验收入口：
+
+```bash
+python -m hw_velxio.scripts.check_m3      # 或 npm run verify:m3
+```
+
+#### 偏差一：ARM 工具链根本不是前置（计划写错了）
+
+计划 §10.4 写「前置：装 arm-none-eabi-gcc」。**实测不需要。**
+
+Cortex-M 复位时硬件从地址 0 读两个 32 位数：SP 和 Reset_Handler。
+所以任何从 flash 起始 dump 的 `.bin`，前 8 字节必然是这两项。
+实测你的 6 个固件：
+
+| 固件 | 初始 SP | Reset_Handler | 可定位 |
+|---|---|---|---|
+| `F103C8T6-GPS.bin` | `0x20005000`（20K RAM） | `0x080033F5` | ✓ |
+| `F401RCT6-TOF光流.bin` | `0x20010000`（64K） | `0x080055E5` | ✓ |
+| `F401RCT6-前避障.bin` | `0x20010000` | `0x0800305D` | ✓ |
+| `F405RGT6遥控器V1.bin` | `0x20020000`（128K） | `0x08002C1D` | ✓ |
+| `F405RGT6遥控器V2.bin` | `0x20020000` | `0x08003EC1` | ✓ |
+| `f103c6t6电源驱动模块.bin` | `0x20002800`（10K） | `0x0800171D` | ✓ |
+
+Reset 全在 `0x0800xxxx` 且是 Thumb 地址（奇数值）。
+→ `sysbus LoadBinary @fw.bin 0x08000000` 即可，**ELF 只在重编源码时需要**。
+
+`wifi.bin` 被如实拒绝（SP=`0x3F0204E9` 不在 SRAM、Reset 最低位不是 1），
+说明判据不是"所有 .bin 都当 Cortex-M"。
+
+#### 偏差二：计划 §11.2 的数字是错的（没实测就写了）
+
+计划说「7 个 `.ioc`：258 引脚 / 32 个串口 / **0 个 label**」。
+**实测**：
+
+| .ioc | 引脚 | 通信端点 | label | 外设 |
+|---|---|---|---|---|
+| F103-GPS | 17 | 7 | 7 | USART1/2, SPI2 |
+| F401-Bottom | 22 | 11 | 9 | USART1/2, SPI1, I2C1 |
+| F401-Front | 13 | 8 | 3 | USART1/2, I2C1/3 |
+| F405-Joystick-Screen | 33 | 11 | 20 | USART1/6, SPI1, TIM6/7/13/14 |
+| F405Joystick | 31 | 7 | 22 | USART1, SPI1, TIM6/7/13/14 |
+| H743PilotX | 59 | 27 | 18 | USART1/2/3/6, UART4/7, SPI1/2/4, I2C1-4, SDMMC1 |
+| f103c6-car | 11 | 4 | 5 | USART1, I2C1, TIM1/2 |
+| **合计** | **186** | **77** | **84** | |
+
+不是 258/32/0，是 **186/77/84**。计划里的"0 label"尤其错——
+84 个 label 是配对的真实线索（`RF_*` / `VL53` / `BMM_*` / `PMW_*`）。
+
+#### 偏差三：板名是尺寸串，`.ioc` 名字对不上（无法自动映射）
+
+计划的思路隐含"板名能和 `.ioc` 对上"。实测你的板名是
+`EasyEDA 96.1×85.9mm` 这种尺寸串，`.ioc` 是 `F401-Front`——
+**两者没有任何交集**。硬按子串匹配只会静默失配。
+
+所以改成**显式映射**：
+
+```bash
+--board-mcu '{"PCB#a22effc90c196540":"STM32H743IIT6", ...}'
+```
+
+同时 `.ioc` 提供可选值（`--ioc-root` 会列出 7 个型号及对应平台），
+人照着填即可。**「我不猜」在这里的具体表现是：返回空值 + 列出可选项。**
+
+#### 偏差四：DSH 沙箱内无法加载 CPU 平台（环境限制，如实报）
+
+Renode 在 `TranslationCPU.Init()` 时对锁文件做独占打开，被拒：
+
+```
+Unhandled exception. System.UnauthorizedAccessException:
+Access to the path '...\renode\cache_lock' is denied.
+```
+
+试过并**全部失败**：`--config` 指向别处、重定向 `APPDATA`/`TEMP`、
+`cmd` 包装、Windows 计划任务、预建目录、预建非空锁文件。
+
+关键对照：**不带 CPU 的 `mach create "x"` 能成功**，
+一加 `LoadPlatformDescription` 就失败。ACL 确认当前用户有完全控制权
+且无 Deny，Python 子进程 `CreateFileW(share=0)` 独占打开也成功
+——所以是 DSH 对 Renode 进程的特定拦截，不是文件权限问题。
+
+因此 `report()` 会如实报 `runnable_here: False`，并把
+`.resc` + `run.cmd` 交给人在 DSH 外执行。**假装能跑比不能跑更糟。**
+
+#### 偏差五：`.resc` 的 start 顺序错了（已修）
+
+第一版把 `mach set` + `start` 写在各板创建段落里，于是
+`connector Connect` 出现在**所有机台都 start 之后**。
+Renode 要求连接在启动前建立，太晚连接会报"设备已启动"。
+
+改成三段：① 每板 create + 加载（不起）② connector 全接好 ③ 统一 start。
+
+#### 偏差六：P8 抽出了链路却用不上（已修，这是"死胡同"）
+
+13 条链路全部 `inferred`，`apply_draft(only_declared=True)` 一条都不写
+→ `links` 仍是 `not_ready`。纪律是对的（推断不能判人 fail），
+但**没有出口**的话，抽出来的结果永远用不上。
+
+补 `promote(draft, ids)`：人看过之后指定哪些可信，标成 `declared`，
+之后 `apply_draft` 才写入、`links.validate` 才真的检查。
+
+实测闭环：13 条 promote → apply → `declared_links=13`，
+`status` 从 `not_ready` 变成 `ok`。
+
+**注意**：验收时我把它写进了你的 `示例-多板`，
+之后**已清空**恢复原状——是否提升该由你决定，我不替你做。
+
+#### 偏差七：多信号接口被虚增成多条链路（已修）
+
+第一版把 I2C1 的 SCL 和 SDA 各记一条"链路"，于是
+`F401-Bottom↔F401-Front` 之间出现 4 条——物理上是**一条 I2C 总线**。
+27 条虚增到 13 条真实接口。合并后每条带 `pins` 数组，不丢证据。
+
+---
 
 ## 2. 数据模型变更
 
@@ -1496,13 +1631,152 @@ P7 的前置。三个选择：
 
 ## 17. 一句话总结
 
-**先做能审查的（M1，17.5 天），再做能生成的（M2）。**
+**P0–P8 已全部交付并验收通过。** 工具现在能回答三个问题：
 
-每个阶段都是「加文件不改文件」，M1 结束时你就有一个能告诉你
-**"这 141 个元件为什么在、哪里没验、谁去验"** 的工具——
-这比一个还不知道对不对的生成器更早产生价值。
+* 这 141 个元件**为什么在** —— 归因反推 + 功能级断言
+* **哪里没验** —— 阶梯 + 交接单五类
+* **谁去验** —— 交接单每条带可执行动作
+
+但"阶段完成"不等于"目标达成"。真实数据上有四道缺口仍是数据问题
+（见 §18），工具只能如实报出来，改不动。
 
 ---
 
-**本文档是可执行方案。** 如果确认开始，第一步是 P0（改 `electrical.py` 两处 + 修正相关测试断言），
-半天内可完成并验证。
+## 18. 现状实测（交付后回填，非计划值）
+
+> 本节所有数字都是 `design_cli` 在 2026-11-18 实际跑出来的产物，
+> 不是估算。复现：先对每个工程跑一遍
+> `ladder / claims / justify / units / links / coverify / budget / handoff`。
+
+### 18.1 五个工程的实测覆盖
+
+| 工程 | 元件 | 功能级断言 | 归因（全部 / 可判） | 单元 | 声明链路 | V2 | 交接单 阻断/缺数据/默认值/不会验/未接线 |
+|---|---|---|---|---|---|---|---|
+| `001-blink` | 3 | 2 | 100% / 100% | 1 | 0 | unknown | 1/5/7/2/0 |
+| `r3demo` | 4 | 2 | 100% / 100% | 1 | 0 | unknown | 0/3/7/2/0 |
+| `示例-无人机` | 44 | **0** | **0% / 0%** | 1 | 0 | **fail**（3 error） | 2/7/7/2/**44** |
+| `示例-单板` | 141 | **125** | 99.3% / 99.3% | 1 | 0 | **fail**（6 error） | 2/4/7/2/0 |
+| `示例-多板` | 316 | 125 | **44.3% / 99.3%** | **8** | 0 | **fail**（9 error） | 2/6/7/2/**175** |
+
+读法：
+
+* **功能级断言** = 除 `connected` / `rated_voltage` 之外的断言条数。
+  `141 件 → 125` 说明 89% 的元件有"它该做什么"的断言，不是只有"它还在"。
+* **归因双口径**：`示例-多板` 全部 44.3% 但可判 99.3% —— 差距是
+  **175 个没有网表的元件**，不是算法问题。
+* **V1 全部 `unknown`、V3 全部 `unknown`**：因为 0 个元件申报电流。
+  这是"没算"，不是"通过"。
+* **声明链路全部 0**：P8 能从 `.ioc` 抽出 13 条，但全部 `inferred`，
+  按纪律不落地（需人确认，见 §18.4）。
+
+### 18.2 本轮修掉的一个真 bug：warning 被判成 fail
+
+回填过程中发现：`001-blink`（3 个元件）的 V2 是 `fail`，但失败项里
+`error=0 / warning=1`。
+
+**根因**：`ladder._finish()` 只看 `ok`、不看 `severity`：
+
+```python
+if any(not f.get("ok", True) for f in res.findings):   # ← 错的
+    res.status = "fail"
+```
+
+于是 `consistency.provenance` 那条「元件尺寸是估算值」的 **warning**
+把整个 V2 判成 `fail`。几何上什么都没错，只是 `btn1` 尺寸是估算的。
+
+**为什么这很糟**：它污染交接单的**阻断项**，让人以为布局有问题，
+去改本来正确的东西。而且 `r3demo` 差点也被误判。
+
+**修法**：error → `fail`；warning → 记进 `unknown`（"结论有保留"，
+不是"结论是否定"）。实测修复后：
+
+```
+001-blink        V2=unknown  error=0 warning=1   ← 正确
+示例-无人机        V2=fail     error=3 warning=2   ← 真有重叠
+示例-单板          V2=fail     error=6 warning=0   ← 真有重叠
+示例-多板      V2=fail     error=9 warning=1   ← 真有重叠
+```
+
+**回归**：`check_ladder.py` 新增 5 条断言（只有 warning → unknown /
+warning 进 unknown / 只有 error → fail / 混合 → fail / 全通过 → pass），
+并做了退化验证（把 `severity` 判断去掉，`001-blink` 立刻变回 fail）。
+
+### 18.3 仍然存在的四道数据缺口（工具改不动）
+
+| 缺口 | 实测数字 | 谁能解 |
+|---|---|---|
+| **网表缺失** | `示例-多板` 175/316、`示例-无人机` 44/44 没有网表 | 重新导入网表 |
+| **电气零申报** | 5 个工程**全部** 0 个元件申报 `current_ma` | 补电气参数 |
+| **几何重叠** | `示例-单板` 6 处 / `示例-多板` 9 处真 error（C77/C87/R96 等 vs U1） | 改布局 |
+| **MCU 映射** | 板名是 `EasyEDA 96.1×85.9mm`，`.ioc` 是 `F401-Front`，无交集 | 显式给 `--board-mcu` |
+
+注意 `示例-无人机` 的 44 个元件**全部没有网表**，所以归因 0%、
+功能断言 0 条、交接单 44 条"未接线"——这三者是同一件事的三个表现。
+
+### 18.4 需要人确认才能推进的三件事
+
+**（1）13 条 `.ioc` 链路要不要提升为 declared**
+
+P8 抽出来了，但按纪律不落地。确认后 `links.validate` 才会真正检查：
+
+```bash
+# 看待确认清单（按可信度排序，tier=2 在前）
+python -m hw_velxio.design_cli ioc-links --root "C:\Users\<user>\Desktop\示例工作区"
+
+# 确认哪些可信后落地
+python -m hw_velxio.design_cli ioc-links --root "..." \
+  --promote <id1,id2,...> --apply 示例-多板
+```
+
+**（2）8 块板的 MCU 型号**
+
+```bash
+python -m hw_velxio.design_cli renode 示例-多板 \
+  --ioc-root "C:\Users\<user>\Desktop\示例工作区" \
+  --board-mcu '{"PCB#a22effc90c196540":"STM32H743IIT6", ...}' --write
+```
+
+`--ioc-root` 会列出 7 个可选型号及对应 Renode 平台。
+
+**（3）Renode 要么外部跑，要么放宽沙箱**
+
+本机实测无法在 DSH 内加载 CPU 平台（详见 §1.4 偏差四与 AGENTS.md §3.4）。
+`renode.report()` 如实返回 `runnable_here: False`，产物需在 DSH 外执行。
+
+### 18.5 与计划原值的对照
+
+计划是开工前写的，实现中修正了它的若干估计。已记在各里程碑的偏差小节里，
+这里汇总最关键的几条：
+
+| 计划原写 | 实测 | 说明 |
+|---|---|---|
+| P7 前置「装 arm-none-eabi-gcc」 | **不需要** | `.bin` 前 8 字节是向量表，直接推加载地址 |
+| P7「单板真跑出串口」 | **未达成** | 沙箱拦截 Renode 的独占文件锁 |
+| P8「7 个 .ioc → ≥10 条 inferred」 | **13 条** | 达成 |
+| 断言「141 元件全覆盖」 | **125/141 有功能级断言** | 16 个只有 `connected` |
+| `示例-单板` 归因目标 >20% | **99.3%** | 远超 |
+| `示例-多板` 分出 ≥2 单元 | **8 个** | 达成 |
+
+### 18.6 一条命令复现全部验收
+
+```bash
+cd <repo-root>
+
+python -m unittest hw_velxio.tests.test_design   # 266 项单测
+python -m hw_velxio.scripts.check_m1             # M1 四条硬验收
+python -m hw_velxio.scripts.check_units_links    # P5
+python -m hw_velxio.scripts.check_generate       # P6
+python -m hw_velxio.scripts.check_m3             # P7 + P8
+python -m hw_velxio.scripts.check_ladder         # 阶梯（含 warning 判据）
+python -m hw_velxio.scripts.check_justify        # 归因
+python -m hw_velxio.scripts.check_handoff        # 交接
+```
+
+或 `npm run verify` / `verify:m2` / `verify:m3`。
+
+---
+
+**本文档从「可执行方案」变成了「已交付 + 现状」的合订本。**
+§1–§11 是设计意图与实现骨架（保留，说明了为什么这样做），
+§1.2–§1.4 与 §18 是实现结果与实测现状（回填）。
+两者若冲突，**以 §18 的实测数为准。**

@@ -16,18 +16,89 @@ import type {
   EvidencePayload,
   ExportPayload,
   Finding,
+  FirmwareSummaryPayload,
+  NextStep,
+  ReqDraftPayload,
+  ParamsSummaryPayload,
   SnapshotPayload,
+  VerdictPayload,
 } from '../shared/types.js'
 
 export interface PanelProps {
   readonly snapshot: SnapshotPayload
   readonly onSelect: (ref: string) => void
+  /** 应用需求草稿（P5）。**人点的那一下**。 */
+  readonly onApplyReq?: () => void
+  /** 选中元件**并聚焦某个设计字段**（`edit_field` 的那一步用它）。 */
+  readonly onSelectField?: (ref: string, field: string) => void
   readonly onCheck: () => void
   readonly onBudget: () => void
   readonly onCrosscheck: () => void
   readonly onLock: (name: string, value: string) => void
   readonly onExport: () => void
   readonly onLimit: (currency: string, value: number) => void
+}
+
+/**
+ * 一步动作的按钮（P1）。**四类只有三种交互**：
+ *
+ * - `edit_field` / `move_part`：选中元件，让人在 Inspector / 2D 里改
+ * - `run_command`：复制整条命令（本工具不替人执行——执行是不可逆的）
+ * - `external`：不执行、只**定位**（选中有问题的件），并写明"由谁做"
+ *
+ * 没有"自动修复"按钮。改设计是人的决定，机器只把人送到该看的地方。
+ */
+function StepButton(props: {
+  step: NextStep
+  onSelect: (ref: string) => void
+  onSelectField?: (ref: string, field: string) => void
+}): JSX.Element {
+  const { step, onSelect, onSelectField } = props
+  const [copied, setCopied] = useState(false)
+
+  const locate = (): void => {
+    const first = step.refs?.[0]
+    if (first === undefined || first === '') return
+    // 有字段路径就**一路送到那个输入框**；否则只选中元件。
+    if (step.field !== undefined && step.field !== '' && onSelectField !== undefined) {
+      onSelectField(first, step.field)
+      return
+    }
+    onSelect(first)
+  }
+
+  const copy = async (): Promise<void> => {
+    const text = step.command ?? ''
+    if (text === '') return
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => { setCopied(false) }, 1600)
+    } catch {
+      // 剪贴板被拒（非 https / 未授权）时**不要假装成功**：把命令原样留在
+      // 按钮下面，人还能手抄。静默成功是最坏的一种失败。
+      setCopied(false)
+    }
+  }
+
+  if (step.kind === 'run_command') {
+    return (
+      <button className="hwv-btn hwv-step-btn" onClick={() => { void copy() }}
+              title={step.command ?? ''}>
+        {copied ? '已复制 ✓' : '复制命令'}
+      </button>
+    )
+  }
+  const canLocate = (step.refs?.length ?? 0) > 0
+  return (
+    <button className="hwv-btn hwv-step-btn" disabled={!canLocate}
+            onClick={(event) => { event.stopPropagation(); locate() }}
+            title={step.kind === 'external'
+              ? `由${step.by ?? '人'}完成；点这里定位到该元件`
+              : step.field !== undefined ? `在 Inspector 里改 ${step.field}` : ''}>
+      {step.kind === 'external' ? '定位' : '去改'}
+    </button>
+  )
 }
 
 function Mark({ severity }: { severity: 'error' | 'warning' | 'info' | 'ok' }): JSX.Element {
@@ -39,20 +110,421 @@ function Mark({ severity }: { severity: 'error' | 'warning' | 'info' | 'ok' }): 
 function FindingRow(props: {
   finding: Finding
   onSelect: (ref: string) => void
+  onSelectField?: (ref: string, field: string) => void
 }): JSX.Element {
-  const { finding, onSelect } = props
+  const { finding, onSelect, onSelectField } = props
   const severity = finding.ok ? 'ok' : finding.severity
   const cls = finding.ok ? 'ok' : severity === 'warning' ? 'warn' : severity === 'info' ? 'info' : 'err'
   return (
     <div className={`hwv-row ${cls}`}>
       <Mark severity={severity as 'error' | 'warning' | 'info' | 'ok'} />
-      <span className="msg">{finding.message}</span>
+      <span className="msg">
+        {finding.message}
+        {finding.next !== undefined && finding.next.kind === 'external'
+          && <span className="hwv-next-by">（{finding.next.by ?? '人'}）</span>}
+      </span>
       {finding.refs.map((ref) => (
         <span key={ref} className="hwv-refs"
               onClick={() => { onSelect(ref) }}>{ref}</span>
       ))}
+      {finding.next !== undefined && (
+        <StepButton step={finding.next} onSelect={onSelect}
+                    onSelectField={onSelectField} />
+      )}
     </div>
   )
+}
+
+/**
+ * 参数（P3）：**136 个参数里，只有几个值得你去看。**
+ *
+ * ## 这一屏真正的信息是"132 个不用管"
+ *
+ * 实测：`ParamSet` 的唯一消费者是 `mjcf.build`，它只读了 4 个键。
+ * 其余 132 个参数**没有任何代码读**——改成任何值，仿真结果一个字都不变。
+ *
+ * 所以四类必须分开报。把"没人读"混进"不敏感"是假绿：读的人会以为
+ * "低敏感 = 不重要但评估过了"，而真相是**从未接入**。
+ *
+ * ## 排序在 Python 算
+ *
+ * `priority` 已经是排好的（先按响应方向数，再按 key）。UI 不重排——
+ * 重排就等于多了一个"哪个更急"的事实源（AGENTS §1.1）。
+ */
+export function ParamsPanel(props: PanelProps): JSX.Element {
+  const params: ParamsSummaryPayload | undefined = props.snapshot.params
+  if (params === undefined || params.error !== undefined) {
+    return (
+      <div className="hwv-body">
+        <div className="hwv-note hwv-dim">
+          {params?.error ?? '没有参数摘要（宿主没返回 params）。'}
+        </div>
+      </div>
+    )
+  }
+  const counts = params.counts ?? {}
+  const wired = counts.wired ?? 0
+  const noop = counts.wired_noop ?? 0
+  const unwired = counts.unwired ?? 0
+  const missing = counts.missing ?? 0
+
+  return (
+    <div className="hwv-body">
+      <div className="hwv-summary">
+        共 {params.total} 个参数 · <b>只有 {wired} 个真的驱动模型</b>
+      </div>
+
+      <div className="hwv-verdict-counts">
+        <span className={`hwv-chip${wired > 0 ? ' on' : ''}`}>驱动模型 {wired}</span>
+        <span className="hwv-chip">读了但无效果 {noop}</span>
+        <span className={`hwv-chip${unwired > 0 ? ' on' : ''}`}>未接线 {unwired}</span>
+        <span className={`hwv-chip${missing > 0 ? ' on' : ''}`}>表里缺项 {missing}</span>
+      </div>
+
+      <div className="hwv-warn-line">
+        「未接线」意思是**没有任何代码读它**，不是「不敏感」。
+        在它接上之前，改这个值不会影响任何结论。
+      </div>
+
+      <div className="hwv-pane-head">最该核的（按响应强度排）</div>
+      {params.priority.length === 0
+        ? (
+          <div className="hwv-note hwv-dim">
+            一个都没接线。先让代码真的读参数，再谈选值。
+          </div>
+        )
+        : params.priority.map((row, index) => (
+          <div key={row.key} className="hwv-row">
+            <span className="hwv-mark-num">{index + 1}</span>
+            <span className="msg hwv-mono">{row.key}</span>
+            <span className="hwv-chip">{row.group}</span>
+            <span className="hwv-dim">{String(row.value)}</span>
+            <span className="hwv-chip on">
+              {row.changed.length} 个扰动方向有响应
+            </span>
+          </div>
+        ))}
+
+      <div className="hwv-note hwv-dim">
+        {params.note ?? ''}
+        完整 136 行表：<span className="hwv-mono">sensitivity &lt;工程&gt;</span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 固件矩阵（P4）：**引脚 × (硬件配置 / 固件使用 / 结论)**，每脚一行。
+ *
+ * ## 为什么不是"三张问题表"
+ *
+ * `pinmap-check` 输出的是 ghost / idle / direction 三张表——**没有问题的脚
+ * 不在任何一张表里**。于是"这个脚到底配没配、用没用"只能靠人拿 `.ioc`
+ * 和源码对。矩阵按脚一行，才回答得了那句话。
+ *
+ * ## 四类结论，顺序 = 严重度
+ *
+ * | 状态 | 含义 | 后果 |
+ * |---|---|---|
+ * | `ghost` | 硬件没配、固件在用 | **运行时必炸**（写一个不存在的端口） |
+ * | `direction` | 配的是输入，固件在写（或反之） | 静默失效 |
+ * | `idle` | 配了，固件没用到 | 浪费，也可能是漏写 |
+ * | `ok` | 核对过 | — |
+ *
+ * 调试脚（SWD/JTAG）**不算闲置**——`crosscheck` 已经排除了它们，
+ * 这里不能加回来（否则凭空多一堆"闲置"，人就不看了）。
+ */
+/**
+ * 需求草稿（P5）：**一句话 → 结构化需求**的那一半。
+ *
+ * ## 这一屏回答的是「模型填的那份草稿，现在到哪一步了」
+ *
+ * ```
+ * 草稿 → 校验 → 人确认 → 才成为 generate 的输入
+ * ```
+ *
+ * 三道闸门各显示各的状态。**不给"一键生成设计"**——那会跳过
+ * `validate` 与 `generate`，把"模型说行"当成"可以开工"。
+ *
+ * ## `numbers` 单独一块，是因为它填了也没用
+ *
+ * `Requirement.numbers` 没有任何消费方（实测：只有 `from_dict`/`to_dict` 过一遍）。
+ * 所以校验把它列进 warnings，面板也必须**单独显示**——混在普通警告里，
+ * 人会以为那些数字在约束设计。
+ */
+export function ReqPanel(props: PanelProps): JSX.Element {
+  const req: ReqDraftPayload | undefined = props.snapshot.req
+  if (req === undefined || req.error !== undefined) {
+    return (
+      <div className="hwv-body">
+        <div className="hwv-note hwv-dim">
+          {req?.error ?? '没有需求摘要（宿主没返回 req）。'}
+        </div>
+      </div>
+    )
+  }
+
+  const draft = req.draft
+  const validation = req.validation
+  const problems = validation?.problems ?? []
+  const warnings = validation?.warnings ?? []
+  const consumerless = warnings.filter((w) => w.kind === 'field_without_consumer')
+  const otherWarnings = warnings.filter((w) => w.kind !== 'field_without_consumer')
+
+  if (draft === null) {
+    return (
+      <div className="hwv-body">
+        <div className="hwv-note">
+          还没有需求草稿。让会话里的模型产出它：
+        </div>
+        <div className="hwv-note hwv-mono">
+          hw_req_draft(action=&quot;draft&quot;, requirement=&#123;...&#125;)
+        </div>
+        <div className="hwv-note hwv-dim">
+          草稿**不是需求**：它要先过校验，再由人确认，才会写进 req.json。
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="hwv-body">
+      <div className="hwv-summary">
+        {draft.title !== '' ? draft.title : draft.id}
+        <span className="hwv-chip">{draft.roles.length} 个角色</span>
+        <span className="hwv-chip">{draft.interfaces.length} 条接口</span>
+        <span className={`hwv-chip${req.applied ? ' on' : ''}`}>
+          {req.applied ? '已应用' : '未应用'}
+        </span>
+        {req.scope === 'workspace' && (
+          <span className="hwv-chip warn">工程还没有</span>
+        )}
+      </div>
+
+      <div className="hwv-pane-head">角色</div>
+      <div className="hwv-inline" style={{ flexWrap: 'wrap', gap: 'var(--hwv-space-2)' }}>
+        {draft.roles.map((role) => (
+          <span key={role} className="hwv-chip hwv-mono">{role}</span>
+        ))}
+      </div>
+
+      <div className="hwv-pane-head">接口</div>
+      {draft.interfaces.length === 0
+        ? <div className="hwv-note hwv-dim">没有声明接口。</div>
+        : (
+          <table className="hwv-tbl">
+            <thead>
+              <tr><th>a</th><th>b</th><th>协议</th></tr>
+            </thead>
+            <tbody>
+              {draft.interfaces.map((row, index) => (
+                <tr key={index}>
+                  <td className="hwv-mono">{String(row.a ?? '?')}</td>
+                  <td className="hwv-mono">{String(row.b ?? '?')}</td>
+                  <td>{String(row.protocol ?? '—')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+      <div className="hwv-pane-head">
+        校验 {validation === null ? '' : validation.ok ? '通过' : `${problems.length} 个问题`}
+      </div>
+      {problems.length === 0
+        ? (
+          <div className="hwv-row ok">
+            <span className="mark">✓</span>
+            <span className="msg">结构上成立：角色都在 roles.py 里，接口两端都接得上。</span>
+          </div>
+        )
+        : problems.map((problem, index) => (
+          <div key={`${problem.kind}-${index}`} className="hwv-row err">
+            <span className="mark">✗</span>
+            <span className="msg">
+              {problem.message}
+              {problem.fix !== undefined && problem.fix !== '' && (
+                <span className="hwv-next-by"> → {problem.fix}</span>
+              )}
+            </span>
+          </div>
+        ))}
+
+      {/* numbers 单独一块：它**填了也不影响任何结论** */}
+      {consumerless.length > 0 && (
+        <>
+          <div className="hwv-pane-head">填了但没人读的字段</div>
+          {consumerless.map((warning, index) => (
+            <div key={`cl-${index}`} className="hwv-row warn">
+              <span className="mark">!</span>
+              <span className="msg">{warning.message}</span>
+            </div>
+          ))}
+        </>
+      )}
+
+      {otherWarnings.length > 0 && (
+        <details className="hwv-block-tight">
+          <summary className="hwv-dim">其他提示 {otherWarnings.length} 条</summary>
+          {otherWarnings.map((warning, index) => (
+            <div key={`w-${index}`} className="hwv-row info">
+              <span className="mark">·</span>
+              <span className="msg">{warning.message}</span>
+            </div>
+          ))}
+        </details>
+      )}
+
+      <div className="hwv-btn-row">
+        <button className="hwv-btn primary"
+                disabled={req.applied || !(validation?.ok === true)}
+                onClick={() => { props.onApplyReq !== undefined && props.onApplyReq() }}
+                title={validation?.ok !== true
+                  ? '校验没通过，不能应用'
+                  : req.applied ? '已经应用过了'
+                    : req.project_exists === false
+                      ? '工程还不存在：确认后会顺手建一个空工程，再写 req.json'
+                      : '确认并写进 req.json'}>
+          {req.applied
+            ? '已应用'
+            : req.project_exists === false ? '建工程并应用' : '确认并应用'}
+        </button>
+        <span className="hwv-note hwv-dim">{req.next ?? ''}</span>
+      </div>
+    </div>
+  )
+}
+
+export function FirmwarePanel(props: PanelProps): JSX.Element {
+  const fw: FirmwareSummaryPayload | undefined = props.snapshot.firmware
+  if (fw === undefined) {
+    return (
+      <div className="hwv-body">
+        <div className="hwv-note hwv-dim">
+          没有固件矩阵（宿主没返回 firmware）。
+        </div>
+      </div>
+    )
+  }
+  if (fw.status === 'not_ready') {
+    return (
+      <div className="hwv-body">
+        <div className="hwv-warn-line">
+          {fw.reason ?? '硬件侧没有可核对的引脚配置'}
+        </div>
+        <div className="hwv-note hwv-dim">
+          这不是「全对」——是**没有核对**。没有 `.ioc` 时硬件侧没东西可比，
+          没有固件源码时软件侧没东西可比；两种情况都只能如实说不知道。
+        </div>
+        <div className="hwv-note hwv-dim">
+          命令：<span className="hwv-mono">fw-matrix &lt;工程&gt; --ioc=&lt;.ioc&gt; --src=&lt;源码目录&gt;</span>
+        </div>
+      </div>
+    )
+  }
+
+  const counts = fw.counts ?? {}
+  const rows = fw.rows ?? []
+
+  return (
+    <div className="hwv-body">
+      <div className="hwv-summary">
+        核对 {fw.checked ?? 0} 个配置脚 · 固件用了 {fw.used_pins ?? 0} 个
+        {fw.basis !== undefined && fw.basis !== '' && (
+          <span className="hwv-chip">{fw.basis}</span>
+        )}
+      </div>
+
+      <div className="hwv-verdict-counts">
+        <span className={`hwv-chip${(counts.ghost ?? 0) > 0 ? ' on' : ''}`}>
+          幽灵引脚 {counts.ghost ?? 0}
+        </span>
+        <span className={`hwv-chip${(counts.direction ?? 0) > 0 ? ' on' : ''}`}>
+          方向冲突 {counts.direction ?? 0}
+        </span>
+        <span className="hwv-chip">闲置 {counts.idle ?? 0}</span>
+        <span className="hwv-chip">核对过 {counts.ok ?? 0}</span>
+      </div>
+
+      {(counts.ghost ?? 0) + (counts.direction ?? 0) > 0 && (
+        <div className="hwv-warn-line">
+          幽灵引脚与方向冲突是 error 级：运行时必炸或静默失效。
+        </div>
+      )}
+
+      <div className="hwv-pane-head">
+        有问题的引脚（共 {fw.rows_total ?? rows.length} 行，这里显示前 {rows.length} 行）
+      </div>
+      {rows.length === 0
+        ? (
+          <div className="hwv-note hwv-dim">
+            没有问题的引脚。注意：这只说明**核对过的那些**对得上，
+            不代表所有脚都被核对过。
+          </div>
+        )
+        : (
+          <table className="hwv-tbl">
+            <thead>
+              <tr>
+                <th>引脚</th>
+                <th>硬件配置</th>
+                <th>固件使用</th>
+                <th>结论</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.pin}>
+                  <td className="hwv-mono">{row.pin}</td>
+                  <td>
+                    {row.config?.mode !== undefined && row.config.mode !== ''
+                      ? row.config.mode
+                      : row.config?.signal ?? ''}
+                    {row.config?.label !== undefined && row.config.label !== '' && (
+                      <span className="hwv-danger-dim"> {row.config.label}</span>
+                    )}
+                    {row.status === 'ghost' && (
+                      <span className="hwv-danger-dim">（硬件没配）</span>
+                    )}
+                  </td>
+                  <td className="hwv-mono">
+                    {(row.firmware ?? []).length === 0
+                      ? '—'
+                      : (row.firmware ?? []).map((use, index) => (
+                        <div key={index}>
+                          {use.file}
+                          {use.line !== undefined && use.line > 0 ? `:${use.line}` : ''}
+                          {use.api !== undefined && use.api !== '' ? ` (${use.api})` : ''}
+                        </div>
+                      ))}
+                  </td>
+                  <td className={`hwv-fw-${row.status}`}>
+                    {FW_STATUS[row.status] ?? row.status}
+                    {row.why !== undefined && row.why !== '' && (
+                      <div className="hwv-danger-dim">{row.why}</div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+      {fw.unknown !== undefined && fw.unknown > 0 && (
+        <div className="hwv-note hwv-dim">
+          另有 {fw.unknown} 处源码只出现端口或缺位号，**配不成对**
+          （不猜端口——猜错比不报更糟）。
+        </div>
+      )}
+    </div>
+  )
+}
+
+const FW_STATUS: Record<string, string> = {
+  ghost: '幽灵引脚',
+  direction: '方向冲突',
+  idle: '闲置',
+  ok: '✓',
 }
 
 export function ChecksPanel(props: PanelProps): JSX.Element {
@@ -79,7 +551,8 @@ export function ChecksPanel(props: PanelProps): JSX.Element {
       </div>
       {failed.map((finding) => (
         <FindingRow key={finding.check + finding.message} finding={finding}
-                    onSelect={props.onSelect} />
+                    onSelect={props.onSelect}
+                    onSelectField={props.onSelectField} />
       ))}
       {failed.length === 0 && (
         <div className="hwv-row ok"><Mark severity="ok" /><span className="msg">全部检查通过</span></div>
@@ -89,7 +562,8 @@ export function ChecksPanel(props: PanelProps): JSX.Element {
           <summary className="hwv-dim">通过的 {passed.length} 项</summary>
           {passed.map((finding) => (
             <FindingRow key={finding.check + finding.message} finding={finding}
-                        onSelect={props.onSelect} />
+                        onSelect={props.onSelect}
+                        onSelectField={props.onSelectField} />
           ))}
         </details>
       )}
@@ -112,6 +586,134 @@ const CURRENCY_LABEL: Record<string, string> = {
   emc_dbuv: 'EMC dBµV',
   timing_ns: '时序 ns',
   cost_usd: '成本 $',
+}
+
+/**
+ * 结论（首屏）：**一句话 + 九层横条 + 六类计数 + 下一步五件事。**
+ *
+ * ## 为什么它取代 `判定` 成为默认分区
+ *
+ * 用户打开工程时的问题是"我这版行不行、下一步干什么"。旧的分区结构里，
+ * 这个答案要跨 `判定`/`预算`/`未决`/`核对` 四个页签自己拼——而拼错的代价
+ * 是真实的：P17 的坑就是人看到 "V2 通过" 以为能打板，而 V3 是 `not_run`。
+ *
+ * ## 三处不能省的东西
+ *
+ * 1. **`unknown` 与 `not_run` 必须各自可见**。把它们并进"没通过"会让人
+ *    去改设计；并进"通过"就是假绿。
+ * 2. **`stale` 必须显式报警**。设计改过而阶梯没重跑时，这一屏是**过期**的；
+ *    不提示，人就会拿旧结论做新决定。
+ * 3. **下一步按 Python 给的顺序渲染**。排序是判定（AGENTS §1.1），
+ *    UI 不重排——重排就等于多了一个"哪个更急"的事实源。
+ */
+export function VerdictPanel(props: PanelProps): JSX.Element {
+  const v: VerdictPayload | undefined = props.snapshot.verdict
+  if (v === undefined || v.status !== 'ok') {
+    return (
+      <div className="hwv-body">
+        <div className="hwv-note">
+          {v?.error ?? '结论层不可用（宿主没返回 verdict）。'}
+        </div>
+        <div className="hwv-btn-row">
+          <button className="hwv-btn" onClick={() => { void props.onCheck() }}>跑判定</button>
+        </div>
+      </div>
+    )
+  }
+  const levels = v.levels ?? []
+  const counts = v.counts ?? {}
+  const next = v.next ?? []
+  const categories: Array<[string, string]> = [
+    ['blocking', '阻断'], ['missing_data', '缺数据'], ['assumed', '默认值'],
+    ['unverifiable', '不会验'], ['orphan', '未接线'], ['external', '外部'],
+  ]
+  return (
+    <div className="hwv-body">
+      <div className={`hwv-verdict-head${v.deliverable === true ? '' : ' blocked'}`}>
+        <span className="hwv-verdict-rollup">{ROLLUP_LABEL[v.rollup ?? ''] ?? '?'}</span>
+        <span className="hwv-verdict-summary">{v.summary}</span>
+      </div>
+
+      {v.stale === true && (
+        <div className="hwv-warn-line">
+          设计改过了，这一屏是**上次判定**的结论（{v.ladder_age ?? '未知时间'}）。
+          重跑判定前别拿它做决定。
+        </div>
+      )}
+
+      {levels.length === 0
+        ? (
+          <div className="hwv-note">
+            还没有阶梯产物——空白不代表通过。
+          </div>
+        )
+        : (
+          <div className="hwv-ladder" role="list" aria-label="验证阶梯">
+            {levels.map((level) => (
+              <button key={level.level} role="listitem"
+                      className={`hwv-ladder-cell ${level.status}`}
+                      title={`${level.level} ${level.title ?? ''}：${level.status}`
+                        + `（查 ${level.checked ?? 0} 项，失败 ${level.failed ?? 0}，`
+                        + `判不出 ${level.unknown ?? 0}）`}
+                      onClick={() => { void props.onCheck() }}>
+                <span className="lv">{level.level}</span>
+                <span className="st">{LEVEL_MARK[level.status] ?? '?'}</span>
+              </button>
+            ))}
+            {(v.levels_total ?? 0) > levels.length && (
+              <span className="hwv-ladder-gap">
+                还有 {(v.levels_total ?? 0) - levels.length} 层没跑（V7 运动 / V8 制造）
+              </span>
+            )}
+          </div>
+        )}
+
+      <div className="hwv-verdict-counts">
+        {categories.map(([key, label]) => (
+          <span key={key} className={`hwv-chip${(counts[key] ?? 0) > 0 ? ' on' : ''}`}>
+            {label} {counts[key] ?? 0}
+          </span>
+        ))}
+      </div>
+
+      <div className="hwv-pane-head">
+        下一步（{(v.next_total ?? next.length)} 条，按紧急程度排）
+      </div>
+      {next.length === 0
+        ? <div className="hwv-note">没有待办。注意：这只说明六类都空，不说明验证充分。</div>
+        : next.map((row, index) => (
+          <div key={`${row.category}-${index}`} className="hwv-row">
+            <span className="hwv-mark-num">{index + 1}</span>
+            <span className="msg">
+              <b>{row.title}</b>
+              {row.action !== undefined && row.action !== '' && (
+                <span className="hwv-next-action"> → {row.action}</span>
+              )}
+            </span>
+            <span className={`hwv-chip${row.category === 'blocking' ? ' on' : ''}`}>
+              {CATEGORY_LABEL[row.category] ?? row.category}
+            </span>
+            {row.step !== undefined && (
+              <StepButton step={row.step} onSelect={props.onSelect}
+                          onSelectField={props.onSelectField} />
+            )}
+          </div>
+        ))}
+    </div>
+  )
+}
+
+const ROLLUP_LABEL: Record<string, string> = {
+  pass: '九层全过', fail: '有失败', unknown: '结论不完整', not_ready: '还没跑',
+}
+
+const LEVEL_MARK: Record<string, string> = {
+  pass: '✓', fail: '✗', unknown: '?', not_run: '–', truncated: '!',
+}
+
+const CATEGORY_LABEL: Record<string, string> = {
+  blocking: '阻断', missing_data: '缺数据', assumed: '默认值',
+  unverifiable: '不会验', orphan: '未接线', external: '外部',
 }
 
 export function BudgetPanel(props: PanelProps): JSX.Element {

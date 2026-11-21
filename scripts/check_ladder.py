@@ -125,6 +125,72 @@ def dangling() -> DesignModel:
 # 断言
 # ---------------------------------------------------------------------------
 
+def check_warning_is_not_failure(f: "Failures") -> None:
+    """warning 不能把整层判成 fail（实测踩过的 bug）。
+
+    ## 这个 bug 长什么样
+
+    `_finish()` 第一版只看 `ok`、不看 `severity`：
+
+        if any(not f.get("ok", True) for f in res.findings):
+            res.status = "fail"
+
+    于是 `consistency.provenance` 那条「元件尺寸是估算值」的 **warning**
+    把整个 V2 判成 `fail`。实测 `001-blink`（3 个元件）：
+
+        V2 = fail，但失败项 error=0 / warning=1
+        ——几何上什么都没错，只是 btn1 的尺寸是估算的。
+
+    后果不只是显示难看：它污染交接单的**阻断项**，让人以为布局有问题，
+    去改本来正确的东西。
+
+    warning 的语义是"结论有保留"，对应 `unknown`；不是"结论是否定"。
+    """
+    from hw_velxio.design.ladder import LevelResult, _finish
+
+    # 只有 warning
+    only_warning = LevelResult("V2")
+    only_warning.findings = [{
+        "check": "consistency.provenance", "ok": False,
+        "severity": "warning",
+        "message": "1 个元件的物理尺寸是估算值",
+    }]
+    _finish(only_warning, checked=5)
+    f.check("只有 warning → unknown（不是 fail）",
+            only_warning.status == "unknown", only_warning.status)
+    f.check("warning 被记进 unknown 让人看见",
+            any("估算" in u for u in only_warning.unknown),
+            str(only_warning.unknown))
+
+    # 只有 error
+    only_error = LevelResult("V2")
+    only_error.findings = [{
+        "check": "space.overlap", "ok": False, "severity": "error",
+        "message": "C77 与 U1 实体重叠",
+    }]
+    _finish(only_error, checked=5)
+    f.check("有 error → fail", only_error.status == "fail", only_error.status)
+
+    # error + warning 混合
+    mixed = LevelResult("V2")
+    mixed.findings = [
+        {"check": "consistency.provenance", "ok": False,
+         "severity": "warning", "message": "尺寸是估算值"},
+        {"check": "space.overlap", "ok": False, "severity": "error",
+         "message": "重叠"},
+    ]
+    _finish(mixed, checked=5)
+    f.check("error + warning → fail（error 优先）",
+            mixed.status == "fail", mixed.status)
+
+    # 全通过
+    clean = LevelResult("V2")
+    clean.findings = [{"check": "space.overlap", "ok": True,
+                       "severity": "info", "message": "没有重叠"}]
+    _finish(clean, checked=5)
+    f.check("全通过 → pass", clean.status == "pass", clean.status)
+
+
 def main() -> int:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -274,14 +340,23 @@ def main() -> int:
 
     # -- 12. describe() 自洽 --------------------------------------------
     info = ladder.describe()
-    fail.check("describe 列出 7 层", len(info["levels"]) == 7,
+    # P18 加了 V7（运动）与 V8（制造），所以从 7 层变 9 层。
+    # 断言写实际层数而不是"7"，因为层数是可扩展的——
+    # 写死 7 会让每次加层都要改测试。
+    fail.check("describe 列出 9 层", len(info["levels"]) == 9,
                str(len(info["levels"])))
-    fail.check("describe 标注 V5/V6 未实现",
-               [lv["level"] for lv in info["levels"]
-                if not lv["implemented"]] == ["V5", "V6"])
+    # V8 实现为 not_run（缺 P17 的发射层），所以它也在"未实现"里。
+    # V7 在 MuJoCo 可用时是真跑的，所以不算"未实现"。
+    not_impl = [lv["level"] for lv in info["levels"] if not lv["implemented"]]
+    fail.check("describe 标注未实现的层",
+               not_impl in (["V5", "V6"], ["V5", "V6", "V8"]),
+               str(not_impl))
     fail.check("describe 标 V2/V3 委托给现有判定器",
                info["levels"][2]["delegates_to"] == "physical.run_checks"
                and info["levels"][3]["delegates_to"] == "electrical.run")
+
+    # -- 13. warning 不得把整层判成 fail --------------------------------
+    check_warning_is_not_failure(fail)
 
     if fail.items:
         print(f"\n❌ {len(fail.items)} 项失败")

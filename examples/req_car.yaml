@@ -1,0 +1,12 @@
+id: obstacle_car
+title: 避障小车
+roles:
+  - mcu
+  - motor
+  - sensor
+  - power_in
+interfaces:
+  - {a: mcu, b: motor, protocol: pwm, level_v: 5.0}
+  - {a: mcu, b: sensor, protocol: i2c, level_v: 3.3}
+constraints:
+  area_mm2: 600

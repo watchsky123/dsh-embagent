@@ -31,7 +31,9 @@ import { Circuit2D } from './Circuit2D.js'
 import { Inspector } from './Inspector.js'
 import {
   BlocksPanel, BudgetPanel, ChecksPanel, CrosscheckPanel, DeferredPanel,
-  EvidencePanel, ExportPanel, ExportResult, SimPanel, VelxioPanel,
+  EvidencePanel, ExportPanel, ExportResult, FirmwarePanel, ParamsPanel,
+  ReqPanel, SimPanel, VelxioPanel,
+  VerdictPanel,
 } from './panels.js'
 import type { AvrSimStatus, VelxioStatus } from './panels.js'
 import type { WorkbenchFace } from './rpc.js'
@@ -123,6 +125,9 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
 
   const snapshot = state.snapshot
   const findings = snapshot?.checks.findings ?? []
+  const verdict = snapshot?.verdict
+  const failedLevels = (verdict?.levels ?? []).filter((l) => l.status === 'fail').length
+  const blockingTotal = verdict?.counts?.blocking ?? 0
   const failed = findings.filter((f) => !f.ok)
   const errors = failed.filter((f) => f.severity === 'error')
   const warnings = failed.filter((f) => f.severity === 'warning')
@@ -200,6 +205,16 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
    * 问题"，具体数字给到分区。
    */
   const sectionCount = (id: SectionId): { text: string; cls: string } | null => {
+    if (id === 'verdict') {
+      // 徽章口径：**阻断 + 失败层**。不把缺数据/默认值算进去——
+      // 那些在真实设计里常驻（`示例-多板` 有 6+7 条），
+      // 常驻的数字等于没有信号。
+      const count = blockingTotal + failedLevels
+      if (count > 0) return { text: String(count), cls: 'err' }
+      if (verdict === undefined || verdict.rollup === 'unknown'
+        || verdict.rollup === 'not_ready') return { text: '?', cls: 'warn' }
+      return null
+    }
     if (id === 'checks' && errors.length + warnings.length > 0) {
       return {
         text: String(errors.length + warnings.length),
@@ -535,6 +550,8 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
               width={inspectorWidth}
               selectedRef={state.selectedRef}
               findings={findings}
+              focusField={state.focusField}
+              entity={state.entity}
               onSelect={(ref) => { store.select(ref) }}
               onMove={(ref, x, y, rot, z) => { void store.movePart(ref, x, y, rot, z) }}
               onSetPart={(ref, patch) => { void store.setPart(ref, patch) }}
@@ -595,6 +612,7 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
               state={state}
               snapshot={snapshot}
               onSelect={(ref) => { store.select(ref) }}
+              onSelectField={(ref, field) => { store.selectField(ref, field) }}
               onExport={() => { void store.exportBundle() }}
             />
           )}
@@ -632,20 +650,27 @@ function PanelBody(props: {
   state: ReturnType<typeof useHw>
   snapshot: NonNullable<ReturnType<typeof useHw>['snapshot']>
   onSelect: (ref: string) => void
+  onSelectField: (ref: string, field: string) => void
   onExport: () => void
 }): JSX.Element {
   const common = {
     snapshot: props.snapshot,
     onSelect: props.onSelect,
+    onSelectField: props.onSelectField,
     onCheck: () => { void store.runCheck() },
     onBudget: () => { void store.runBudget() },
     onCrosscheck: () => { void store.runCrosscheck() },
     onLock: (name: string, value: string) => { void store.lockDecision(name, value) },
     onExport: props.onExport,
     onLimit: (currency: string, value: number) => { void store.setBudgetLimit(currency, value) },
+    onApplyReq: () => { void store.applyReqDraft() },
   }
   // 按**分区**渲染（不是分组）：分组只是导航，分区才是内容。
   switch (props.state.panelSection) {
+    case 'verdict': return <VerdictPanel {...common} />
+    case 'params': return <ParamsPanel {...common} />
+    case 'firmware': return <FirmwarePanel {...common} />
+    case 'req': return <ReqPanel {...common} />
     case 'checks': return <ChecksPanel {...common} />
     case 'budget': return <BudgetPanel {...common} />
     case 'deferred': return <DeferredPanel {...common} />

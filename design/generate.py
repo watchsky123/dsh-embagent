@@ -229,9 +229,19 @@ def _collapse(combo: dict[str, str],
     return rows
 
 
+#: 默认仿真预算（次数）。对应 RoboBuilder 给 agent 的"B 次调用"约束：
+#:
+#: 它的论文说"真实测试要几小时，每次迭代都贵，必须选得好"。
+#: 我们的仿真比真机快，但**不是免费的**：316 元件 weld 后跑 1 秒要
+#: >300 秒墙钟（arena 256MB、约 1 万约束）。50 个候选 × 3 次扰动 × 2 秒
+#: 就是几小时。所以预算必须显式。
+DEFAULT_SIM_BUDGET = 60
+
+
 def generate(req: Requirement, *,
              max_candidates: int = 50,
-             run_ladder: bool = True) -> dict[str, Any]:
+             run_ladder: bool = True,
+             sim_budget: int = DEFAULT_SIM_BUDGET) -> dict[str, Any]:
     """四段式生成。返回 JSON 报告。
 
     `run_ladder=False` 时不跑验证阶梯（只出候选），用于快速看枚举结果。
@@ -239,6 +249,14 @@ def generate(req: Requirement, *,
     排序键：`(hard_failures, soft_failures, unknowns, cost)`。
     **硬失败数为 0 的候选排在前面**，但即使全是硬失败也照样输出——
     报告里 `deliverable` 会说明有没有一个能用的。
+
+    ## `sim_budget`：验证次数是**硬成本**
+
+    `max_candidates` 限的是"生成几个"，`sim_budget` 限的是"验证几个"。
+    两者不同：跑阶梯（尤其 V7 运动）比枚举候选贵几个数量级。
+
+    超预算时**停止验证，剩下的候选保留但标 `unverified`**——
+    不是丢掉，也不是假装验过。报告里给 `used / limit`。
     """
     unit_list = units_module.derive_from_req(req)
     unresolved_roles = sorted(
@@ -281,6 +299,7 @@ def generate(req: Requirement, *,
 
     seen: set[str] = set()
     candidates: list[Candidate] = []
+    budget_left = max(0, int(sim_budget))
     for index, combo in enumerate(combos):
         candidate = Candidate(
             id=f"cand{index + 1:02d}",
@@ -299,8 +318,12 @@ def generate(req: Requirement, *,
         candidate.claims = [
             {"id": c.id, "type": c.type, "intent": c.intent}
             for c in claims_module.derive(design)]
-        if run_ladder:
+        if run_ladder and budget_left > 0:
             _score(candidate, design)
+            budget_left -= 1
+        elif run_ladder:
+            candidate.unresolved.append(
+                f"仿真预算耗尽（{sim_budget} 次），这个候选**没验**")
         candidate.why = _why(candidate)
         candidates.append(candidate)
 
@@ -318,6 +341,13 @@ def generate(req: Requirement, *,
         "unique": len(ranked),
         "candidates": [c.to_dict() for c in ranked],
         "deliverable_count": len(deliverable),
+        "sim_budget": {
+            "limit": int(sim_budget),
+            "used": int(sim_budget) - budget_left,
+            "exhausted": budget_left <= 0,
+            "note": ("验证次数是硬成本；超出预算的候选保留但标 unverified"
+                     if budget_left <= 0 else ""),
+        },
         "unresolved_roles": unresolved_roles,
         "summary": _summary(ranked, deliverable, unresolved_roles),
     }
@@ -418,6 +448,31 @@ def to_design(candidate: Candidate, req: Requirement) -> DesignModel:
     design.nets = nets
     design.links_list = [dict(l) for l in candidate.links]
     return design
+
+
+def materialize(candidate: dict[str, Any], req: Requirement) -> DesignModel:
+    """报告里的一个候选（`to_dict()` 的形状）→ 一份真设计。
+
+    P22 的 agent 要「generate → 选一个 → put → ladder」串起来，而 `generate()`
+    返回的是**报告**（候选摘要），不是 `Candidate` 对象。这里把它还原回去——
+    只还原 `to_design` 真正用到的字段（units/parts/links/id），
+    其余（claims/ladder/why）是给人看的，还原了也没人读。
+    """
+    rebuilt = Candidate(
+        id=str(candidate.get("id") or ""),
+        parts=[dict(p) for p in (candidate.get("parts") or [])],
+        links=[dict(l) for l in (candidate.get("links") or [])],
+        units=[dict(u) for u in (candidate.get("units") or [])],
+        claims=[dict(c) for c in (candidate.get("claims") or [])],
+        unresolved=[str(x) for x in (candidate.get("unresolved") or [])],
+        hard_failures=int(candidate.get("hard_failures") or 0),
+        soft_failures=int(candidate.get("soft_failures") or 0),
+        unknowns=int(candidate.get("unknowns") or 0),
+        cost=float(candidate.get("cost") or 0.0),
+        ladder=dict(candidate.get("ladder") or {}),
+        why=str(candidate.get("why") or ""),
+    )
+    return to_design(rebuilt, req)
 
 
 def _why(candidate: Candidate) -> str:

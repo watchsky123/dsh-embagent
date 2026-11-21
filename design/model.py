@@ -279,6 +279,23 @@ class Part:
     justification: Justification | None = None
     #: 所属功能单元 id（对应 `DesignModel.units` 里的项）。空 = 未归属。
     unit: str = ""
+    # ---- 机械域（P15）-------------------------------------------------
+    #
+    # 这三项是 MuJoCo 仿真的输入（v3 架构 L2 的 kinematic 域）。
+    # **全部可选**：旧文件没有 → None，`to_dict` 省略，往返不变。
+    #
+    # 为什么不放进 `electrical`：`electrical` 是电气参数（电压/电流），
+    # 混进质量会让 `electrical.run()` 的"零申报"判定失效——
+    # 它按 `electrical` 非空来数申报元件，质量不该算作电气申报。
+    #: 质量（克）。None = **没人称过**，不是 0 g。
+    #: 来源见 `physical_source`：datasheet/measured 可信，catalog/estimated 不可信。
+    mass_g: float | None = None
+    #: 质心（mm，零件自身坐标系原点为基准）。None = 按几何中心近似。
+    com_mm: list[float] | None = None
+    #: 转动惯量（kg·m²），6 分量 `[Ixx, Iyy, Izz, Ixy, Ixz, Iyz]`。
+    #: None = **不算**，而不是当作 0（点质量）——点质量的惯量是 0，
+    #: 会让旋转仿真变成"无阻力"，那是假通过。
+    inertia: list[float] | None = None
 
     def __post_init__(self) -> None:
         if not self.ref.strip():
@@ -295,6 +312,30 @@ class Part:
             seen_pins.add(name)
             cleaned.append(name)
         self.pins = cleaned
+        # 机械域三项：只校验"给了就合法"，不给就保持 None。
+        #
+        # 为什么 mass_g 允许 None 而不默认 0：0 g 的零件在 MuJoCo 里
+        # 会让质量矩阵奇异，求解器直接崩或给出荒谬结果。
+        # **None（没人称过）与 0（称出来是 0）必须分开**，这是三态纪律。
+        if self.mass_g is not None:
+            value = float(self.mass_g)
+            if value < 0:
+                raise DesignError(f"part {self.ref}: mass_g 不能为负（{value}）")
+            self.mass_g = value
+        if self.com_mm is not None:
+            points = [float(x) for x in self.com_mm]
+            if len(points) != 3:
+                raise DesignError(
+                    f"part {self.ref}: com_mm 需要 3 个数，收到 {len(points)}")
+            self.com_mm = points
+        if self.inertia is not None:
+            values = [float(x) for x in self.inertia]
+            if len(values) != 6:
+                raise DesignError(
+                    f"part {self.ref}: inertia 需要 6 个分量"
+                    f"（Ixx Iyy Izz Ixy Ixz Iyz），收到 {len(values)}")
+            self.inertia = values
+
         size = self.size_mm or {}
         self.size_mm = {
             "w": _num(size.get("w", 0), f"part {self.ref}.size_mm.w"),
@@ -371,6 +412,15 @@ class Part:
             out["justification"] = self.justification.to_dict()
         if self.unit:
             out["unit"] = self.unit
+        # 机械域三项：**None 与 0 分开**。
+        # mass_g=0 是"称出来是 0"（合法但不常见），None 是"没人称过"。
+        # 用 `is not None` 而不是真值判断，否则 0 会被当成"没填"丢掉。
+        if self.mass_g is not None:
+            out["mass_g"] = round(float(self.mass_g), 4)
+        if self.com_mm is not None:
+            out["com_mm"] = [round(float(x), 4) for x in self.com_mm]
+        if self.inertia is not None:
+            out["inertia"] = [float(x) for x in self.inertia]
         return out
 
     @staticmethod
@@ -392,6 +442,13 @@ class Part:
             justification=(Justification.from_dict(data["justification"])
                            if data.get("justification") else None),
             unit=str(data.get("unit") or ""),
+            # 旧文件没有这三个键 → None，行为不变。
+            mass_g=(float(data["mass_g"])
+                    if data.get("mass_g") is not None else None),
+            com_mm=([float(x) for x in data["com_mm"]]
+                    if data.get("com_mm") is not None else None),
+            inertia=([float(x) for x in data["inertia"]]
+                     if data.get("inertia") is not None else None),
         )
 
     def pad_of(self, num: str) -> Pad | None:
@@ -608,6 +665,182 @@ class Enclosure:
         )
 
 
+#: 机械关系的 kind 全集。**每个 kind 的语义与 MuJoCo 的映射写在注释里**，
+#: 因为 P16 要按 kind 生成不同的 MJCF 关节，kind 猜错就等于物理模型错。
+#:
+#: 分两档：
+#:   可推断（`joints.py` 能从几何/网表推）—— stack / port / contact
+#:   必须声明（需要轴径、齿数、轨迹参数）—— pin / axle / gear / chain /
+#:                                          tread / rack / hinge / slide
+JOINT_KINDS = (
+    "pin", "axle", "gear", "chain", "tread", "rack",
+    "hinge", "slide", "stud", "stack", "port", "contact",
+)
+
+#: 能从现有数据推断的 kind。**推断结果 `source="inferred"`，不参与硬处理。**
+JOINT_INFERABLE = frozenset({"stack", "port", "contact"})
+
+
+@dataclass
+class Joint:
+    """两个零件之间的**机械关系**。
+
+    ## 为什么它和 `nets` 并列，而不是塞进 `Part`
+
+    同一条关系属于两端（A 的轴插进 B 的孔），挂在任一端都会让
+    "另一端删了怎么办"变成悬空引用。单列一张表，两端都是 `ref`，
+    V0 的引用完整性检查能统一覆盖（和 `nets[].pins` 一样的处理）。
+
+    ## `source` 的语义与 `links` / `claims` 完全一致
+
+    `declared` —— 人写的，参与硬判定（P16 生成 MJCF 关节、P18 进阶梯）
+    `inferred` —— 推断的，**只提示不判定**（AGENTS §1.2）
+    `imported` —— 导入器带进来的，视同 declared 但要标注来源
+
+    ## `dof` 与 `params` 的分工
+
+    `dof`    —— 允许的自由度，如 `["rz"]`（转轴）/ `[]`（固定）。
+                P16 直接翻译成 MuJoCo 的 `<joint type="hinge">` 或省略。
+    `params` —— kind 专属参数：gear 的 `ratio`、axle 的 `diameter_mm`、
+                slide 的 `range_mm`、tread 的 `spacing_mm`。
+                **不给默认值**：缺参数就是缺参数，不能编一个齿数比。
+    """
+
+    a: str                                  # part.ref
+    b: str
+    kind: str = "contact"
+    params: dict[str, Any] = field(default_factory=dict)
+    dof: list[str] = field(default_factory=list)
+    source: str = "declared"
+    evidence: str = ""
+
+    def __post_init__(self) -> None:
+        self.a = str(self.a or "").strip()
+        self.b = str(self.b or "").strip()
+        if not self.a or not self.b:
+            raise DesignError(f"joint 两端都要 ref：a={self.a!r} b={self.b!r}")
+        if self.a == self.b:
+            raise DesignError(f"joint 不能自己连自己：{self.a}")
+        self.kind = str(self.kind or "contact").strip()
+        if self.kind not in JOINT_KINDS:
+            raise DesignError(
+                f"joint {self.a}-{self.b}: 未知 kind {self.kind!r}"
+                f"（可用：{', '.join(JOINT_KINDS)}）")
+        self.source = str(self.source or "declared").strip()
+        if self.source not in ("declared", "inferred", "imported"):
+            raise DesignError(
+                f"joint {self.a}-{self.b}: source 必须是"
+                f" declared/inferred/imported，收到 {self.source!r}")
+        self.dof = [str(x) for x in (self.dof or [])]
+        self.params = dict(self.params or {})
+
+    @property
+    def key(self) -> str:
+        """无向键：`a|b|kind` 的规范形式（排序两端）。
+
+        用途：去重。**方向不参与去重** —— A 的轴插 B 的孔和 B 的孔套 A 的轴
+        是同一条关系，存成两条会让 P16 生成两个关节。
+        """
+        first, second = sorted((self.a, self.b))
+        return f"{first}|{second}|{self.kind}"
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "a": self.a, "b": self.b, "kind": self.kind,
+            "source": self.source,
+        }
+        if self.params:
+            out["params"] = dict(self.params)
+        if self.dof:
+            out["dof"] = list(self.dof)
+        if self.evidence:
+            out["evidence"] = self.evidence
+        return out
+
+    @staticmethod
+    def from_dict(data: dict[str, Any] | None) -> "Joint":
+        data = data or {}
+        return Joint(
+            a=str(data.get("a") or ""),
+            b=str(data.get("b") or ""),
+            kind=str(data.get("kind") or "contact"),
+            params=dict(data.get("params") or {}),
+            dof=[str(x) for x in (data.get("dof") or [])],
+            source=str(data.get("source") or "declared"),
+            evidence=str(data.get("evidence") or ""),
+        )
+
+
+@dataclass
+class Program:
+    """开环时序动作。对应 RoboBuilder 的 `motor_program: [{t, motor, speed}]`。
+
+    ## 为什么是"开环时序"而不是"控制律"
+
+    开环 = 每个时刻给定执行器一个值，**没有反馈**。RoboBuilder 用它，
+    因为闭环控制律属于固件（P20），不属于"设计"。
+    我们照这个边界：`Program` 只描述"设计意图的动作序列"，
+    真实控制律在固件里，由 `pins.h` 交叉核对保证引脚一致。
+
+    ## `units` 为什么必须显式
+
+    `normalized`（0..1 的油门）与 `rpm` 差一个数量级。不声明就会
+    在 P16 里被当成油门喂给 MuJoCo，仿真结果全错且**看起来像跑通了**。
+    """
+
+    steps: list[dict[str, Any]] = field(default_factory=list)
+    loop: bool = False
+    units: str = "normalized"
+
+    def __post_init__(self) -> None:
+        self.units = str(self.units or "normalized").strip()
+        if self.units not in ("normalized", "rpm", "rad_s"):
+            raise DesignError(
+                f"program.units 必须是 normalized/rpm/rad_s，收到 {self.units!r}")
+        cleaned: list[dict[str, Any]] = []
+        for index, step in enumerate(self.steps or []):
+            if not isinstance(step, dict):
+                raise DesignError(f"program.steps[{index}] 必须是对象")
+            entry: dict[str, Any] = {}
+            for key in ("t_s", "actuator", "value"):
+                if key not in step:
+                    raise DesignError(
+                        f"program.steps[{index}] 缺少 {key}"
+                        f"（需要 t_s / actuator / value 三项）")
+                entry[key] = step[key]
+            entry["t_s"] = float(entry["t_s"])
+            entry["actuator"] = str(entry["actuator"])
+            entry["value"] = float(entry["value"])
+            # 保留额外键（如注释、条件），但核心三项已规范化
+            for key, value in step.items():
+                if key not in entry:
+                    entry[key] = value
+            cleaned.append(entry)
+        # 时序必须单调，否则"先转后停"会被执行成"先停后转"
+        times = [s["t_s"] for s in cleaned]
+        if times != sorted(times):
+            raise DesignError("program.steps 必须按 t_s 升序（时序不能倒流）")
+        self.steps = cleaned
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"steps": [dict(s) for s in self.steps]}
+        if self.loop:
+            out["loop"] = True
+        if self.units != "normalized":
+            out["units"] = self.units
+        return out
+
+    @staticmethod
+    def from_dict(data: dict[str, Any] | None) -> "Program":
+        data = data or {}
+        return Program(
+            steps=[dict(s) for s in (data.get("steps") or [])
+                   if isinstance(s, dict)],
+            loop=bool(data.get("loop")),
+            units=str(data.get("units") or "normalized"),
+        )
+
+
 @dataclass
 class DesignModel:
     """一份设计。2D 与 3D 都从这里投影。
@@ -638,6 +871,19 @@ class DesignModel:
     units_list: list[dict[str, Any]] = field(default_factory=list)
     #: 板间链路表（P5 落地）。**空 = 单板**，旧行为不变。
     links_list: list[dict[str, Any]] = field(default_factory=list)
+    # ---- 多域（P15）----------------------------------------------------
+    #
+    # 全部可选、全部空列表/None 起手：旧文件读进来这些键不存在，
+    # 行为与 v2 完全一致（M1–M3 的 266 项测试必须全绿）。
+    #: 机械关系表（`Joint`）。**空 = 没有机械域概念**。
+    joints_list: list[dict[str, Any]] = field(default_factory=list)
+    #: 开环时序（`Program`）。None = 没有动作序列。
+    program: dict[str, Any] | None = None
+    #: 仿真器参数（对应 RoboBuilder 的 `Params`）。
+    #: **初始估计与校准后分开存**：`sim_params/labels` 记哪一版。
+    sim_params: dict[str, Any] = field(default_factory=dict)
+    #: 真实测试记录（P21 闭环）。**空 = 从未实测**，不是"实测通过"。
+    physical_tests: list[dict[str, Any]] = field(default_factory=list)
     enclosure: Enclosure | None = None
     meta: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
@@ -818,6 +1064,15 @@ class DesignModel:
             out["units_list"] = [dict(u) for u in self.units_list]
         if self.links_list:
             out["links_list"] = [dict(l) for l in self.links_list]
+        # ---- 多域（P15）：同样只在非空时写 ----
+        if self.joints_list:
+            out["joints_list"] = [dict(j) for j in self.joints_list]
+        if self.program is not None:
+            out["program"] = dict(self.program)
+        if self.sim_params:
+            out["sim_params"] = dict(self.sim_params)
+        if self.physical_tests:
+            out["physical_tests"] = [dict(t) for t in self.physical_tests]
         if self.warnings:
             out["warnings"] = list(self.warnings)
         return out
@@ -845,6 +1100,14 @@ class DesignModel:
                         if isinstance(u, dict)],
             links_list=[dict(l) for l in (data.get("links_list") or [])
                         if isinstance(l, dict)],
+            # 旧文件没有这四个键 → 空/None，行为不变。
+            joints_list=[dict(j) for j in (data.get("joints_list") or [])
+                         if isinstance(j, dict)],
+            program=(dict(data["program"])
+                     if isinstance(data.get("program"), dict) else None),
+            sim_params=dict(data.get("sim_params") or {}),
+            physical_tests=[dict(t) for t in (data.get("physical_tests") or [])
+                            if isinstance(t, dict)],
             meta=dict(data.get("meta") or {}),
             warnings=[str(w) for w in (data.get("warnings") or [])],
         )

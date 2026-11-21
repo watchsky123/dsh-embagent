@@ -1,0 +1,120 @@
+{
+ "schema": "hw_velxio.design/1",
+ "units": "mm",
+ "id": "untitled",
+ "title": "reversed-polarity",
+ "board": {
+  "kind": "generic",
+  "name": "reversed-polarity",
+  "outline": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    50.0,
+    0.0
+   ],
+   [
+    50.0,
+    40.0
+   ],
+   [
+    0.0,
+    40.0
+   ]
+  ],
+  "size_mm": {
+   "w": 50.0,
+   "h": 40.0
+  },
+  "thickness_mm": 1.6,
+  "mount_holes": [],
+  "px_per_mm": 3.7795
+ },
+ "parts": [
+  {
+   "ref": "U1",
+   "kind": "mcu",
+   "label": "mcu",
+   "role": "component",
+   "size_mm": {
+    "w": 5.0,
+    "h": 5.0,
+    "d": 1.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 25.0,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "lcsc": "C8734",
+   "electrical": {
+    "v_in": 12.0,
+    "v_abs_max": 3.6
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "P1",
+   "kind": "connector",
+   "label": "connector",
+   "role": "component",
+   "size_mm": {
+    "w": 8.0,
+    "h": 6.0,
+    "d": 1.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 10.0,
+    "y_mm": 20.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  }
+ ],
+ "nets": [
+  {
+   "net": "VCC",
+   "pins": [
+    {
+     "ref": "P1",
+     "pin": "1"
+    },
+    {
+     "ref": "U1",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "pins": [
+    {
+     "ref": "P1",
+     "pin": "2"
+    },
+    {
+     "ref": "U1",
+     "pin": "2"
+    }
+   ]
+  }
+ ],
+ "wires": [],
+ "meta": {}
+}

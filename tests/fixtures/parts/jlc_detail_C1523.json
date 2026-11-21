@@ -1,0 +1,90 @@
+{
+ "code": 200,
+ "message": null,
+ "data": {
+  "componentCode": "C1523",
+  "componentBrandEn": "FH (Guangdong Fenghua Advanced Tech)",
+  "componentModelEn": "0402B102K500NT",
+  "dataManualUrl": "https://www.lcsc.com/datasheet/lcsc_datasheet_2304140030_FH--Guangdong-Fenghua-Advanced-Tech-0402B102K500NT_C1523.pdf",
+  "dataManualOfficialLink": "",
+  "componentNameEn": "FH 0402B102K500NT",
+  "componentSpecificationEn": "0402",
+  "describe": "1nF 50V X7R ±10% 0402 Multilayer Ceramic Capacitors MLCC - SMD/SMT ROHS",
+  "attributes": [
+   {
+    "attribute_name_en": "Voltage Rating",
+    "component_code": "C1523",
+    "attribute_value_name": "50V"
+   },
+   {
+    "attribute_name_en": "Tolerance",
+    "component_code": "C1523",
+    "attribute_value_name": "±10%"
+   },
+   {
+    "attribute_name_en": "Capacitance",
+    "component_code": "C1523",
+    "attribute_value_name": "1nF"
+   },
+   {
+    "attribute_name_en": "Temperature Coefficient",
+    "component_code": "C1523",
+    "attribute_value_name": "X7R"
+   }
+  ],
+  "componentDesignator": "C",
+  "stockCount": 3951962,
+  "prices": [
+   {
+    "componentPriceKeyId": null,
+    "componentPriceAccessId": null,
+    "lcscComponentId": null,
+    "componentCode": "C1523",
+    "startNumber": 1,
+    "endNumber": 999,
+    "productPrice": 0.0017,
+    "erpComponentPriceKeyId": 243028990,
+    "createTime": null,
+    "updateTime": null,
+    "deleted": false,
+    "lcscPriceRangeCoefficient": 1
+   },
+   {
+    "componentPriceKeyId": null,
+    "componentPriceAccessId": null,
+    "lcscComponentId": null,
+    "componentCode": "C1523",
+    "startNumber": 1000,
+    "endNumber": 2999,
+    "productPrice": 0.0013,
+    "erpComponentPriceKeyId": 243029029,
+    "createTime": null,
+    "updateTime": null,
+    "deleted": false,
+    "lcscPriceRangeCoefficient": 1
+   },
+   {
+    "componentPriceKeyId": null,
+    "componentPriceAccessId": null,
+    "lcscComponentId": null,
+    "componentCode": "C1523",
+    "startNumber": 3000,
+    "endNumber": 9999,
+    "productPrice": 0.0011,
+    "erpComponentPriceKeyId": 243028999,
+    "createTime": null,
+    "updateTime": null,
+    "deleted": false,
+    "lcscPriceRangeCoefficient": 1
+   }
+  ],
+  "encapsulationNumber": 10000,
+  "componentLibraryType": "base",
+  "leastNumberPrice": 0.006,
+  "lcscGoodsUrl": "https://www.lcsc.com/product-detail/multilayer-ceramic-capacitors-mlcc-smd-smt_fh-guangdong-fenghua-advanced-tech-0402b102k500nt_C1523.html/?href=jlc-SMT/?href=jlc-SMT",
+  "componentStatus": "yes",
+  "minPurchaseNum": 1,
+  "initialPrice": 0.0017,
+  "noBuyReason": null
+ }
+}

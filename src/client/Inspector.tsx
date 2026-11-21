@@ -11,8 +11,9 @@
  * @module dsh-hw-velxio/client/Inspector
  */
 
-import { useEffect, useState } from 'react'
-import type { DesignPart, Finding, SnapshotPayload } from '../shared/types.js'
+import { useEffect, useRef, useState } from 'react'
+import type { DesignPart, EntityProfile, Finding, SnapshotPayload }
+  from '../shared/types.js'
 
 export interface InspectorProps {
   readonly snapshot: SnapshotPayload
@@ -21,6 +22,10 @@ export interface InspectorProps {
   readonly selectedRef: string
   readonly findings: readonly Finding[]
   readonly onSelect: (ref: string) => void
+  /** 要聚焦的字段路径（`下一步` 按钮给的），空串为空。 */
+  readonly focusField?: string
+  /** 选中元件的完整画像（P2）。null = 还没加载到。 */
+  readonly entity?: EntityProfile | null
   readonly onMove: (ref: string, xMm: number, yMm: number, rotationZ: number, zMm: number) => void
   readonly onSetPart: (ref: string, patch: Record<string, unknown>) => void
   readonly onDelete: (ref: string) => void
@@ -182,6 +187,8 @@ export function Inspector(props: InspectorProps): JSX.Element {
         </button>
       </div>
 
+      <EntitySections entity={props.entity ?? null} />
+
       <h4>该元件的判定</h4>
       {issues.length === 0
         ? <div className="hwv-dim">没有与它相关的未通过项。</div>
@@ -194,7 +201,8 @@ export function Inspector(props: InspectorProps): JSX.Element {
         ))}
 
       <h4>预算 claim</h4>
-      <ClaimEditor part={part} onSetPart={props.onSetPart} />
+      <ClaimEditor part={part} onSetPart={props.onSetPart}
+                   focusField={props.focusField} />
     </div>
   )
 }
@@ -265,11 +273,126 @@ function SizeRow(props: {
   )
 }
 
+/**
+ * 一个元件的「它为什么在板上 / 它被验到什么程度」。
+ *
+ * ## 为什么这三块要挤进 Inspector，而不是各开一个分区
+ *
+ * `claims` / `justify` / `physical_tests` 三份产物的索引都是 `ref`。
+ * 分在三个页签里的话，回答「U3 现在怎么样」要切三次、各找一遍 316 个件。
+ * **按对象组织，不按产物组织**（P2 的唯一设计决定）。
+ *
+ * ## 缺数据的三处说法都不一样
+ *
+ * - 没有归因 → `confidence === 'missing'` → 明说"没有归因产物"，不写"无作用"
+ * - 没有断言 → `claims.total === 0` → 明说"没有断言"，不写"通过"
+ * - 没有实测 → 那一栏不渲染（实测本来是可选的，跑过才有）
+ */
+function EntitySections(props: { entity: EntityProfile | null }): JSX.Element | null {
+  const entity = props.entity
+  if (entity === null) return null
+
+  const justification = entity.justification
+  const hasJustify = justification.confidence !== 'missing'
+  const claims = entity.claims
+
+  return (
+    <>
+      <h4>它为什么在板上</h4>
+      {hasJustify
+        ? (
+          <>
+            <div className="hwv-row">
+              <span className="msg">{justification.why}</span>
+              <span className="hwv-chip">{justification.confidence}</span>
+            </div>
+            {justification.effect_if_removed !== '' && (
+              <div className="hwv-note hwv-dim">
+                删掉会怎样：{justification.effect_if_removed}
+              </div>
+            )}
+          </>
+        )
+        : (
+          <div className="hwv-note hwv-dim">
+            没有归因产物（跑一次 hw_justify 才有）。这不等于"没有作用"。
+          </div>
+        )}
+
+      <h4>
+        断言 {claims.total > 0
+          ? `（${claims.total} 条：过 ${claims.pass} / 失败 ${claims.fail} / 判不出 ${claims.unknown}）`
+          : ''}
+      </h4>
+      {claims.total === 0
+        ? (
+          <div className="hwv-note hwv-dim">
+            这个件没有断言（跑一次 hw_claims 才有）。**没有断言不等于没问题**。
+          </div>
+        )
+        : claims.items.map((claim) => (
+          <div key={claim.id}
+               className={`hwv-row ${claim.status === 'pass' ? 'ok'
+                 : claim.status === 'fail' ? 'err' : 'warn'}`}>
+            <span className="mark">{claim.status === 'pass' ? '✓'
+              : claim.status === 'fail' ? '✗' : '?'}</span>
+            <span className="msg">
+              {claim.intent}
+              {claim.status !== 'pass' && claim.on_fail !== '' && (
+                <span className="hwv-next-by"> → {claim.on_fail}</span>
+              )}
+            </span>
+            <span className="hwv-chip">{claim.priority}</span>
+          </div>
+        ))}
+
+      {entity.unit !== null && (
+        <>
+          <h4>所属单元</h4>
+          <div className="hwv-row">
+            <span className="msg">{entity.unit.name}</span>
+            <span className="hwv-chip">{entity.unit.role}</span>
+          </div>
+        </>
+      )}
+
+      {entity.tests.length > 0 && (
+        <>
+          <h4>实测（{entity.tests.length} 条牵涉它）</h4>
+          {entity.tests.map((test) => (
+            <div key={test.id}
+                 className={`hwv-row ${test.result === 'pass' ? 'ok'
+                   : test.result === 'fail' ? 'err' : 'warn'}`}>
+              <span className="mark">{test.result === 'pass' ? '✓'
+                : test.result === 'fail' ? '✗' : '?'}</span>
+              <span className="msg">
+                {test.test}
+                {test.observed !== '' && <span className="hwv-next-by"> — {test.observed}</span>}
+              </span>
+            </div>
+          ))}
+        </>
+      )}
+    </>
+  )
+}
+
 function ClaimEditor(props: {
   part: DesignPart
   onSetPart: (ref: string, patch: Record<string, unknown>) => void
+  focusField?: string
 }): JSX.Element {
   const { part } = props
+  const powerRef = useRef<HTMLInputElement | null>(null)
+  // 「下一步」说"补 electrical.power_w"时，把那个框滚进视野并聚焦。
+  // 只做**一次**（值变化才触发），否则每次渲染都抢焦点。
+  useEffect(() => {
+    if (props.focusField !== 'electrical.power_w') return
+    const node = powerRef.current
+    if (node === null) return
+    node.scrollIntoView({ block: 'center' })
+    node.focus()
+  }, [props.focusField, part.ref])
   const electrical = part.electrical ?? {}
   const [power, setPower] = useState(String(electrical.power_w ?? ''))
   const [cost, setCost] = useState(String(electrical.cost_usd ?? ''))
@@ -291,7 +414,7 @@ function ClaimEditor(props: {
     <div className="hwv-row-3">
       <div>
         <div className="hwv-field-label">功率 (W)</div>
-        <input className="hwv-input" value={power}
+        <input ref={powerRef} className="hwv-input" value={power}
                onChange={(event) => { setPower(event.target.value) }} onBlur={commit} />
       </div>
       <div>

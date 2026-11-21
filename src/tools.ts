@@ -218,7 +218,7 @@ export function registerTools(ctx: Context): Array<() => void> {
           ...v.lines,
         )
       },
-      presentationMeta: (args) => viewHint(requireProject(args), 'overview'),
+      presentationMeta: (args) => viewHint(requireProject(args), 'verdict'),
     },
     execute: async (args) => {
       const project = requireProject(args)
@@ -255,8 +255,26 @@ export function registerTools(ctx: Context): Array<() => void> {
         lines.push(`交叉核对：${num(crossSummary.unverified)} 项未验证`)
       }
 
+      // **结论层**：一屏回答"这版行不行、下一步做什么"。它来自已有产物，
+      // 因此可能 `stale`（设计改过但阶梯没重跑）——那句话必须原样带出来。
+      const verdict = (payload.verdict ?? {}) as Record<string, unknown>
+      const verdictNext = ((verdict.next ?? []) as Array<Record<string, unknown>>)
+        .map((row) => {
+          const step = (row.step ?? {}) as Record<string, unknown>
+          const tail = typeof step.command === 'string' && step.command !== ''
+            ? `（命令：${step.command}）`
+            : typeof step.field === 'string' && step.field !== ''
+              ? `（改 ${step.field}）`
+              : ''
+          return `${str(row.category)}：${str(row.title)}${tail}`
+        })
+
       return {
         project,
+        verdict: str(verdict.summary),
+        verdictRollup: str(verdict.rollup),
+        verdictStale: verdict.stale === true,
+        next: verdictNext,
         board: str(boardDoc.name) || str(boardDoc.kind),
         parts: ((designDoc.parts ?? []) as unknown[]).length,
         failedChecks: failed.map((f) => `${str(f.check)} — ${str(f.message)}`),
@@ -267,6 +285,13 @@ export function registerTools(ctx: Context): Array<() => void> {
           ...lines,
           `检查：${num(summary.failed)} 项未通过 / ${num(summary.total)} 项（${
             num(summary.warnings)} 个警告）`,
+          ...(verdict.stale === true
+            ? ['**设计改过了**：下面是上次判定的结论，重跑 `hw_ladder` 前别拿它做决定']
+            : []),
+          ...(verdictNext.length > 0
+            ? ['下一步（已按紧急程度排序，前 5 条）：',
+              ...verdictNext.map((line, index) => `  ${index + 1}. ${line}`)]
+            : []),
         ],
       }
     },
@@ -288,9 +313,16 @@ export function registerTools(ctx: Context): Array<() => void> {
         additionalProperties: false,
         properties: {
           project: { type: 'string' },
-          ok: { type: 'boolean' },
-          errors: { type: 'number' },
-          warnings: { type: 'number' },
+          verdict: { type: 'string' },
+          verdictRollup: { type: 'string' },
+          verdictStale: { type: 'boolean' },
+          next: { type: 'array', items: { type: 'string' } },
+          board: { type: 'string' },
+          parts: { type: 'number' },
+          failedChecks: { type: 'array', items: { type: 'string' } },
+          notVerified: { type: 'array', items: { type: 'string' } },
+          deliverable: { type: 'boolean' },
+          openDecisions: { type: 'array', items: { type: 'string' } },
           lines: { type: 'array', items: { type: 'string' } },
         },
       },
@@ -407,9 +439,10 @@ export function registerTools(ctx: Context): Array<() => void> {
       presentationMeta: (args) => {
         const project = str((args as { project?: unknown }).project)
         if (project === '') return {}
-        // 面板上**没有** ladder 视图（`SectionId` 里没有它），所以指到
-        // `checks`：阶梯的 V2 就是 `checks.json` 的内容，落在同一处不误导。
-        return viewHint(project, 'checks')
+        // 跑完阶梯跳到**结论**页：那一页的九层横条就是刚跑出来的东西。
+        // （P0 之前这里指 `checks`，因为当时面板上没有阶梯的视图；
+        // 现在有了结论层，落在 `checks` 反而看不到 V1/V3/V4 的结论。）
+        return viewHint(project, 'verdict')
       },
     },
     execute: async (args) => {
@@ -902,7 +935,7 @@ export function registerTools(ctx: Context): Array<() => void> {
       },
       presentationMeta: (args) => {
         const project = str((args as { project?: unknown }).project)
-        return project === '' ? {} : viewHint(project, 'checks')
+        return project === '' ? {} : viewHint(project, 'verdict')
       },
     },
     execute: async (args) => {
@@ -1423,6 +1456,369 @@ export function registerTools(ctx: Context): Array<() => void> {
         deliverableCount: num(payload.deliverable_count),
         reason: str(payload.reason),
         candidates: rows,
+        summary: str(payload.summary),
+      }
+    },
+  })))
+
+  // ---- 3l. hw_ioc_links -------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_ioc_links',
+    description:
+      '从 STM32CubeMX 的 `.ioc` 抽板间链路：解析 `PA2.Signal=USART2_TX`，'
+      + '按三档可信度配对（显式规则 > 同名外设+TX↔RX 交叉 > label 语义）。'
+      + '**全部标 source=inferred，默认不写进 links_list**'
+      + '（推断会错，不能判人 fail）。配不上的端点进 unpaired 并说明原因，不猜。',
+    parameters: {
+      root: { type: 'string', description: '去哪找 .ioc（目录）' },
+      apply: { type: 'string', description: '工程名：把 declared 链路写进该工程' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ok: { type: 'boolean' },
+          status: { type: 'string' },
+          boards: { type: 'number' },
+          endpoints: { type: 'number' },
+          links: { type: 'number' },
+          tier2: { type: 'number' },
+          tier3: { type: 'number' },
+          unpaired: { type: 'number' },
+          applied: { type: 'number' },
+          detail: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                id: { type: 'string' },
+                protocol: { type: 'string' },
+                evidence: { type: 'string' },
+              },
+            },
+          },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          ok: boolean; status: string; boards: number; endpoints: number
+          links: number; tier2: number; tier3: number; unpaired: number
+          applied: number
+          detail: Array<{ id: string; protocol: string; evidence: string }>
+          summary: string
+        }
+        const head = `# .ioc 抽取：${v.boards} 板 / ${v.endpoints} 端点`
+          + ` -> ${v.links} 条链路（同名外设 ${v.tier2} / label ${v.tier3}）`
+        const body: string[] = v.detail.slice(0, 15).map(
+          (l) => `* ${l.id} [${l.protocol}]`)
+        if (v.unpaired > 0) body.push(`未配上 ${v.unpaired} 个端点（见 JSON）`)
+        if (v.applied > 0) body.push(`已写入 ${v.applied} 条 declared 链路`)
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const apply = str((args as { apply?: unknown }).apply)
+        return apply === '' ? {} : viewHint(apply, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { root?: unknown; apply?: unknown }
+      const root = str(a.root)
+      if (root === '') throw new Error('需要 root：去哪找 .ioc')
+      const cliArgs: string[] = ['--root', root]
+      const apply = str(a.apply)
+      if (apply !== '') cliArgs.push('--apply', apply)
+      const payload = await design('ioc-links', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '抽取失败')
+      }
+      const counts = (payload.counts ?? {}) as Record<string, unknown>
+      const links = (payload.draft ?? {}) as Record<string, unknown>
+      const rows = (Array.isArray(links.links) ? links.links : [])
+        .slice(0, 30).map((raw) => {
+          const row = (raw ?? {}) as Record<string, unknown>
+          return {
+            id: str(row.id),
+            protocol: str(row.protocol),
+            evidence: str(row.evidence),
+          }
+        })
+      return {
+        ok: payload.ok === true,
+        status: str(payload.status),
+        boards: num(counts.boards),
+        endpoints: num(counts.endpoints),
+        links: num(counts.links),
+        tier2: num(counts.tier2),
+        tier3: num(counts.tier3),
+        unpaired: num(counts.unpaired),
+        applied: num(payload.applied),
+        detail: rows,
+        summary: str(payload.summary),
+      }
+    },
+  })))
+
+  // ---- 3m. hw_renode ----------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_renode',
+    description:
+      'Renode 接入：探测 Renode/ARM 工具链，生成 `.resc` 联调脚本 + run.cmd。'
+      + '加载地址从 `.bin` 的 Cortex-M 向量表读出（不默认 0x08000000）。'
+      + '多板用 `connector Connect`（Renode 原生命令），**inferred 链路不接线**。'
+      + '**本机实测无法在 DSH 内加载 CPU 平台**（Renode 要独占打开锁文件，'
+      + '沙箱拒绝），所以 `runnable_here` 会如实报 false，'
+      + '产物需在 DSH 外执行。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略=只探测）' },
+      firmware: {
+        type: 'string',
+        description: 'JSON：{board_id: "路径/x.bin"}',
+      },
+      boardMcu: {
+        type: 'string',
+        description: 'JSON：{board_id: "STM32F103C8T6"} 显式映射（哈希 kind 时必需）',
+      },
+      iocRoot: { type: 'string', description: '去哪找 .ioc（列出可选 MCU 型号）' },
+      checkCpu: { type: 'boolean', description: '真的起一次 Renode 试加载 CPU 平台' },
+      write: { type: 'boolean', description: '把 .resc / run.cmd 写到工程目录' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          ok: { type: 'boolean' },
+          status: { type: 'string' },
+          runnableHere: { type: 'boolean' },
+          machines: { type: 'number' },
+          connectors: { type: 'array', items: { type: 'string' } },
+          written: { type: 'array', items: { type: 'string' } },
+          warnings: { type: 'array', items: { type: 'string' } },
+          mcuOptions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                board: { type: 'string' },
+                mcu: { type: 'string' },
+                platform: { type: 'string' },
+              },
+            },
+          },
+          notes: { type: 'array', items: { type: 'string' } },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; ok: boolean; status: string
+          runnableHere: boolean; machines: number
+          connectors: string[]
+          written: string[]
+          warnings: string[]
+          mcuOptions: Array<{ board: string; mcu: string; platform: string }>
+          notes: string[]
+          summary: string
+        }
+        const head = `# Renode：${v.status} —— ${v.machines} 个机台，`
+          + `${v.connectors.length} 条 connector`
+        const body: string[] = []
+        if (!v.runnableHere) {
+          body.push('! 本机不能跑（沙箱拦截 Renode 的独占文件锁）。'
+            + '生成的 .resc 需在 DSH 外执行。')
+        }
+        for (const note of v.notes) body.push(`- ${note}`)
+        for (const c of v.connectors) body.push(`* ${c}`)
+        if (v.warnings.length > 0) {
+          body.push('', `需要注意 ${v.warnings.length} 条：`)
+          for (const w of v.warnings.slice(0, 6)) body.push(`  - ${w}`)
+        }
+        if (v.mcuOptions.length > 0) {
+          body.push('', '.ioc 提供的型号（用 boardMcu 显式映射）：')
+          for (const o of v.mcuOptions) {
+            body.push(`  - ${o.board} = ${o.mcu} -> ${o.platform}`)
+          }
+        }
+        if (v.written.length > 0) {
+          body.push('', `已写：${v.written.join(', ')}`)
+        }
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        project?: unknown; firmware?: unknown; boardMcu?: unknown
+        iocRoot?: unknown; checkCpu?: unknown; write?: unknown
+      }
+      const project = str(a.project)
+      if (project === '') {
+        const probe = await design('renode', 'status')
+        return {
+          project: '',
+          ok: probe.status === 'ok',
+          status: str(probe.status),
+          runnableHere: probe.runnable_here === true,
+          machines: 0,
+          connectors: [],
+          written: [],
+          warnings: [],
+          mcuOptions: [],
+          notes: [
+            `Renode: ${str((probe.renode as Record<string, unknown>)?.version)}`,
+            `CPU 平台: ${(probe.cpu_platform as Record<string, unknown>)?.available === true ? '可用' : '不可用'}`,
+            `ARM GCC: ${(probe.arm_gcc as Record<string, unknown>)?.available === true ? '已装' : '未装'}`,
+          ],
+          summary: '只探测，没给工程名',
+        }
+      }
+      const cliArgs: string[] = [project]
+      const firmware = str(a.firmware)
+      if (firmware !== '') cliArgs.push('--firmware', firmware)
+      const boardMcu = str(a.boardMcu)
+      if (boardMcu !== '') cliArgs.push('--board-mcu', boardMcu)
+      const iocRoot = str(a.iocRoot)
+      if (iocRoot !== '') cliArgs.push('--ioc-root', iocRoot)
+      if (a.checkCpu === true) cliArgs.push('--check-cpu')
+      if (a.write === true) cliArgs.push('--write')
+      const payload = await design('renode', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || 'Renode 接入失败')
+      }
+      const resc = (payload.resc ?? {}) as Record<string, unknown>
+      const options = (Array.isArray(payload.mcu_options) ? payload.mcu_options : [])
+        .slice(0, 12).map((raw) => {
+          const row = (raw ?? {}) as Record<string, unknown>
+          return {
+            board: str(row.board),
+            mcu: str(row.mcu),
+            platform: str(row.platform),
+          }
+        })
+      return {
+        project,
+        ok: payload.ok === true,
+        status: str(payload.status),
+        runnableHere: payload.runnable_here === true,
+        machines: Object.keys((resc.machines ?? {}) as object).length,
+        connectors: (Array.isArray(resc.connectors) ? resc.connectors : [])
+          .map((x) => str(x)),
+        written: (Array.isArray(payload.written) ? payload.written : [])
+          .map((x) => str(x)),
+        warnings: (Array.isArray(resc.warnings) ? resc.warnings : [])
+          .slice(0, 12).map((x) => str(x)),
+        mcuOptions: options,
+        notes: (Array.isArray(payload.notes) ? payload.notes : [])
+          .map((x) => str(x)),
+        summary: str(payload.summary),
+      }
+    },
+  })))
+
+  // ---- 3o. hw_joints ----------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_joints',
+    description:
+      '机械关系表（`Joint`）：两个零件之间靠什么连（stud/pin/axle/gear/'
+      + 'chain/tread/rack/hinge/slide/stack/port/contact）。'
+      + '可从几何与网表推断 stack/port，**推断标 inferred 不参与硬处理**，'
+      + '要参与 P16 仿真须先 promote。没有声明关系时状态是 not_ready，'
+      + '不是通过。需要参数的 kind（gear/axle/hinge…）缺参数报 error，'
+      + '**不替你编默认值**。写 joints.json。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+      infer: { type: 'boolean', description: '同时跑一次推断（stack/port）' },
+      promote: { type: 'boolean', description: '把推断的提升为 declared（人确认）' },
+      apply: { type: 'boolean', description: '把 declared 的写进 design.json' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          status: { type: 'string' },
+          ok: { type: 'boolean' },
+          declared: { type: 'number' },
+          inferred: { type: 'number' },
+          skipped: { type: 'number' },
+          applied: { type: 'number' },
+          promoted: { type: 'number' },
+          byKind: { type: 'string' },
+          findings: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: { check: { type: 'string' }, message: { type: 'string' } },
+            },
+          },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; status: string; ok: boolean
+          declared: number; inferred: number; skipped: number
+          applied: number; promoted: number; byKind: string
+          findings: Array<{ check: string; message: string }>
+          summary: string
+        }
+        const head = `# ${v.project} 机械关系：${v.status}`
+          + `（声明 ${v.declared} / 推断 ${v.inferred} / 跳过 ${v.skipped}）`
+        const body: string[] = []
+        if (v.byKind) body.push(`按 kind：${v.byKind}`)
+        if (v.promoted > 0) body.push(`已确认 ${v.promoted} 条（inferred → declared）`)
+        if (v.applied > 0) body.push(`已写入 design.json ${v.applied} 条`)
+        for (const row of v.findings.slice(0, 10)) {
+          body.push(`* [${row.check}] ${row.message}`)
+        }
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        project?: unknown; infer?: unknown; promote?: unknown; apply?: unknown
+      }
+      const project = str(a.project)
+      const cliArgs: string[] = project === '' ? [] : [project]
+      if (a.infer === true) cliArgs.push('--infer')
+      if (a.promote === true) cliArgs.push('--promote')
+      if (a.apply === true) cliArgs.push('--apply')
+      const payload = await design('joints', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '机械关系失败')
+      }
+      const inf = (payload.inference ?? {}) as Record<string, unknown>
+      const byKind = (payload.by_kind ?? {}) as Record<string, unknown>
+      return {
+        project,
+        status: str(payload.status),
+        ok: payload.ok === true,
+        declared: (Array.isArray(payload.declared) ? payload.declared : []).length,
+        inferred: (Array.isArray(inf.joints) ? inf.joints : []).length,
+        skipped: (Array.isArray(inf.skipped) ? inf.skipped : []).length,
+        applied: num(payload.applied),
+        promoted: num(payload.promoted),
+        byKind: Object.entries(byKind)
+          .map(([k, n]) => `${k} ${num(n)}`).join('、'),
+        findings: (Array.isArray(payload.findings) ? payload.findings : [])
+          .slice(0, 20).map((raw) => {
+            const row = (raw ?? {}) as Record<string, unknown>
+            return { check: str(row.check), message: str(row.message) }
+          }),
         summary: str(payload.summary),
       }
     },
@@ -3102,6 +3498,850 @@ export function registerTools(ctx: Context): Array<() => void> {
         totalBytes: num(out.totalBytes),
         droppedBytes: num(out.droppedBytes),
         lines,
+      }
+    },
+  })))
+
+  // ---- 3p. hw_emit -------------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_emit',
+    description:
+      '把 design.json 发射成立创EDA专业版工程（`.eprj3`，原理图 + PCB + 板框）。'
+      + '四段可选：project / schematic / pcb / route / outputs。'
+      + '器件按 lcsc 精确匹配（模糊命中会被 Supplier Part 回核剔除），'
+      + '搜不到的进 unresolved 且**其余继续**。'
+      + '回读立创 PCB 网表与 design.json 逐引脚比对（parity），'
+      + '不一致就是两个系统分叉。'
+      + '实测限制：自动布线引擎在本机拒绝执行 → route 段是 not_ready；'
+      + '导出文件落盘要人去立创设置里开外部交互权限。写 emit.json。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+      jobs: {
+        type: 'string',
+        description: '要跑哪几段，逗号分隔（project,schematic,pcb,route,outputs）',
+      },
+      route: { type: 'string', description: 'native（默认）/ ours / none' },
+      reuse: { type: 'boolean', description: '接管磁盘上已有的同名立创工程' },
+      saveDir: { type: 'string', description: '产物落盘目录（需要立创开放外部权限）' },
+      maxParts: { type: 'number', description: '最多装多少个器件（默认 260）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          status: { type: 'string' },
+          version: { type: 'string' },
+          projectName: { type: 'string' },
+          projectPath: { type: 'string' },
+          jobs: { type: 'string' },
+          placed: { type: 'number' },
+          unresolved: { type: 'number' },
+          parity: { type: 'string' },
+          drc: { type: 'string' },
+          routeNote: { type: 'string' },
+          notes: {
+            type: 'array', items: { type: 'string' },
+          },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; status: string; version: string
+          projectName: string; projectPath: string; jobs: string
+          placed: number; unresolved: number
+          parity: string; drc: string; routeNote: string
+          notes: string[]
+        }
+        const head = `# ${v.project} 立创发射：${v.status}`
+          + (v.version ? `（${v.version}）` : '')
+        const body: string[] = []
+        if (v.projectName) body.push(`工程：${v.projectName}`)
+        if (v.projectPath) body.push(`路径：${v.projectPath}`)
+        body.push(v.jobs)
+        if (v.placed > 0) body.push(`已装器件：${v.placed} 个（未解析 ${v.unresolved}）`)
+        if (v.parity) body.push(v.parity)
+        if (v.drc) body.push(v.drc)
+        if (v.routeNote) body.push(`布线：${v.routeNote}`)
+        for (const note of v.notes.slice(0, 6)) body.push(`* ${note}`)
+        return text(head, ...body)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        project?: unknown; jobs?: unknown; route?: unknown
+        reuse?: unknown; saveDir?: unknown; maxParts?: unknown
+      }
+      const project = str(a.project)
+      if (project === '') {
+        const payload = await design('emit')
+        return {
+          project: '', status: str(payload.status, 'ok'), version: '',
+          projectName: '', projectPath: '',
+          jobs: (Array.isArray(payload.jobs) ? payload.jobs : []).join(', '),
+          placed: 0, unresolved: 0, parity: '', drc: '', routeNote: '',
+          notes: [str(payload.coordinate_caveat)],
+        }
+      }
+      const cliArgs: string[] = [project]
+      const jobs = str(a.jobs)
+      if (jobs) cliArgs.push(`--jobs=${jobs}`)
+      const route = str(a.route)
+      if (route) cliArgs.push(`--route=${route}`)
+      if (a.reuse === true) cliArgs.push('--reuse')
+      const saveDir = str(a.saveDir)
+      if (saveDir) cliArgs.push(`--save-dir=${saveDir}`)
+      if (typeof a.maxParts === 'number') cliArgs.push(`--max-parts=${a.maxParts}`)
+      const payload = await design('emit', ...cliArgs)
+      const rows = (payload.jobs ?? {}) as Record<string, Record<string, unknown>>
+      const jobLine = Object.entries(rows)
+        .map(([name, row]) => `${name}:${str(row.status)}`).join(' · ')
+      const sch = (rows.schematic?.counts ?? {}) as Record<string, unknown>
+      const parity = (payload.parity ?? {}) as Record<string, unknown>
+      const drc = (payload.drc ?? {}) as Record<string, unknown>
+      const routeRow = rows.route ?? {}
+      const proj = (payload.project ?? {}) as Record<string, unknown>
+      const pcounts = (parity.counts ?? {}) as Record<string, unknown>
+      return {
+        project,
+        status: str(payload.status),
+        version: str(payload.version),
+        projectName: str(proj.name),
+        projectPath: str(proj.path),
+        jobs: jobLine,
+        placed: num(sch.placed),
+        unresolved: (Array.isArray(payload.unresolved) ? payload.unresolved : []).length,
+        parity: parity.status
+          ? `parity：${str(parity.status)}（比对 ${num(parity.checked)} 引脚`
+            + `，缺 ${num(pcounts.missing)}，错 ${num(pcounts.wrong)}）`
+          : '',
+        drc: drc.status
+          ? `DRC：${str(drc.note)}（pass=${String(drc.pass)}）`
+          : '',
+        routeNote: str(routeRow.note),
+        notes: (Array.isArray(payload.notes) ? payload.notes : []).map((n) => str(n)),
+      }
+    },
+  })))
+
+  // ---- 3q. hw_parts ------------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_parts',
+    description:
+      'LCSC 元件目录（免 key）。action=search 关键词搜索；enrich 查一个编号的'
+      + '型号/封装/尺寸/引脚/库存/分级/手册页，可选回填进工程；promote 把目录'
+      + '条目升级成 datasheet 级（**必须带 --datasheet 手册页 URL 留痕**）。'
+      + '目录数据是 catalog 级：可以写进设计让 2D/3D 有东西看，但**不进能力表'
+      + '硬选型**（只在 explain_miss.rejected 出现）。封装查不到就留空，不猜尺寸。',
+    parameters: {
+      action: { type: 'string', description: 'search（默认）/ enrich / promote / info' },
+      query: { type: 'string', description: 'search 的关键词（如 "stm32f103 lqfp48"）' },
+      lcsc: { type: 'string', description: 'enrich/promote 的 LCSC 编号（如 C1523）' },
+      project: { type: 'string', description: 'enrich 时回填到该工程' },
+      refs: { type: 'string', description: '只回填这些位号（逗号分隔，默认按 lcsc 匹配）' },
+      saveCatalog: { type: 'boolean', description: 'enrich 时写进能力表目录层（未确认）' },
+      datasheet: { type: 'string', description: 'promote 必填：手册页 URL' },
+      role: { type: 'string', description: 'promote 必填：它是什么（mcu/sensor/radio…）' },
+      needs: { type: 'string', description: 'promote：它能干什么（逗号分隔，如 i2c,spi）' },
+      limit: { type: 'number', description: 'search 返回条数（默认 10）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          action: { type: 'string' },
+          status: { type: 'string' },
+          query: { type: 'string' },
+          total: { type: 'number' },
+          items: { type: 'array', items: { type: 'string' } },
+          lcsc: { type: 'string' },
+          mpn: { type: 'string' },
+          package: { type: 'string' },
+          sizeMm: { type: 'string' },
+          stock: { type: 'number' },
+          lifecycle: { type: 'string' },
+          libraryType: { type: 'string' },
+          datasheet: { type: 'string' },
+          cache: { type: 'string' },
+          designFields: { type: 'string' },
+          updated: { type: 'array', items: { type: 'string' } },
+          key: { type: 'string' },
+          trusted: { type: 'boolean' },
+          notes: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          action: string; status: string; query: string; total: number
+          items: string[]; lcsc: string; mpn: string; package: string
+          sizeMm: string; stock: number; lifecycle: string; libraryType: string
+          datasheet: string; cache: string; designFields: string
+          updated: string[]; key: string; trusted: boolean; notes: string[]
+        }
+        const head = `# hw_parts ${v.action}：${v.status}`
+        const body: string[] = []
+        if (v.query) body.push(`关键词：${v.query}（共 ${v.total} 条）`)
+        for (const row of v.items.slice(0, 12)) body.push(`* ${row}`)
+        if (v.lcsc) {
+          body.push(`${v.lcsc} → ${v.mpn}｜${v.package}｜${v.sizeMm}`
+            + (v.stock >= 0 ? `｜库存 ${v.stock}` : '')
+            + (v.lifecycle && v.lifecycle !== 'unknown' ? `｜${v.lifecycle}` : '')
+            + (v.libraryType ? `｜${v.libraryType}` : ''))
+        }
+        if (v.cache) body.push(`数据来源：${v.cache}`)
+        if (v.designFields) body.push(`可写回设计：${v.designFields}`)
+        if (v.updated.length) body.push(`已回填位号：${v.updated.join('、')}`)
+        if (v.key) body.push(`能力表键：${v.key}（信任级${v.trusted ? '已确认' : '目录级'}）`)
+        if (v.datasheet) body.push(`手册页：${v.datasheet}`)
+        for (const note of v.notes.slice(0, 5)) body.push(`! ${note}`)
+        return text(head, ...body)
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        action?: unknown; query?: unknown; lcsc?: unknown; project?: unknown
+        refs?: unknown; saveCatalog?: unknown; datasheet?: unknown
+        role?: unknown; needs?: unknown; limit?: unknown
+      }
+      const action = str(a.action) || (str(a.lcsc) ? 'enrich' : 'search')
+      const empty = {
+        action, status: 'ok', query: '', total: 0, items: [] as string[],
+        lcsc: '', mpn: '', package: '', sizeMm: '', stock: -1, lifecycle: '',
+        libraryType: '', datasheet: '', cache: '', designFields: '',
+        updated: [] as string[], key: '', trusted: false, notes: [] as string[],
+      }
+      if (action === 'info') {
+        const payload = await design('parts-search')
+        const ep = (payload.endpoints ?? {}) as Record<string, unknown>
+        const cacheInfo = (payload.cache ?? {}) as Record<string, unknown>
+        return { ...empty, action: 'info', status: str(payload.status, 'ok'),
+          notes: [`端点：${Object.values(ep).join(' / ')}`,
+                  str(cacheInfo.policy)] }
+      }
+
+      if (action === 'search') {
+        const query = str(a.query)
+        const cliArgs = [query]
+        if (typeof a.limit === 'number') cliArgs.push(`--limit=${a.limit}`)
+        const payload = await design('parts-search', ...cliArgs)
+        const items = (Array.isArray(payload.items) ? payload.items : [])
+          .map((raw) => {
+            const row = (raw ?? {}) as Record<string, unknown>
+            const stock = typeof row.stock === 'number' ? `库存 ${row.stock}` : '库存 ?'
+            return `${str(row.lcsc)} ${str(row.mpn)}｜${str(row.package)}｜`
+              + `${stock}｜${str(row.library_type)}`
+          })
+        return {
+          ...empty,
+          action: 'search',
+          status: str(payload.status),
+          query,
+          total: num(payload.total),
+          items,
+          notes: findings(payload),
+        }
+      }
+
+      if (action === 'enrich') {
+        const lcsc = str(a.lcsc)
+        const cliArgs = [lcsc]
+        const project = str(a.project)
+        if (project) cliArgs.push(`--project=${project}`)
+        const refs = str(a.refs)
+        if (refs) cliArgs.push(`--refs=${refs}`)
+        if (a.saveCatalog === true) cliArgs.push('--save-catalog')
+        const payload = await design('parts-enrich', ...cliArgs)
+        const part = (payload.part ?? {}) as Record<string, unknown>
+        const size = (part.size_mm ?? {}) as Record<string, unknown>
+        const fields = (payload.design_fields ?? {}) as Record<string, unknown>
+        return {
+          ...empty,
+          action: 'enrich',
+          status: str(payload.status),
+          lcsc: str(part.lcsc),
+          mpn: str(part.mpn),
+          package: str(part.package),
+          sizeMm: size.w ? `${num(size.w)}×${num(size.h)}×${num(size.d)}mm` : '',
+          stock: typeof part.stock === 'number' ? part.stock : -1,
+          lifecycle: str(part.lifecycle),
+          libraryType: str(part.library_type),
+          datasheet: str(part.datasheet_url),
+          cache: str(payload.cache),
+          designFields: Object.keys(fields).length
+            ? JSON.stringify(fields) : '',
+          updated: (Array.isArray(payload.updated) ? payload.updated : []).map((x) => str(x)),
+          key: str(payload.catalog_key),
+          trusted: false,
+          notes: [...findings(payload),
+                  ...(Array.isArray(payload.findings) ? payload.findings : []).map((x) => str(x))],
+        }
+      }
+
+      // promote
+      const target = str(a.lcsc) || str(a.query)
+      const cliArgs = [target]
+      const datasheet = str(a.datasheet)
+      if (datasheet) cliArgs.push(`--datasheet=${datasheet}`)
+      const role = str(a.role)
+      if (role) cliArgs.push(`--role=${role}`)
+      const needs = str(a.needs)
+      if (needs) cliArgs.push(`--needs=${needs}`)
+      const payload = await design('parts-promote', ...cliArgs)
+      return {
+        ...empty,
+        action: 'promote',
+        status: str(payload.status),
+        key: str(payload.key),
+        datasheet: str(payload.datasheet),
+        trusted: payload.trusted === true,
+        notes: [
+          ...(str(payload.status) === 'ok' ? [] : findings(payload)),
+          ...(Array.isArray(payload.findings) ? payload.findings : []).map((x) => str(x)),
+          str(payload.note),
+        ].filter((x) => x !== ''),
+      }
+    },
+  })))
+
+  // ---- 3s. hw_req_draft / hw_req_apply (P5) ------------------------------
+  //
+  // 这两个是**会话里**用的：模型把一句话变成结构化需求草稿 → 校验 →
+  // 人在面板上确认后才写 req.json。
+  //
+  // 刻意**不做**"模型直接出 design.json"：那会跳过 validate 与 generate，
+  // 等于把"模型说行"当成"可以开工"。
+  disposers.push(tools.register(defineTool({
+    name: 'hw_req_draft',
+    description:
+      '写/校验需求草稿（**不是需求本身**）。action=draft 时把 requirement 落成 '
+      + 'req_draft.json 并立刻校验；action=validate 只校验当前草稿；'
+      + 'action=show（默认）报状态。字段与 generate.Requirement 一致：'
+      + 'id / title / roles[] / interfaces[] / constraints{} / numbers{} / notes。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名' },
+      action: {
+        type: 'string',
+        description: 'show（默认）/ draft / validate / list（列工作区草稿）',
+      },
+      requirement: {
+        type: 'object',
+        additionalProperties: true,
+        description: '草稿内容：{id,title,roles,interfaces,constraints,numbers,notes}',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          ok: { type: 'boolean' },
+          roles: { type: 'array', items: { type: 'string' } },
+          applied: { type: 'boolean' },
+          problems: { type: 'array', items: { type: 'string' } },
+          warnings: { type: 'array', items: { type: 'string' } },
+          next: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; ok: boolean; roles: string[]; applied: boolean
+          problems: string[]; warnings: string[]; next: string
+        }
+        return text(
+          `# ${v.project} 的需求草稿`,
+          `角色（${v.roles.length}）：${v.roles.join(', ') || '（空）'}`,
+          `校验：${v.ok ? '通过' : `${v.problems.length} 个问题`}`
+            + `｜应用：${v.applied ? '已应用' : '未应用'}`,
+          ...(v.problems.length > 0
+            ? ['', '问题（拦 apply）：', ...v.problems.map((line) => `✗ ${line}`)]
+            : []),
+          ...(v.warnings.length > 0
+            ? ['', '提示（不拦）：', ...v.warnings.map((line) => `! ${line}`)]
+            : []),
+          '',
+          `下一步：${v.next}`,
+        )
+      },
+      presentationMeta: (args) => viewHint(requireProject(args), 'req'),
+    },
+    execute: async (args) => {
+      const project = requireProject(args)
+      const action = str((args as { action?: unknown }).action, 'show').trim() || 'show'
+      const requirement = (args as { requirement?: unknown }).requirement
+      if (action === 'list') {
+        // 工作区草稿（工程还不存在时的那份）。第 1 个位置参数是占位 id，
+        // `--list` 不需要工程存在。
+        const listed = await design('req-draft', '--list')
+        const rows = ((listed.drafts ?? []) as Array<Record<string, unknown>>)
+        return {
+          project,
+          ok: rows.every((row) => row.ok === true),
+          roles: rows.map((row) => str(row.id)),
+          applied: false,
+          problems: rows.flatMap((row) =>
+            ((row.problems ?? []) as unknown[]).map(String)),
+          warnings: rows.map((row) =>
+            `${str(row.id)}（${(row.roles as unknown[] | undefined)?.length ?? 0} 角色）`),
+          next: rows.length === 0
+            ? '工作区里没有草稿'
+            : 'apply 时会顺手建工程（工程还不存在）',
+        }
+      }
+      const argv = ['req-draft', project]
+      if (action === 'draft') {
+        if (requirement === null || typeof requirement !== 'object') {
+          throw new Error('draft 需要 requirement（对象）')
+        }
+        argv.push(`--set=${JSON.stringify(requirement)}`)
+      } else if (action === 'validate') {
+        argv.push('--validate')
+      }
+      const payload = await design(...argv)
+      noteHint(project, 'req')
+      const validation = (payload.validation ?? {}) as Record<string, unknown>
+      const problems = ((validation.problems ?? []) as Array<Record<string, unknown>>)
+        .map((row) => str(row.message))
+      const warnings = ((validation.warnings ?? []) as Array<Record<string, unknown>>)
+        .map((row) => str(row.message))
+      const draft = (payload.draft ?? {}) as Record<string, unknown>
+      return {
+        project,
+        ok: validation.ok === true,
+        roles: ((draft.roles ?? []) as unknown[]).map(String),
+        applied: payload.applied === true,
+        problems,
+        warnings,
+        next: str(payload.next)
+          || (validation.ok === true
+            ? '草稿合法，等人在面板上确认后 apply'
+            : '按 problems 改草稿再 validate'),
+      }
+    },
+  })))
+
+  disposers.push(tools.register(defineTool({
+    name: 'hw_req_apply',
+    description:
+      '把需求草稿变成真需求（写 req.json）。**这是人的动作**：调用前必须已经'
+      + '有人在面板上点了「确认并应用」——不要替人调用。草稿没通过校验时会拒绝。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名' },
+      confirm: { type: 'boolean', description: '必须是 true（人的确认）' },
+      board: {
+        type: 'string',
+        description: '工程还不存在时建它用哪种板卡预设（默认 custom → 50×30 通用板）',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          ok: { type: 'boolean' },
+          file: { type: 'string' },
+          created: { type: 'boolean' },
+          lines: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; ok: boolean; file: string; created: boolean
+          lines: string[]
+        }
+        return text(
+          `# ${v.project} 的需求`,
+          v.ok ? `已写入 ${v.file}` : '未写入（见下）',
+          ...v.lines,
+        )
+      },
+      presentationMeta: (args) => viewHint(requireProject(args), 'req'),
+    },
+    execute: async (args) => {
+      const project = requireProject(args)
+      const confirm = (args as { confirm?: unknown }).confirm === true
+      const board = str((args as { board?: unknown }).board).trim()
+      const argv = ['req-draft', project, '--apply']
+      if (confirm) argv.push('--confirm')
+      if (board !== '') argv.push(`--board=${board}`)
+      const payload = await design(...argv)
+      noteHint(project, 'req')
+      const lines = findings(payload)
+      const warnings = ((payload.warnings ?? []) as unknown[]).map(String)
+      return {
+        project,
+        ok: ok(payload),
+        file: str(payload.file) || str(payload.reason),
+        created: payload.created_project === true,
+        lines: [
+          ...(confirm ? [] : ['**没有 confirm** —— 草稿合法也不会写 req.json']),
+          ...(payload.created_project === true
+            ? [`工程原本不存在：已顺手建一个（板卡 ${str(payload.board)}）`]
+            : []),
+          ...lines,
+          ...warnings.map((line) => `提示：${line}`),
+        ],
+      }
+    },
+  })))
+
+  // ---- 3r. hw_fwgen ------------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_fwgen',
+    description:
+      '固件生成：action=pins 从 .ioc 生成 pins.h（含 HAL 的 HWV_PIN_x = GPIO_PIN_n）；'
+      + 'check 把固件里实际用到的引脚和硬件配置对撞（幽灵引脚/闲置/方向冲突）；'
+      + 'scaffold 出工程骨架（arduino/platformio/esp-idf/stm32/avr 五个 target）；'
+      + 'driver 生成某个器件的 init/read C 代码（7 个器件，每个带 datasheet 章节）。'
+      + '幽灵引脚与方向冲突是 **error**：运行时必炸或静默失效。'
+      + '非 STM32 固件（Arduino/AVR/ESP-IDF）报 not_ready，不猜别的 SDK 写法。',
+    parameters: {
+      action: { type: 'string', description: 'pins（默认）/ check / scaffold / driver / info' },
+      project: { type: 'string', description: '工程目录名（driver 之外都要）' },
+      ioc: { type: 'string', description: '.ioc 路径（相对路径按工程目录解析）' },
+      src: { type: 'string', description: 'check 的固件源码目录（相对工程目录）' },
+      target: { type: 'string', description: 'scaffold 的 target' },
+      part: { type: 'string', description: 'driver 的器件名（如 SHT31）' },
+      out: { type: 'string', description: '输出目录（相对工程目录）' },
+      ref: { type: 'string', description: 'MCU 位号（默认 U1）' },
+      drivers: { type: 'string', description: 'scaffold 要一并生成的驱动（逗号分隔）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          action: { type: 'string' },
+          status: { type: 'string' },
+          ok: { type: 'boolean' },
+          mcu: { type: 'string' },
+          header: { type: 'string' },
+          assignments: { type: 'number' },
+          macros: { type: 'string' },
+          counts: { type: 'string' },
+          ghost: { type: 'array', items: { type: 'string' } },
+          idle: { type: 'array', items: { type: 'string' } },
+          direction: { type: 'array', items: { type: 'string' } },
+          target: { type: 'string' },
+          files: { type: 'number' },
+          out: { type: 'string' },
+          notes: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          action: string; status: string; ok: boolean; mcu: string
+          header: string; assignments: number; macros: string; counts: string
+          ghost: string[]; idle: string[]; direction: string[]
+          target: string; files: number; out: string; notes: string[]
+        }
+        const head = `# hw_fwgen ${v.action}：${v.status}`
+          + (v.mcu ? `（${v.mcu}）` : '')
+        const body: string[] = []
+        if (v.header) body.push(`pins.h：${v.header}（${v.assignments} 个引脚）`)
+        if (v.macros) body.push(`宏：${v.macros}`)
+        if (v.counts) body.push(`核对：${v.counts}`)
+        for (const row of v.direction.slice(0, 6)) body.push(`! 方向冲突 ${row}`)
+        for (const row of v.ghost.slice(0, 8)) body.push(`! 幽灵引脚 ${row}`)
+        for (const row of v.idle.slice(0, 8)) body.push(`· 闲置 ${row}`)
+        if (v.target) body.push(`骨架：${v.target} → ${v.out}（${v.files} 个文件）`)
+        for (const note of v.notes.slice(0, 5)) body.push(`* ${note}`)
+        return text(head, ...body)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        action?: unknown; project?: unknown; ioc?: unknown; src?: unknown
+        target?: unknown; part?: unknown; out?: unknown; ref?: unknown
+        drivers?: unknown
+      }
+      const project = str(a.project)
+      const action = str(a.action) || (str(a.part) && project === '' ? 'driver' : 'pins')
+      const base = {
+        action, status: 'ok', ok: true, mcu: '', header: '',
+        assignments: 0, macros: '', counts: '',
+        ghost: [] as string[], idle: [] as string[], direction: [] as string[],
+        target: '', files: 0, out: '', notes: [] as string[],
+      }
+      if (action === 'info' || project === '' && action !== 'driver') {
+        const payload = await design('fw-scaffold')
+        return { ...base, action: 'info', status: str(payload.status, 'ok'),
+          notes: [`targets：${(Array.isArray(payload.targets) ? payload.targets : []).join(', ')}`] }
+      }
+      const opt: string[] = []
+      const ioc = str(a.ioc)
+      if (ioc) opt.push(`--ioc=${ioc}`)
+      const ref = str(a.ref)
+      if (ref) opt.push(`--ref=${ref}`)
+      const out = str(a.out)
+      if (out) opt.push(`--out=${out}`)
+
+      if (action === 'driver') {
+        const part = str(a.part)
+        if (!part) throw new Error('driver 需要 part')
+        const payload = await design('fw-driver', part, ...opt)
+        return { ...base, action: 'driver', status: str(payload.status),
+          files: (Array.isArray(payload.files) ? payload.files : []).length,
+          out: out, notes: (Array.isArray(payload.findings) ? payload.findings : []).map((x) => str(x)) }
+      }
+
+      if (action === 'check') {
+        const src = str(a.src)
+        const cliArgs = [project, ...opt]
+        if (src) cliArgs.push(`--src=${src}`)
+        const payload = await design('pinmap-check', ...cliArgs)
+        const counts = (payload.counts ?? {}) as Record<string, unknown>
+        return {
+          ...base,
+          action: 'check',
+          status: str(payload.status),
+          ok: str(payload.status) === 'ok',
+          mcu: str(payload.mcu),
+          counts: `幽灵 ${num(counts.ghost)} / 闲置 ${num(counts.idle)} / 方向冲突 ${num(counts.direction)}`
+            + `（核对了 ${num(payload.checked)} 个配置脚）`,
+          ghost: (Array.isArray(payload.ghost) ? payload.ghost : [])
+            .map((raw) => {
+              const row = (raw ?? {}) as Record<string, unknown>
+              return `${str(row.pin)} ← ${str(row.firmware)}（${str(row.why)}）`
+            }),
+          direction: (Array.isArray(payload.direction) ? payload.direction : [])
+            .map((raw) => {
+              const row = (raw ?? {}) as Record<string, unknown>
+              return `${str(row.pin)} ← ${str(row.firmware)}（${str(row.why)}）`
+            }),
+          idle: (Array.isArray(payload.idle) ? payload.idle : [])
+            .map((raw) => {
+              const row = (raw ?? {}) as Record<string, unknown>
+              return `${str(row.pin)} ${str(row.label)}`
+            }),
+          notes: (Array.isArray(payload.findings) ? payload.findings : []).map((x) => str(x)),
+        }
+      }
+
+      if (action === 'scaffold') {
+        const cliArgs = [project, ...opt]
+        const target = str(a.target)
+        if (target) cliArgs.push(`--target=${target}`)
+        const driversArg = str(a.drivers)
+        if (driversArg) cliArgs.push(`--drivers=${driversArg}`)
+        const payload = await design('fw-scaffold', ...cliArgs)
+        return {
+          ...base,
+          action: 'scaffold',
+          status: str(payload.status),
+          ok: str(payload.status) === 'ok',
+          mcu: str(payload.mcu),
+          target: str(payload.target),
+          out: str(payload.out),
+          files: num(payload.count),
+          notes: (Array.isArray(payload.findings) ? payload.findings : []).map((x) => str(x)),
+        }
+      }
+
+      const payload = await design('pinmap-gen', project, ...opt)
+      return {
+        ...base,
+        action: 'pins',
+        status: str(payload.status),
+        ok: str(payload.status) === 'ok',
+        mcu: str(payload.mcu),
+        header: str(payload.header),
+        assignments: num(payload.assignments),
+        macros: (Array.isArray(payload.macros) ? payload.macros : []).slice(0, 10).join(' '),
+        notes: (Array.isArray(payload.findings) ? payload.findings : []).map((x) => str(x)),
+      }
+    },
+  })))
+
+  // ---- 3s. hw_physical ----------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_physical',
+    description:
+      '实物测试 + 参数校准。action=list 看记录与统计（reproduced / not_reproduced / untried '
+      + '三类分开数）；record 记一条（fail **必须**写 observed；implicated 的位号必须在设计里；'
+      + 'sim_reproduced 是三态，none=没试过 ≠ false）；calibrate 用一条实测失败校准仿真参数，'
+      + '**采纳标准是「旧设计在新参数下复现录像里的失败」，不是「新设计能过」**（每次 ≤2 个参数）；'
+      + 'sheet 把视频拼成缩略图（要 ffmpeg）。'
+      + '实测失败进 handoff 的 external 类，**不进阻断**。',
+    parameters: {
+      action: { type: 'string', description: 'list（默认）/ record / calibrate / sheet / info' },
+      project: { type: 'string', description: '工程目录名' },
+      test: { type: 'string', description: 'record：写了什么测试；calibrate：对应哪条记录 id' },
+      result: { type: 'string', description: 'record：pass / fail / unknown' },
+      observed: { type: 'string', description: 'record：看到什么现象（fail 必填）' },
+      implicated: { type: 'string', description: 'record：牵涉的位号（逗号分隔，如 ref:W2,ref:M2）' },
+      video: { type: 'string', description: 'record：视频路径' },
+      simParams: { type: 'string', description: 'record：用哪套参数仿的（如 initial）' },
+      reproduced: { type: 'string', description: 'record：true / false / none（没试过）' },
+      candidates: { type: 'string', description: 'calibrate：JSON 数组，每个元素是一组参数' },
+      old: { type: 'string', description: 'calibrate：旧设计工程名（不给则与当前相同）' },
+      archive: { type: 'boolean', description: 'calibrate：落盘成对存档 sim_params/initial+learned' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          action: { type: 'string' },
+          status: { type: 'string' },
+          ok: { type: 'boolean' },
+          total: { type: 'number' },
+          byResult: { type: 'string' },
+          reproduced: { type: 'number' },
+          notReproduced: { type: 'number' },
+          untried: { type: 'number' },
+          failedUnreproduced: { type: 'string' },
+          accepted: { type: 'boolean' },
+          adopted: { type: 'string' },
+          attempts: { type: 'array', items: { type: 'string' } },
+          archiveFiles: { type: 'string' },
+          notes: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          action: string; status: string; ok: boolean; total: number
+          byResult: string; reproduced: number; notReproduced: number
+          untried: number; failedUnreproduced: string; accepted: boolean
+          adopted: string; attempts: string[]; archiveFiles: string
+          notes: string[]
+        }
+        const head = `# hw_physical ${v.action}：${v.status}`
+        const body: string[] = []
+        if (v.total > 0) {
+          body.push(`记录 ${v.total} 条：${v.byResult}`)
+          body.push(`仿真复现 ${v.reproduced} / 没复现 ${v.notReproduced} / 没试过 ${v.untried}`)
+          if (v.failedUnreproduced) body.push(`! 失败且仿真没复现：${v.failedUnreproduced}`)
+        }
+        if (v.adopted) body.push(`采纳：${v.adopted}（验收=${v.accepted ? '通过' : '未通过'}）`)
+        for (const row of v.attempts.slice(0, 8)) body.push(`* ${row}`)
+        if (v.archiveFiles) body.push(`存档：${v.archiveFiles}`)
+        for (const note of v.notes.slice(0, 5)) body.push(`· ${note}`)
+        return text(head, ...body)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        action?: unknown; project?: unknown; test?: unknown; result?: unknown
+        observed?: unknown; implicated?: unknown; video?: unknown
+        simParams?: unknown; reproduced?: unknown; candidates?: unknown
+        old?: unknown; archive?: unknown
+      }
+      const project = str(a.project)
+      const action = str(a.action) || 'list'
+      const base = {
+        action, status: 'ok', ok: true, total: 0, byResult: '',
+        reproduced: 0, notReproduced: 0, untried: 0, failedUnreproduced: '',
+        accepted: false, adopted: '', attempts: [] as string[],
+        archiveFiles: '', notes: [] as string[],
+      }
+      if (action === 'info') {
+        const payload = await design('physical')
+        return { ...base, action: 'info', status: str(payload.status, 'ok'),
+          notes: [str(payload.sim_reproduced), str(payload.reference_rule)] }
+      }
+      if (project === '') throw new Error('需要 project')
+
+      if (action === 'sheet') {
+        const video = str(a.video)
+        if (!video) throw new Error('sheet 需要 video')
+        const payload = await design('contact-sheet', video)
+        return { ...base, action: 'sheet', status: str(payload.status),
+          notes: [str(payload.reason), str(payload.command)].filter((x) => x !== '') }
+      }
+
+      if (action === 'record') {
+        const cliArgs = [project, '--record', `--test=${str(a.test)}`,
+          `--result=${str(a.result)}`]
+        const observed = str(a.observed)
+        if (observed) cliArgs.push(`--observed=${observed}`)
+        const implicated = str(a.implicated)
+        if (implicated) cliArgs.push(`--implicated=${implicated}`)
+        const video = str(a.video)
+        if (video) cliArgs.push(`--video=${video}`)
+        const simParams = str(a.simParams)
+        if (simParams) cliArgs.push(`--sim-params=${simParams}`)
+        const reproduced = str(a.reproduced)
+        if (reproduced) cliArgs.push(`--reproduced=${reproduced}`)
+        const payload = await design('physical', ...cliArgs)
+        const summary = (payload.summary ?? {}) as Record<string, unknown>
+        const counts = (summary.by_result ?? {}) as Record<string, unknown>
+        return {
+          ...base,
+          action: 'record',
+          status: str(payload.status),
+          ok: str(payload.status) === 'ok',
+          total: num(summary.total),
+          byResult: `fail ${num(counts.fail)} / pass ${num(counts.pass)} / unknown ${num(counts.unknown)}`,
+          reproduced: num(summary.reproduced),
+          notReproduced: num(summary.not_reproduced),
+          untried: num(summary.untried),
+          notes: (Array.isArray(payload.findings) ? payload.findings : []).map((x) => str(x)),
+        }
+      }
+
+      if (action === 'calibrate') {
+        const candidates = str(a.candidates)
+        if (!candidates) throw new Error('calibrate 需要 candidates（JSON 数组）')
+        const cliArgs = [project, `--candidates=${candidates}`]
+        const test = str(a.test)
+        if (test) cliArgs.push(`--test=${test}`)
+        const old = str(a.old)
+        if (old) cliArgs.push(`--old=${old}`)
+        if (a.archive === true) cliArgs.push('--archive')
+        const payload = await design('calibrate', ...cliArgs)
+        const adopted = (payload.adopted ?? {}) as Record<string, unknown>
+        const archive = (payload.archive ?? {}) as Record<string, unknown>
+        return {
+          ...base,
+          action: 'calibrate',
+          status: str(payload.status),
+          ok: str(payload.status) === 'ok',
+          accepted: payload.accepted === true,
+          adopted: Object.entries(adopted).map(([k, v]) => `${k}=${String(v)}`).join(' '),
+          attempts: (Array.isArray(payload.attempts) ? payload.attempts : [])
+            .map((raw) => {
+              const row = (raw ?? {}) as Record<string, unknown>
+              const keys = Object.keys((row.params ?? {}) as Record<string, unknown>)
+              return `${row.adopted === true ? '采纳' : '拒绝'} ${keys.join(',')}`
+                + `（旧=${str(row.old_status)} 新=${str(row.new_status)}`
+                + `${row.reason ? ' ' + str(row.reason) : ''}）`
+            }),
+          archiveFiles: archive.learned ? `${str(archive.initial)} + ${str(archive.learned)}` : '',
+          notes: (Array.isArray(payload.notes) ? payload.notes : []).map((x) => str(x)),
+        }
+      }
+
+      const payload = await design('physical', project)
+      const tests = (payload.tests ?? {}) as Record<string, unknown>
+      const counts = (tests.by_result ?? {}) as Record<string, unknown>
+      const unrepro = (tests.failed_unreproduced ?? []) as unknown[]
+      return {
+        ...base,
+        action: 'list',
+        status: str(payload.status),
+        total: num(tests.total),
+        byResult: `fail ${num(counts.fail)} / pass ${num(counts.pass)} / unknown ${num(counts.unknown)}`,
+        reproduced: num(tests.reproduced),
+        notReproduced: num(tests.not_reproduced),
+        untried: num(tests.untried),
+        failedUnreproduced: unrepro.map((x) => str(x)).join(', '),
+        notes: [str(tests.note)],
       }
     },
   })))

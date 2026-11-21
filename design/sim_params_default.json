@@ -1,0 +1,1144 @@
+{
+ "schema": "hwv-sim-params/1",
+ "label": "initial",
+ "origin": "ported from RoboBuilder v1 (MIT) initial.json — public part data, not measured by us",
+ "note": "**全量搬运**：RoboBuilder 的 136 项物理参数，按物理域分组。universal=True 的项任何刚体仿真都用得上（dt/mu/dt 之类）；universal=False 的项只有对应机构存在时才有意义（stud 只对凸柱式连接、mesh 只对齿轮、chain 只对链条）。**不删，标记** —— 无人机用不到 stud_*，但参数表保留它们，P16 只在设计里真的出现 stud 关系时才读那组。全部 source=public：这不是我们实测的值，参与硬判定前必须 promote。",
+ "groups": [
+  "axle",
+  "cable",
+  "chain",
+  "cord",
+  "course",
+  "mechanism",
+  "mesh",
+  "motor",
+  "program",
+  "pullback",
+  "rack",
+  "servo",
+  "solver",
+  "stud",
+  "tread",
+  "tyre"
+ ],
+ "params": {
+  "dt": {
+   "value": 0.0005,
+   "group": "solver",
+   "unit": "s",
+   "note": "仿真步长；越小越准越慢",
+   "universal": true,
+   "source": "public"
+  },
+  "m_stall_nm": {
+   "value": 0.075,
+   "group": "motor",
+   "unit": "N·m",
+   "note": "M 电机满占空比堵转扭矩",
+   "universal": true,
+   "source": "public"
+  },
+  "m_no_load_rad_s": {
+   "value": 41.9,
+   "group": "motor",
+   "unit": "rad/s",
+   "note": "M 电机空载转速",
+   "universal": true,
+   "source": "public"
+  },
+  "motor_friction": {
+   "value": 0.15,
+   "group": "motor",
+   "unit": "-",
+   "note": "运行摩擦（占堵转扭矩的比例）",
+   "universal": true,
+   "source": "public"
+  },
+  "motor_static": {
+   "value": 0.45,
+   "group": "motor",
+   "unit": "-",
+   "note": "启动静摩擦（占堵转扭矩的比例）",
+   "universal": true,
+   "source": "public"
+  },
+  "l_stall_nm": {
+   "value": 0.13,
+   "group": "motor",
+   "unit": "N·m",
+   "note": "L 电机满占空比堵转扭矩",
+   "universal": true,
+   "source": "public"
+  },
+  "level_exp": {
+   "value": 0.45,
+   "group": "motor",
+   "unit": "-",
+   "note": "档位→驱动比曲线指数 (L/7)**this",
+   "universal": true,
+   "source": "public"
+  },
+  "rotor_j": {
+   "value": 2e-05,
+   "group": "motor",
+   "unit": "kg·m²",
+   "note": "折算到输出轴的转子惯量",
+   "universal": true,
+   "source": "public"
+  },
+  "ir_latency_s": {
+   "value": 0.035,
+   "group": "motor",
+   "unit": "s",
+   "note": "红外指令延迟",
+   "universal": false,
+   "source": "public"
+  },
+  "axle_fric_nm": {
+   "value": 0.0005,
+   "group": "axle",
+   "unit": "N·m",
+   "note": "轴在孔内转动的摩擦",
+   "universal": true,
+   "source": "public"
+  },
+  "mesh_drag_nm": {
+   "value": 0.0,
+   "group": "mesh",
+   "unit": "N·m",
+   "note": "啮合齿轮副的空载阻力（作用在慢轴）",
+   "universal": false,
+   "source": "public"
+  },
+  "mesh_mixed_k": {
+   "value": 1.0,
+   "group": "mesh",
+   "unit": "-",
+   "note": "双斜齿与直齿啮合时的齿力承载系数",
+   "universal": false,
+   "source": "public"
+  },
+  "mesh_axial_k": {
+   "value": 0.0,
+   "group": "mesh",
+   "unit": "-",
+   "note": "双斜齿当直齿用时的轴向推力/齿力",
+   "universal": false,
+   "source": "public"
+  },
+  "mesh_mu": {
+   "value": 0.0,
+   "group": "mesh",
+   "unit": "-",
+   "note": "齿面滑动损耗 drag += mu·齿间力·半径",
+   "universal": false,
+   "source": "public"
+  },
+  "pwm_beta": {
+   "value": 0.0,
+   "group": "motor",
+   "unit": "-",
+   "note": "反电动势随占空比的指数修正 duty**this",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_pull_n": {
+   "value": 1.2,
+   "group": "stud",
+   "unit": "N",
+   "note": "单个凸柱的抗拔力",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_load_tau": {
+   "value": 0.002,
+   "group": "stud",
+   "unit": "s",
+   "note": "凸柱载荷的平滑时间（冲击只有毫秒）",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_slip_vmax": {
+   "value": 0.01,
+   "group": "stud",
+   "unit": "m/s",
+   "note": "凸柱滑出的最快速度（冲击尖峰不会弹出）",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_rock_nmm": {
+   "value": 22.0,
+   "group": "stud",
+   "unit": "N·mm",
+   "note": "单个凸柱在孔内抗摇摆的力矩",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_pull_brick_n": {
+   "value": 1.32,
+   "group": "stud",
+   "unit": "N",
+   "note": "板与砖之间的抗拔力（管更紧）",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_push_n": {
+   "value": 4.0,
+   "group": "stud",
+   "unit": "N",
+   "note": "把拔出的凸柱压回去的力",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_height_mm": {
+   "value": 1.7,
+   "group": "stud",
+   "unit": "mm",
+   "note": "滑出这么远就脱开",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_slip_k": {
+   "value": 30000.0,
+   "group": "stud",
+   "unit": "N/m",
+   "note": "滑移增量 = 超出力/此值",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_slip_weaken": {
+   "value": 0.0,
+   "group": "stud",
+   "unit": "-",
+   "note": "部分滑出后强度按比例保留（0=全强度直到脱开）",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_shear_n": {
+   "value": 60.0,
+   "group": "stud",
+   "unit": "N",
+   "note": "剪断凸柱的剪切载荷",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_r_m": {
+   "value": 0.0024,
+   "group": "stud",
+   "unit": "m",
+   "note": "剥离力臂",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_peel_k": {
+   "value": 2.4,
+   "group": "stud",
+   "unit": "-",
+   "note": "被撬开时能承受直线拉力的倍数",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_spread": {
+   "value": 0.15,
+   "group": "stud",
+   "unit": "-",
+   "note": "凸柱之间的强度离散度（标准差，比例）",
+   "universal": false,
+   "source": "public"
+  },
+  "seed": {
+   "value": 0,
+   "group": "solver",
+   "unit": "-",
+   "note": "随机种子（凸柱强度分布用）",
+   "universal": true,
+   "source": "public"
+  },
+  "mu_rod": {
+   "value": 0.0,
+   "group": "tyre",
+   "unit": "-",
+   "note": "塑料对打印 PLA 凸条（0=mu_board）",
+   "universal": false,
+   "source": "public"
+  },
+  "mu_board": {
+   "value": 0.42,
+   "group": "tyre",
+   "unit": "-",
+   "note": "硬塑料对泡芯板（板面滑移角）",
+   "universal": true,
+   "source": "public"
+  },
+  "axle_slide": {
+   "value": true,
+   "group": "axle",
+   "unit": "-",
+   "note": "轴能否沿孔滑动",
+   "universal": true,
+   "source": "public"
+  },
+  "axle_slide_fric_n": {
+   "value": 0.3,
+   "group": "axle",
+   "unit": "N",
+   "note": "轴滑动摩擦",
+   "universal": true,
+   "source": "public"
+  },
+  "shaft_grip_n": {
+   "value": 3.0,
+   "group": "axle",
+   "unit": "N",
+   "note": "十字孔里的轴超过此力被拔出",
+   "universal": false,
+   "source": "public"
+  },
+  "slide_stop_solref": {
+   "value": [
+    0.002,
+    1.0
+   ],
+   "group": "axle",
+   "unit": "s",
+   "note": "轴端止挡的软度",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_solref": {
+   "value": [
+    0.001,
+    1.0
+   ],
+   "group": "stud",
+   "unit": "s",
+   "note": "凸柱点约束的软度（弯曲）",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_solimp": {
+   "value": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "group": "stud",
+   "unit": "-",
+   "note": "凸柱约束阻抗",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_torquescale": {
+   "value": 0.003,
+   "group": "stud",
+   "unit": "-",
+   "note": "旋转行按凸柱半径缩放",
+   "universal": false,
+   "source": "public"
+  },
+  "stud_k_n_m": {
+   "value": 0.0,
+   "group": "stud",
+   "unit": "N/m",
+   "note": ">0 时每个凸柱点约束用此刚度（否则按同步长）",
+   "universal": false,
+   "source": "public"
+  },
+  "bearing_k_n_m": {
+   "value": 0.0,
+   "group": "axle",
+   "unit": "N/m",
+   "note": ">0 时轴/销在孔内用此刚度",
+   "universal": true,
+   "source": "public"
+  },
+  "stiff_imp": {
+   "value": 0.99,
+   "group": "solver",
+   "unit": "-",
+   "note": "刚化约束的阻抗（近 1 表示靠参考弹簧给刚度）",
+   "universal": true,
+   "source": "public"
+  },
+  "bearing_solref": {
+   "value": [
+    0.001,
+    1.0
+   ],
+   "group": "axle",
+   "unit": "s",
+   "note": "轴承约束软度",
+   "universal": true,
+   "source": "public"
+  },
+  "bearing_solimp": {
+   "value": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "group": "axle",
+   "unit": "-",
+   "note": "轴承约束阻抗",
+   "universal": true,
+   "source": "public"
+  },
+  "mesh_solref": {
+   "value": [
+    0.002,
+    1.0
+   ],
+   "group": "mesh",
+   "unit": "s",
+   "note": "啮合约束的软度",
+   "universal": false,
+   "source": "public"
+  },
+  "mesh_cap_n": {
+   "value": 40.0,
+   "group": "mesh",
+   "unit": "N",
+   "note": "完全啮合时跳齿前的齿力上限",
+   "universal": false,
+   "source": "public"
+  },
+  "addendum_mm": {
+   "value": 0.85,
+   "group": "mesh",
+   "unit": "mm",
+   "note": "齿顶高（决定节圆与传动比）",
+   "universal": false,
+   "source": "public"
+  },
+  "mesh_cap_z_exp": {
+   "value": 1.0,
+   "group": "mesh",
+   "unit": "-",
+   "note": "跳齿力随(较小齿数/12)**this 缩放",
+   "universal": false,
+   "source": "public"
+  },
+  "chain_cap_n": {
+   "value": 30.0,
+   "group": "chain",
+   "unit": "N",
+   "note": "链条跳齿的张力上限",
+   "universal": false,
+   "source": "public"
+  },
+  "chain_cap_n_per_tooth": {
+   "value": 0.0,
+   "group": "chain",
+   "unit": "N/齿",
+   "note": ">0 时按较小链轮齿数算跳齿张力",
+   "universal": false,
+   "source": "public"
+  },
+  "chain_engage_mm": {
+   "value": [],
+   "group": "chain",
+   "unit": "mm",
+   "note": "(近/远/轴向) 链轮距离在窗口内才传动",
+   "universal": false,
+   "source": "public"
+  },
+  "pressure_deg": {
+   "value": 20.0,
+   "group": "mesh",
+   "unit": "°",
+   "note": "压力角（齿形）",
+   "universal": false,
+   "source": "public"
+  },
+  "engage_off": {
+   "value": 0.15,
+   "group": "mesh",
+   "unit": "-",
+   "note": "啮合度低于此值脱开",
+   "universal": false,
+   "source": "public"
+  },
+  "mesh_slip_frac": {
+   "value": 1.0,
+   "group": "mesh",
+   "unit": "-",
+   "note": "打滑时的平均齿力（占跳齿力比例）",
+   "universal": false,
+   "source": "public"
+  },
+  "mesh_reengage": {
+   "value": true,
+   "group": "mesh",
+   "unit": "-",
+   "note": "脱开后重新啮合是棘轮式还是直接锁死",
+   "universal": false,
+   "source": "public"
+  },
+  "mesh_clutch": {
+   "value": false,
+   "group": "mesh",
+   "unit": "-",
+   "note": "把啮合当隐式滑动离合器（防一步内传递无界冲量）",
+   "universal": false,
+   "source": "public"
+  },
+  "mesh_lock_v": {
+   "value": 0.03,
+   "group": "mesh",
+   "unit": "m/s",
+   "note": "棘轮重新锁死所需的齿面滑动速度下限",
+   "universal": false,
+   "source": "public"
+  },
+  "mesh_clutch_imp": {
+   "value": 0.9999,
+   "group": "mesh",
+   "unit": "-",
+   "note": "离合粘着摩擦的阻抗",
+   "universal": false,
+   "source": "public"
+  },
+  "mesh_slip_v": {
+   "value": 0.005,
+   "group": "mesh",
+   "unit": "m/s",
+   "note": "超过此齿面速度算棘轮",
+   "universal": false,
+   "source": "public"
+  },
+  "mesh_mixed_gap_mm": {
+   "value": 0.0,
+   "group": "mesh",
+   "unit": "mm",
+   "note": "双斜齿与直齿的间隙→齿力衰减",
+   "universal": false,
+   "source": "public"
+  },
+  "judge_at_goal_s": {
+   "value": 1.0,
+   "group": "course",
+   "unit": "s",
+   "note": "到达后多久判终点状态（是否立住）",
+   "universal": true,
+   "source": "public"
+  },
+  "tyre_torsion_m": {
+   "value": 0.002,
+   "group": "tyre",
+   "unit": "m",
+   "note": "轮胎扭转摩擦长度 torque = this·法向力",
+   "universal": false,
+   "source": "public"
+  },
+  "tyre_fillet_mm": {
+   "value": 0.0,
+   "group": "tyre",
+   "unit": "mm",
+   "note": "轮胎肩部圆角半径（0=锐边圆柱）",
+   "universal": false,
+   "source": "public"
+  },
+  "mu_tyre_floor": {
+   "value": 0.8,
+   "group": "tyre",
+   "unit": "-",
+   "note": "轮胎对地面摩擦系数",
+   "universal": true,
+   "source": "public"
+  },
+  "mu_tyre_ramp": {
+   "value": 0.8,
+   "group": "tyre",
+   "unit": "-",
+   "note": "轮胎对斜坡摩擦系数",
+   "universal": true,
+   "source": "public"
+  },
+  "mu_tyre_rod": {
+   "value": 0.0,
+   "group": "tyre",
+   "unit": "-",
+   "note": "轮胎对打印凸条（0=用 mu_tyre_floor）",
+   "universal": false,
+   "source": "public"
+  },
+  "mu_abs": {
+   "value": 0.4,
+   "group": "tyre",
+   "unit": "-",
+   "note": "ABS 摩擦系数",
+   "universal": true,
+   "source": "public"
+  },
+  "tyre_solref": {
+   "value": [
+    0.012,
+    0.9
+   ],
+   "group": "tyre",
+   "unit": "s",
+   "note": "橡胶轮胎接触软度（冲击下几 mm 压缩）",
+   "universal": true,
+   "source": "public"
+  },
+  "shrink_mm": {
+   "value": 0.25,
+   "group": "tyre",
+   "unit": "mm",
+   "note": "碰撞盒收缩量（贴合件不互顶）",
+   "universal": true,
+   "source": "public"
+  },
+  "settle_s": {
+   "value": 0.5,
+   "group": "course",
+   "unit": "s",
+   "note": "开跑前静置时间",
+   "universal": true,
+   "source": "public"
+  },
+  "program_late_s": {
+   "value": 0.0,
+   "group": "program",
+   "unit": "s",
+   "note": "（可靠性扰动）首条之后的指令全部延后这么多",
+   "universal": true,
+   "source": "public"
+  },
+  "pin_slide_n": {
+   "value": 8.0,
+   "group": "axle",
+   "unit": "N",
+   "note": "把摩擦销沿孔推动的力",
+   "universal": false,
+   "source": "public"
+  },
+  "pin_friction_nm": {
+   "value": 0.004,
+   "group": "axle",
+   "unit": "N·m",
+   "note": "转动摩擦销的力矩",
+   "universal": false,
+   "source": "public"
+  },
+  "cables": {
+   "value": true,
+   "group": "cable",
+   "unit": "-",
+   "note": "是否仿真线缆",
+   "universal": false,
+   "source": "public"
+  },
+  "cable_taped": {
+   "value": true,
+   "group": "cable",
+   "unit": "-",
+   "note": "线缆沿车身固定（无自由环）",
+   "universal": false,
+   "source": "public"
+  },
+  "stiff_tc_min_dt": {
+   "value": 2.0,
+   "group": "solver",
+   "unit": "步",
+   "note": "刚化关节的时间常数下限（防轻件失稳）",
+   "universal": true,
+   "source": "public"
+  },
+  "spawn_touch_m": {
+   "value": 0.0001,
+   "group": "solver",
+   "unit": "m",
+   "note": "生成时这么近的件不加接触（贴合装配避免互顶）",
+   "universal": true,
+   "source": "public"
+  },
+  "board_solref": {
+   "value": [],
+   "group": "course",
+   "unit": "s",
+   "note": "场地件接触软度",
+   "universal": true,
+   "source": "public"
+  },
+  "course_dynamic": {
+   "value": [
+    "ramp",
+    "seesaw"
+   ],
+   "group": "course",
+   "unit": "-",
+   "note": "动态场地件（斜坡/跷跷板）",
+   "universal": false,
+   "source": "public"
+  },
+  "cord_dynamic": {
+   "value": true,
+   "group": "cord",
+   "unit": "-",
+   "note": "绳是否在载荷下变形",
+   "universal": false,
+   "source": "public"
+  },
+  "cord_tension_n": {
+   "value": 25.0,
+   "group": "cord",
+   "unit": "N",
+   "note": "绳的张力（点载荷下的下垂量由它决定）",
+   "universal": false,
+   "source": "public"
+  },
+  "cord_tyre_solref": {
+   "value": [],
+   "group": "cord",
+   "unit": "s",
+   "note": "轮胎-绳接触软度（空=tyre_solref）",
+   "universal": false,
+   "source": "public"
+  },
+  "cord_bodies": {
+   "value": false,
+   "group": "cord",
+   "unit": "-",
+   "note": "绳作为动态链段而非 mocap",
+   "universal": false,
+   "source": "public"
+  },
+  "cord_damp_ns_m": {
+   "value": 0.5,
+   "group": "cord",
+   "unit": "N·s/m",
+   "note": "（链式）节点滑动阻尼",
+   "universal": false,
+   "source": "public"
+  },
+  "cord_tau_s": {
+   "value": 0.003,
+   "group": "cord",
+   "unit": "s",
+   "note": "（链式）铰链阻尼/刚度",
+   "universal": false,
+   "source": "public"
+  },
+  "cord_nodes": {
+   "value": true,
+   "group": "cord",
+   "unit": "-",
+   "note": "按节点分配载荷（多点）而非质心单点",
+   "universal": false,
+   "source": "public"
+  },
+  "cord_vertical_load": {
+   "value": true,
+   "group": "cord",
+   "unit": "-",
+   "note": "按垂直接触合力变形",
+   "universal": false,
+   "source": "public"
+  },
+  "cord_sag0_mm": {
+   "value": 1.0,
+   "group": "cord",
+   "unit": "mm",
+   "note": "空载中跨下垂量",
+   "universal": false,
+   "source": "public"
+  },
+  "cord_tau": {
+   "value": 0.15,
+   "group": "cord",
+   "unit": "s",
+   "note": "载荷平滑时间",
+   "universal": false,
+   "source": "public"
+  },
+  "cable_mass_g": {
+   "value": 5.0,
+   "group": "cable",
+   "unit": "g",
+   "note": "单根电机线质量",
+   "universal": false,
+   "source": "public"
+  },
+  "cable_r_m": {
+   "value": 0.0013,
+   "group": "cable",
+   "unit": "m",
+   "note": "扁线等效圆半径",
+   "universal": false,
+   "source": "public"
+  },
+  "cable_bend": {
+   "value": 40000000.0,
+   "group": "cable",
+   "unit": "Pa",
+   "note": "线的弯曲模量",
+   "universal": false,
+   "source": "public"
+  },
+  "cable_twist": {
+   "value": 10000000.0,
+   "group": "cable",
+   "unit": "-",
+   "note": "线的扭转模量",
+   "universal": false,
+   "source": "public"
+  },
+  "cable_damping": {
+   "value": 2e-05,
+   "group": "cable",
+   "unit": "-",
+   "note": "线的阻尼",
+   "universal": false,
+   "source": "public"
+  },
+  "cable_contact": {
+   "value": true,
+   "group": "cable",
+   "unit": "-",
+   "note": "自由线是否与场地接触",
+   "universal": false,
+   "source": "public"
+  },
+  "cable_armature": {
+   "value": 0.0,
+   "group": "cable",
+   "unit": "kg·m²",
+   "note": "每个线关节的额外惯量（防数值爆炸）",
+   "universal": false,
+   "source": "public"
+  },
+  "plug_pull_n": {
+   "value": 6.0,
+   "group": "cable",
+   "unit": "N",
+   "note": "电源插头拔脱力",
+   "universal": false,
+   "source": "public"
+  },
+  "tyre_mu_exp": {
+   "value": 0.0,
+   "group": "tyre",
+   "unit": "-",
+   "note": "轮胎摩擦随实测 mu 缩放的指数（0=所有轮胎一样）",
+   "universal": false,
+   "source": "public"
+  },
+  "tyre_mu_ref": {
+   "value": 1.38,
+   "group": "tyre",
+   "unit": "-",
+   "note": "参考轮胎的 mu 值",
+   "universal": false,
+   "source": "public"
+  },
+  "motor_i_max": {
+   "value": 0.0,
+   "group": "motor",
+   "unit": "-",
+   "note": "每路输出电流上限（占堵转电流比例，0=无限制）",
+   "universal": true,
+   "source": "public"
+  },
+  "supply_r": {
+   "value": 0.0,
+   "group": "motor",
+   "unit": "-",
+   "note": "电池+接收器内阻/单电机绕组电阻（>0 时共用电源会互相拖垮）",
+   "universal": true,
+   "source": "public"
+  },
+  "tyre_crr": {
+   "value": 0.0,
+   "group": "tyre",
+   "unit": "-",
+   "note": "滚阻系数（阻力=crr·载荷）",
+   "universal": true,
+   "source": "public"
+  },
+  "axle_load_tau_s": {
+   "value": 0.0,
+   "group": "axle",
+   "unit": "s",
+   "note": "径向载荷的低通时间（防冲击尖峰锁死自由轮）",
+   "universal": false,
+   "source": "public"
+  },
+  "chain_jam_slack_mm": {
+   "value": 0.0,
+   "group": "chain",
+   "unit": "mm",
+   "note": "松弛超过此值的链条卡死",
+   "universal": false,
+   "source": "public"
+  },
+  "chain_jam_nm": {
+   "value": 0.5,
+   "group": "chain",
+   "unit": "N·m",
+   "note": "卡死链条对链轮的摩擦力矩",
+   "universal": false,
+   "source": "public"
+  },
+  "axle_load_fric_m": {
+   "value": 0.0,
+   "group": "axle",
+   "unit": "N·m/N",
+   "note": "自由轮轴随径向载荷增加的摩擦",
+   "universal": false,
+   "source": "public"
+  },
+  "step_nose_mm": {
+   "value": 0.0,
+   "group": "course",
+   "unit": "mm",
+   "note": "台阶前缘圆角半径",
+   "universal": false,
+   "source": "public"
+  },
+  "no_program_all7": {
+   "value": false,
+   "group": "program",
+   "unit": "-",
+   "note": "无程序时所有电机从 t=0 起 +7",
+   "universal": false,
+   "source": "public"
+  },
+  "all_skips_pullback": {
+   "value": false,
+   "group": "program",
+   "unit": "-",
+   "note": "\"all\" 不指挥发条电机",
+   "universal": false,
+   "source": "public"
+  },
+  "servo_pos": {
+   "value": false,
+   "group": "servo",
+   "unit": "-",
+   "note": "舵机按位置伺服模型驱动",
+   "universal": false,
+   "source": "public"
+  },
+  "servo_torque_nm": {
+   "value": 0.1,
+   "group": "servo",
+   "unit": "N·m",
+   "note": "舵机驱动扭矩",
+   "universal": false,
+   "source": "public"
+  },
+  "servo_w0_rad_s": {
+   "value": 13.09,
+   "group": "servo",
+   "unit": "rad/s",
+   "note": "舵机空载角速度",
+   "universal": false,
+   "source": "public"
+  },
+  "servo_dead_s": {
+   "value": 0.12,
+   "group": "servo",
+   "unit": "s",
+   "note": "指令→动作延迟",
+   "universal": false,
+   "source": "public"
+  },
+  "servo_block_s": {
+   "value": 0.25,
+   "group": "servo",
+   "unit": "s",
+   "note": "堵转这么久后放弃（直到下条指令）",
+   "universal": false,
+   "source": "public"
+  },
+  "servo_tol_deg": {
+   "value": 1.0,
+   "group": "servo",
+   "unit": "°",
+   "note": "距目标这么近就停止驱动",
+   "universal": false,
+   "source": "public"
+  },
+  "servo_kp_s": {
+   "value": 60.0,
+   "group": "servo",
+   "unit": "1/s",
+   "note": "接近段：速度指令 = kp·角度误差",
+   "universal": false,
+   "source": "public"
+  },
+  "servo_kv": {
+   "value": 4.0,
+   "group": "servo",
+   "unit": "-",
+   "note": "速度环：扭矩比例/速度误差比例",
+   "universal": false,
+   "source": "public"
+  },
+  "pullback_model": {
+   "value": false,
+   "group": "pullback",
+   "unit": "-",
+   "note": "发条电机模型启用",
+   "universal": false,
+   "source": "public"
+  },
+  "pullback_stall_nm": {
+   "value": 0.05,
+   "group": "pullback",
+   "unit": "N·m",
+   "note": "发条全绕紧扭矩",
+   "universal": false,
+   "source": "public"
+  },
+  "pullback_no_load_rad_s": {
+   "value": 62.83,
+   "group": "pullback",
+   "unit": "rad/s",
+   "note": "发条空载转速",
+   "universal": false,
+   "source": "public"
+  },
+  "pullback_turns": {
+   "value": 10.0,
+   "group": "pullback",
+   "unit": "圈",
+   "note": "满绕输出圈数",
+   "universal": false,
+   "source": "public"
+  },
+  "pullback_hold_nm": {
+   "value": 1.0,
+   "group": "pullback",
+   "unit": "N·m",
+   "note": "释放前保持扭矩",
+   "universal": false,
+   "source": "public"
+  },
+  "idler_hinge": {
+   "value": false,
+   "group": "rack",
+   "unit": "-",
+   "note": "圆孔齿轮绕轴自有铰链",
+   "universal": false,
+   "source": "public"
+  },
+  "rack_slide": {
+   "value": false,
+   "group": "rack",
+   "unit": "-",
+   "note": "齿条滑块模型（x = r·θ）",
+   "universal": false,
+   "source": "public"
+  },
+  "diff_model": {
+   "value": false,
+   "group": "mechanism",
+   "unit": "-",
+   "note": "差速器模型",
+   "universal": false,
+   "source": "public"
+  },
+  "cv_model": {
+   "value": false,
+   "group": "mechanism",
+   "unit": "-",
+   "note": "等速万向节模型",
+   "universal": false,
+   "source": "public"
+  },
+  "shock_model": {
+   "value": false,
+   "group": "mechanism",
+   "unit": "-",
+   "note": "减震模型",
+   "universal": false,
+   "source": "public"
+  },
+  "worm_lock_k": {
+   "value": 0.0,
+   "group": "mesh",
+   "unit": "-",
+   "note": "蜗轮蜗杆的自锁系数（>0 时反向不驱动）",
+   "universal": false,
+   "source": "public"
+  },
+  "knob_r_mm": {
+   "value": 0.0,
+   "group": "mechanism",
+   "unit": "mm",
+   "note": "旋钮半径",
+   "universal": false,
+   "source": "public"
+  },
+  "chain_link_mass_g": {
+   "value": 0.0,
+   "group": "chain",
+   "unit": "g",
+   "note": "单个链节质量",
+   "universal": false,
+   "source": "public"
+  },
+  "tread_model": {
+   "value": false,
+   "group": "tread",
+   "unit": "-",
+   "note": "履带模型启用",
+   "universal": false,
+   "source": "public"
+  },
+  "tread_mu_3873": {
+   "value": 0.0,
+   "group": "tread",
+   "unit": "-",
+   "note": "履带摩擦（3873）",
+   "universal": false,
+   "source": "public"
+  },
+  "tread_mu_57518": {
+   "value": 0.0,
+   "group": "tread",
+   "unit": "-",
+   "note": "履带摩擦（57518）",
+   "universal": false,
+   "source": "public"
+  },
+  "tread_mu_3711": {
+   "value": 0.0,
+   "group": "tread",
+   "unit": "-",
+   "note": "履带与地面摩擦（链节型号 3711）",
+   "universal": false,
+   "source": "public"
+  },
+  "tread_spacing_mm": {
+   "value": 6.4,
+   "group": "tread",
+   "unit": "mm",
+   "note": "履带节点间距",
+   "universal": false,
+   "source": "public"
+  },
+  "rack_lock_v": {
+   "value": 0.005,
+   "group": "rack",
+   "unit": "-",
+   "note": "齿条自锁速度",
+   "universal": false,
+   "source": "public"
+  },
+  "rack_pinion_armature": {
+   "value": 5e-07,
+   "group": "rack",
+   "unit": "kg·m²",
+   "note": "齿条小齿轮惯量",
+   "universal": false,
+   "source": "public"
+  }
+ }
+}

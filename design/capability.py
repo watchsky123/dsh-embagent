@@ -30,6 +30,10 @@
 
 from __future__ import annotations
 
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 #: 能力表。键是型号（小写），值是能力描述。
@@ -202,10 +206,158 @@ CAPABILITY: dict[str, dict[str, Any]] = {
 #: 可信的能力来源。**其他一律不参与选择**（见模块开头纪律）。
 TRUSTED_SOURCES = frozenset({"datasheet", "measured"})
 
+# ---------------------------------------------------------------------------
+# 覆盖层（P19）：目录数据与人工确认的数据
+# ---------------------------------------------------------------------------
+#
+# 内置表 `CAPABILITY` 是**手写的、每条都有出处**的 14 个型号。
+# 目录（LCSC）能把它扩到目录级，但目录数据是 **catalog 级**：
+#
+#   estimated(0) < catalog(1) < datasheet(2) < measured(3)
+#
+# 所以覆盖层分成两个文件，**文件名本身就是信任级**：
+#
+#   catalog_parts.json       source="catalog"    进 rejected，不进选型
+#   capability_promoted.json source="datasheet"  人工核对手册后升级
+#
+# 为什么分成两个文件而不是一个带 flag 的：升级是**移动**文件的事
+# （从目录文件删、往确认文件写），让人一眼看得出哪些是"人点过头的"。
+# 一个文件加 flag 的话，读的时候还得逐条看 flag，而写的时候容易漏改。
+
+#: 目录级条目（未确认）。模块属性，测试可以指到临时文件。
+CATALOG_FILE = Path(__file__).resolve().parent / "catalog_parts.json"
+#: 人工确认过的条目（datasheet 级）。
+PROMOTED_FILE = Path(__file__).resolve().parent / "capability_promoted.json"
+
+#: 覆盖层缓存。`reset_overlay()` 之后重新读盘。
+_OVERLAY: dict[str, dict[str, Any]] | None = None
+
+#: 目录条目的原因文案 —— `explain_miss` 与验收都靠它认这一档。
+CATALOG_REASON = "source=catalog 未确认（parts-promote --datasheet 后可进选型）"
+
+
+def _read_entries(path: Path) -> dict[str, dict[str, Any]]:
+    """宽松读一个覆盖文件。坏文件当没有——它是扩展，不是事实源。"""
+    try:
+        if not path.is_file():
+            return {}
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    rows = raw.get("entries") if isinstance(raw, dict) else None
+    if not isinstance(rows, dict):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for key, value in rows.items():
+        if isinstance(value, dict) and value:
+            out[str(key).lower()] = dict(value)
+    return out
+
+
+def overlay() -> dict[str, dict[str, Any]]:
+    """`catalog_parts.json` + `capability_promoted.json` 合并视图。"""
+    global _OVERLAY
+    if _OVERLAY is None:
+        merged: dict[str, dict[str, Any]] = {}
+        merged.update(_read_entries(CATALOG_FILE))
+        # 确认过的覆盖目录（同一个型号两边都有时以确认为准）
+        merged.update(_read_entries(PROMOTED_FILE))
+        _OVERLAY = merged
+    return _OVERLAY
+
+
+def reset_overlay() -> None:
+    """丢掉缓存，下次重新读盘（写完之后、测试里都要调）。"""
+    global _OVERLAY
+    _OVERLAY = None
+
+
+def entries() -> dict[str, dict[str, Any]]:
+    """内置表 + 覆盖层。**所有判定都走这一个视图。**"""
+    merged: dict[str, dict[str, Any]] = dict(CAPABILITY)
+    merged.update(overlay())
+    return merged
+
+
+# -- 写盘（唯一的两个写入点，都在这里） ------------------------------------
+
+
+def _jsonable(value: Any) -> Any:
+    """set/tuple → 有序 list。**在写盘这一个点上做**，调用方不用记得。"""
+    if isinstance(value, (set, frozenset, tuple)):
+        return sorted(_jsonable(v) for v in value) if all(
+            isinstance(v, str) for v in value) else [_jsonable(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(v) for v in value]
+    return value
+
+
+def _write_entries(path: Path, rows: dict[str, dict[str, Any]]) -> bool:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "version": 1,
+            "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "entries": _jsonable(rows),
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=1),
+                        encoding="utf-8")
+        reset_overlay()
+        return True
+    except OSError:
+        return False
+
+
+def save_catalog_entry(key: str, entry: dict[str, Any]) -> bool:
+    """把一条目录数据写进 `catalog_parts.json`（**不变量**：强制 source=catalog）。
+
+    这条不变量很重要：如果调用方传了 `source="datasheet"` 进来，
+    就等于绕过"必须人确认"的闸门。这里直接覆盖成 catalog。
+    """
+    normalized = str(key or "").strip().lower()
+    if not normalized:
+        return False
+    rows = {k: v for k, v in _read_entries(CATALOG_FILE).items()}
+    merged = {**entry, "source": "catalog",
+              "catalog_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    rows[normalized] = merged
+    return _write_entries(CATALOG_FILE, rows)
+
+
+def promote_entry(key: str, entry: dict[str, Any], datasheet: str) -> dict[str, Any]:
+    """目录条目 → 确认条目。**必须带 datasheet URL 留痕。**
+
+    返回 ``{ok, reason, entry}``。不满足条件就**不写**：
+    没有手册页 = 没法说这个数据是从哪来的，那就还是目录级。
+    """
+    normalized = str(key or "").strip().lower()
+    url = str(datasheet or "").strip()
+    if not normalized:
+        return {"ok": False, "reason": "型号为空"}
+    if not url.lower().startswith(("http://", "https://")):
+        return {"ok": False, "reason": "promote 必须给 http(s) 的 --datasheet 手册页（留痕）"}
+    source_entry = {**_read_entries(CATALOG_FILE).get(normalized, {}), **entry}
+    if not source_entry:
+        return {"ok": False, "reason": f"目录里没有 {normalized!r}，先跑 parts-enrich --save"}
+    promoted = {**source_entry, "source": "datasheet", "datasheet_url": url,
+                "promoted_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    promoted.pop("catalog_at", None)
+    rows = {k: v for k, v in _read_entries(PROMOTED_FILE).items()}
+    rows[normalized] = promoted
+    ok = _write_entries(PROMOTED_FILE, rows)
+    if ok:
+        # 从目录文件里删掉：同一个型号不该两边都在
+        catalog_rows = {k: v for k, v in _read_entries(CATALOG_FILE).items()
+                        if k != normalized}
+        _write_entries(CATALOG_FILE, catalog_rows)
+    return {"ok": ok, "reason": "" if ok else "写盘失败", "entry": promoted}
+
 
 def trusted(key: str) -> bool:
     """这个型号的数据是否可信到能参与硬选择。"""
-    cap = CAPABILITY.get(key)
+    cap = entries().get(key)
     if cap is None:
         return False
     return str(cap.get("source") or "") in TRUSTED_SOURCES
@@ -245,11 +397,12 @@ def candidates(needs: set[str] | frozenset[str],
     area_limit = constraints.get("area_mm2")
     wanted = set(needs)
 
+    view = entries()
     out: list[str] = []
-    for key in sorted(CAPABILITY):
+    for key in sorted(view):
         if key in exclude:
             continue
-        cap = CAPABILITY[key]
+        cap = view[key]
         if not trusted(key):
             continue
         if role is not None and role not in set(cap.get("fills") or ()):
@@ -286,19 +439,25 @@ def explain_miss(needs: set[str] | frozenset[str],
         return {"reason": "no_needs", "detail": "没有声明需要什么能力",
                 "candidates": 0}
 
+    view = entries()
     checked = 0
     rejected: dict[str, str] = {}
-    for key in sorted(CAPABILITY):
+    for key in sorted(view):
         if key in exclude:
             rejected[key] = "excluded"
             continue
-        cap = CAPABILITY[key]
+        cap = view[key]
         checked += 1
+        # **先查信任级，再查能力。** 顺序有语义：目录条目连 fills 都没有，
+        # 先报「不是 mcu」会把真正的原因（未确认）藏起来——而那条才是
+        # 唯一能让人行动的（去 promote）。
+        if not trusted(key):
+            rejected[key] = (CATALOG_REASON
+                             if str(cap.get("source") or "") == "catalog"
+                             else f"source={cap.get('source')!r} 不可信")
+            continue
         if role is not None and role not in set(cap.get("fills") or ()):
             rejected[key] = f"不是 {role}（fills={sorted(cap.get('fills') or [])}）"
-            continue
-        if not trusted(key):
-            rejected[key] = f"source={cap.get('source')!r} 不可信"
             continue
         if not wanted <= set(cap.get("provides") or ()):
             missing = sorted(wanted - set(cap.get("provides") or ()))
@@ -322,17 +481,20 @@ def explain_miss(needs: set[str] | frozenset[str],
 
 
 def get(key: str) -> dict[str, Any] | None:
-    return CAPABILITY.get(str(key).lower())
+    return entries().get(str(key).lower())
 
 
 def describe() -> dict[str, Any]:
+    view = entries()
     by_source: dict[str, int] = {}
-    for cap in CAPABILITY.values():
+    for cap in view.values():
         src = str(cap.get("source") or "")
         by_source[src] = by_source.get(src, 0) + 1
     return {
         "module": "hw_velxio.design.capability",
-        "entries": len(CAPABILITY),
+        "entries": len(view),
+        "builtin": len(CAPABILITY),
+        "overlay": len(view) - len(CAPABILITY),
         "by_source": by_source,
         "trusted_sources": sorted(TRUSTED_SOURCES),
         "model": "窄字典 + 纯过滤，不是知识图谱",

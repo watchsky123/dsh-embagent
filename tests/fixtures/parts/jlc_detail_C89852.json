@@ -1,0 +1,90 @@
+{
+ "code": 200,
+ "message": null,
+ "data": {
+  "componentCode": "C89852",
+  "componentBrandEn": "Microchip Tech",
+  "componentModelEn": "ATTINY85-20SU",
+  "dataManualUrl": "https://www.lcsc.com/datasheet/lcsc_datasheet_2011170235_Microchip-Tech-ATTINY85-20SU_C89852.pdf",
+  "dataManualOfficialLink": "",
+  "componentNameEn": "MICROCHIP ATTINY85-20SU",
+  "componentSpecificationEn": "SOIC-8-208mil",
+  "describe": "-40℃~+85℃ 10bit 2.7V~5.5V 20MHz 512Byte 512Byte 6 8 Bit 8KB AVR Built-in FLASH SOIC-8-208mil Microcontrollers (MCU/MPU/SOC) ROHS",
+  "attributes": [
+   {
+    "attribute_name_en": "EEPROM",
+    "component_code": "C89852",
+    "attribute_value_name": "512Byte"
+   },
+   {
+    "attribute_name_en": "Operating Temperature",
+    "component_code": "C89852",
+    "attribute_value_name": "-40℃~+85℃"
+   },
+   {
+    "attribute_name_en": "CPU Maximum Speed",
+    "component_code": "C89852",
+    "attribute_value_name": "20MHz"
+   },
+   {
+    "attribute_name_en": "Program Memory Type",
+    "component_code": "C89852",
+    "attribute_value_name": "FLASH"
+   }
+  ],
+  "componentDesignator": "U",
+  "stockCount": 0,
+  "prices": [
+   {
+    "componentPriceKeyId": null,
+    "componentPriceAccessId": null,
+    "lcscComponentId": null,
+    "componentCode": "C89852",
+    "startNumber": 1,
+    "endNumber": 9,
+    "productPrice": 3.6136,
+    "erpComponentPriceKeyId": 310663225,
+    "createTime": null,
+    "updateTime": null,
+    "deleted": false,
+    "lcscPriceRangeCoefficient": 1
+   },
+   {
+    "componentPriceKeyId": null,
+    "componentPriceAccessId": null,
+    "lcscComponentId": null,
+    "componentCode": "C89852",
+    "startNumber": 10,
+    "endNumber": 29,
+    "productPrice": 3.1289,
+    "erpComponentPriceKeyId": 310663226,
+    "createTime": null,
+    "updateTime": null,
+    "deleted": false,
+    "lcscPriceRangeCoefficient": 1
+   },
+   {
+    "componentPriceKeyId": null,
+    "componentPriceAccessId": null,
+    "lcscComponentId": null,
+    "componentCode": "C89852",
+    "startNumber": 30,
+    "endNumber": 94,
+    "productPrice": 2.8253,
+    "erpComponentPriceKeyId": 310663228,
+    "createTime": null,
+    "updateTime": null,
+    "deleted": false,
+    "lcscPriceRangeCoefficient": 1
+   }
+  ],
+  "encapsulationNumber": 95,
+  "componentLibraryType": "expand",
+  "leastNumberPrice": 0.5434,
+  "lcscGoodsUrl": "https://www.lcsc.com/product-detail/microcontrollers-mcu-mpu-soc_microchip-tech-attiny85-20su_C89852.html/?href=jlc-SMT/?href=jlc-SMT",
+  "componentStatus": "yes",
+  "minPurchaseNum": 3,
+  "initialPrice": 3.6136,
+  "noBuyReason": "This product is no longer manufactured."
+ }
+}

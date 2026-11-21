@@ -1,0 +1,117 @@
+{
+ "schema": "hw_velxio.design/1",
+ "units": "mm",
+ "id": "untitled",
+ "title": "multilayer-4",
+ "board": {
+  "kind": "generic",
+  "name": "multilayer-4",
+  "outline": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    70.0,
+    0.0
+   ],
+   [
+    70.0,
+    50.0
+   ],
+   [
+    0.0,
+    50.0
+   ]
+  ],
+  "size_mm": {
+   "w": 70.0,
+   "h": 50.0
+  },
+  "thickness_mm": 1.6,
+  "mount_holes": [],
+  "px_per_mm": 3.7795
+ },
+ "parts": [
+  {
+   "ref": "U1",
+   "kind": "mcu",
+   "label": "mcu",
+   "role": "component",
+   "size_mm": {
+    "w": 5.0,
+    "h": 5.0,
+    "d": 1.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 35.0,
+    "y_mm": 25.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2",
+    "3",
+    "4"
+   ]
+  },
+  {
+   "ref": "R1",
+   "kind": "resistor",
+   "label": "resistor",
+   "role": "component",
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 15.0,
+    "y_mm": 25.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  }
+ ],
+ "nets": [
+  {
+   "net": "IO",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "1"
+    },
+    {
+     "ref": "R1",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "pins": [
+    {
+     "ref": "R1",
+     "pin": "2"
+    },
+    {
+     "ref": "U1",
+     "pin": "2"
+    }
+   ]
+  }
+ ],
+ "wires": [],
+ "meta": {}
+}

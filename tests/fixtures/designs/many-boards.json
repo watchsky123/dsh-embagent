@@ -1,0 +1,235 @@
+{
+ "schema": "hw_velxio.design/1",
+ "units": "mm",
+ "id": "untitled",
+ "title": "many-boards",
+ "board": {
+  "kind": "generic",
+  "name": "板1",
+  "outline": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    40.0,
+    0.0
+   ],
+   [
+    40.0,
+    30.0
+   ],
+   [
+    0.0,
+    30.0
+   ]
+  ],
+  "size_mm": {
+   "w": 40.0,
+   "h": 30.0
+  },
+  "thickness_mm": 1.6,
+  "mount_holes": [],
+  "px_per_mm": 3.7795,
+  "id": "B1"
+ },
+ "boards": [
+  {
+   "kind": "generic",
+   "name": "板1",
+   "outline": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     40.0,
+     0.0
+    ],
+    [
+     40.0,
+     30.0
+    ],
+    [
+     0.0,
+     30.0
+    ]
+   ],
+   "size_mm": {
+    "w": 40.0,
+    "h": 30.0
+   },
+   "thickness_mm": 1.6,
+   "mount_holes": [],
+   "px_per_mm": 3.7795,
+   "id": "B1"
+  },
+  {
+   "kind": "generic",
+   "name": "板2",
+   "outline": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     40.0,
+     0.0
+    ],
+    [
+     40.0,
+     30.0
+    ],
+    [
+     0.0,
+     30.0
+    ]
+   ],
+   "size_mm": {
+    "w": 40.0,
+    "h": 30.0
+   },
+   "thickness_mm": 1.6,
+   "mount_holes": [],
+   "px_per_mm": 3.7795,
+   "id": "B2"
+  },
+  {
+   "kind": "generic",
+   "name": "板3",
+   "outline": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     40.0,
+     0.0
+    ],
+    [
+     40.0,
+     30.0
+    ],
+    [
+     0.0,
+     30.0
+    ]
+   ],
+   "size_mm": {
+    "w": 40.0,
+    "h": 30.0
+   },
+   "thickness_mm": 1.6,
+   "mount_holes": [],
+   "px_per_mm": 3.7795,
+   "id": "B3"
+  }
+ ],
+ "parts": [
+  {
+   "ref": "U1",
+   "kind": "mcu",
+   "label": "mcu",
+   "role": "component",
+   "size_mm": {
+    "w": 5.0,
+    "h": 5.0,
+    "d": 1.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 20.0,
+    "y_mm": 15.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top",
+    "board_id": "B1"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "U2",
+   "kind": "sensor",
+   "label": "sensor",
+   "role": "component",
+   "size_mm": {
+    "w": 5.0,
+    "h": 5.0,
+    "d": 1.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 20.0,
+    "y_mm": 15.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top",
+    "board_id": "B2"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "ref": "U3",
+   "kind": "sensor",
+   "label": "sensor",
+   "role": "component",
+   "size_mm": {
+    "w": 5.0,
+    "h": 5.0,
+    "d": 1.0
+   },
+   "physical_source": "datasheet",
+   "placement": {
+    "x_mm": 20.0,
+    "y_mm": 15.0,
+    "z_mm": 0.0,
+    "rotation_z": 0,
+    "mount": "board",
+    "side": "top",
+    "board_id": "B3"
+   },
+   "pins": [
+    "1",
+    "2"
+   ]
+  }
+ ],
+ "nets": [
+  {
+   "net": "SDA",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "1"
+    },
+    {
+     "ref": "U2",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "SCL",
+   "pins": [
+    {
+     "ref": "U1",
+     "pin": "2"
+    },
+    {
+     "ref": "U2",
+     "pin": "2"
+    }
+   ]
+  }
+ ],
+ "wires": [],
+ "meta": {}
+}

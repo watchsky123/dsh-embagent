@@ -1,0 +1,60 @@
+{
+ "code": 200,
+ "data": {
+  "componentPageInfo": {
+   "total": 18,
+   "list": [
+    {
+     "componentLibraryType": "expand",
+     "stockCount": 5868,
+     "componentCode": "C8304",
+     "componentBrandEn": "STMicroelectronics",
+     "componentModelEn": "STM32F103CBT6",
+     "dataManualUrl": "https://www.lcsc.com/datasheet/lcsc_datasheet_2304140030_STMicroelectronics-STM32F103CBT6_C8304.pdf",
+     "componentSpecificationEn": "LQFP-48(7x7)",
+     "describe": "-40℃~+85℃ 128KB 12bit 20KB 2V~3.6V 32 Bit 37 72MHz ARM Cortex-M3 Built-in FLASH LQFP-48(7x7) Microcontrollers (MCU/MPU/SOC) ROHS"
+    },
+    {
+     "componentLibraryType": "expand",
+     "stockCount": 182135,
+     "componentCode": "C8734",
+     "componentBrandEn": "STMicroelectronics",
+     "componentModelEn": "STM32F103C8T6",
+     "dataManualUrl": "https://www.lcsc.com/datasheet/lcsc_datasheet_2302211130_STMicroelectronics-STM32F103C8T6_C8734.pdf",
+     "componentSpecificationEn": "LQFP-48(7x7)",
+     "describe": "-40℃~+85℃ 12bit 20KB 2V~3.6V 32 Bit 37 64KB 72MHz ARM Cortex-M3 Built-in FLASH LQFP-48(7x7) Microcontrollers (MCU/MPU/SOC) ROHS"
+    },
+    {
+     "componentLibraryType": "expand",
+     "stockCount": 552,
+     "componentCode": "C1121900",
+     "componentBrandEn": "STMicroelectronics",
+     "componentModelEn": "STM32F103C8T7",
+     "dataManualUrl": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2304140030_STMicroelectronics-STM32F103C8T7_C1121900.pdf",
+     "componentSpecificationEn": "LQFP-48(7x7)",
+     "describe": "-40℃~+105℃ 12bit 20KB 2V~3.6V 32 Bit 37 64KB 72MHz ARM Cortex-M3 Built-in FLASH LQFP-48(7x7) Microcontrollers (MCU/MPU/SOC) ROHS"
+    },
+    {
+     "componentLibraryType": "expand",
+     "stockCount": 95,
+     "componentCode": "C1338636",
+     "componentBrandEn": "STMicroelectronics",
+     "componentModelEn": "STM32F103CBT7",
+     "dataManualUrl": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2304140030_STMicroelectronics-STM32F103CBT7_C1338636.pdf",
+     "componentSpecificationEn": "LQFP-48(7x7)",
+     "describe": "-40℃~+105℃ 128KB 12bit 20KB 2V~3.6V 32 Bit 37 72MHz ARM Cortex-M3 Built-in FLASH LQFP-48(7x7) Microcontrollers (MCU/MPU/SOC) ROHS"
+    },
+    {
+     "componentLibraryType": "expand",
+     "stockCount": 2703,
+     "componentCode": "C8303",
+     "componentBrandEn": "STMicroelectronics",
+     "componentModelEn": "STM32F103C6T6A",
+     "dataManualUrl": "https://www.lcsc.com/datasheet/lcsc_datasheet_2304140030_STMicroelectronics-STM32F103C6T6A_C8303.pdf",
+     "componentSpecificationEn": "LQFP-48(7x7)",
+     "describe": "-40℃~+85℃ 10KB 12bit 2V~3.6V 32 Bit 32KB 37 72MHz ARM Cortex-M3 Built-in FLASH LQFP-48(7x7) Microcontrollers (MCU/MPU/SOC) ROHS"
+    }
+   ]
+  }
+ }
+}
