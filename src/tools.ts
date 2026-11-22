@@ -4034,7 +4034,7 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
-  // ---- 3i. hw_interface / hw_fw_algo（软件：契约 + 可跑的纯 C）-----------  // ---- 3i. hw_interface / hw_fw_algo（软件：契约 + 可跑的纯 C）-----------
+  // ---- 3i. hw_interface / hw_fw_algo（软件：契约 + 可跑的纯 C）-----------
   disposers.push(tools.register(defineTool({
     name: 'hw_interface',
     description:
@@ -4152,7 +4152,7 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
-  // ---- 3h. hw_plan ------------------------------------------------------  // ---- 3h. hw_plan ------------------------------------------------------
+  // ---- 3h. hw_plan ------------------------------------------------------
   disposers.push(tools.register(defineTool({
     name: 'hw_plan',
     description:
@@ -4248,7 +4248,7 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
-  // ---- 3g. hw_audit / hw_doctor / hw_examples / hw_fixloop（P47）--------  // ---- 3g. hw_audit / hw_doctor / hw_examples / hw_fixloop（P47）--------
+  // ---- 3g. hw_audit / hw_doctor / hw_examples / hw_fixloop（P47）--------
   disposers.push(tools.register(defineTool({
     name: 'hw_audit',
     description:
@@ -4424,7 +4424,7 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
-  // ---- 3p. hw_emit -------------------------------------------------------  // ---- 3p. hw_emit -------------------------------------------------------
+  // ---- 3p. hw_emit -------------------------------------------------------
   disposers.push(tools.register(defineTool({
     name: 'hw_emit',
     description:
@@ -5091,6 +5091,68 @@ export function registerTools(ctx: Context): Array<() => void> {
         assignments: num(payload.assignments),
         macros: (Array.isArray(payload.macros) ? payload.macros : []).slice(0, 10).join(' '),
         notes: (Array.isArray(payload.findings) ? payload.findings : []).map((x) => str(x)),
+      }
+    },
+  })))
+
+  // ---- 3t. hw_params -----------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_params',
+    description:
+      '**飞控参数 → 能力映射**：解析 `name=value` 的 `.param` 与 `MF_PARAM(...)` 参数表，'
+      + '按参数族算每条能力"参数齐不齐"。**参数只提供证据**：它说明增益有值，'
+      + '不说明环稳定——能力状态仍由 `hw_plan` 的判据定（仍是 unknown）。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名' },
+      roots: { type: 'string', description: '扫描根（分号分隔）；默认当前工作区' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          project: { type: 'string' }, status: { type: 'string' },
+          rows: { type: 'string' }, summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as { project: string; status: string; rows: string; summary: string }
+        return text(`# ${v.project} 参数映射：${v.status}`,
+          ...v.rows.split('\n').filter((x) => x !== ''), v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'firmware')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown; roots?: unknown }
+      const project = str(a.project)
+      const cliArgs: string[] = [project]
+      const roots = str(a.roots)
+      if (roots !== '') cliArgs.push(`--roots=${roots}`)
+      const payload = await design('params', ...cliArgs)
+      const counts = (payload.counts ?? {}) as Record<string, unknown>
+      const readiness = Array.isArray(payload.readiness) ? payload.readiness : []
+      const absent = Array.isArray(payload.known_absent) ? payload.known_absent : []
+      const rows: string[] = [
+        `参数 ${num(counts.params)}（映射 ${num(counts.mapped)} / 未映射 ${num(counts.unmapped)}），`
+        + `族 ${num(counts.families)}，涉及能力 ${num(counts.capabilities)}`,
+        ...readiness.map((raw) => {
+          const r = (raw ?? {}) as Record<string, unknown>
+          const missing = Array.isArray(r.missing) ? (r.missing as string[]) : []
+          return `* ${str(r.capability)} ${str(r.status)} ${num(r.have)}/${num(r.need)}`
+            + (missing.length > 0 ? ` 缺 ${missing.join('、')}` : '')
+        }),
+        ...absent.map((raw) => {
+          const x = (raw ?? {}) as Record<string, unknown>
+          return `* unknown：${str(x.capability)} —— ${str(x.why)}`
+        }),
+      ]
+      return {
+        project,
+        status: str(payload.status),
+        rows: rows.join('\n'),
+        summary: str(payload.note),
       }
     },
   })))

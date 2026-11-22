@@ -373,6 +373,12 @@ TOOLS: list[ToolSpec] = [
              "Entry 在 FLASH / 容量装得下）",
              {"project": "string", "out": "string"}, ("project",),
              arg_style="eq"),
+    ToolSpec("hw_params", "judge", "params",
+             "**飞控参数 → 能力映射**：解析 .param（name=value）与 MF_PARAM 参数表；"
+             "只报族完整度。**参数不改能力状态**（用 `hw_plan` 生成计划后，"
+             "plan 会读到 evidence.params）",
+             {"project": "string", "roots": "string"}, ("project",),
+             arg_style="eq"),
     ToolSpec("hw_interface", "judge", "interface",
              "**软硬接口契约**：从 design.json + .ioc 合成引脚↔网络契约；"
              "唯一硬判据是逐引脚一致，时钟/中断/AF/时序标记 unknown",

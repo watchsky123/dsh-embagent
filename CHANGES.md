@@ -3172,6 +3172,78 @@ check_p52 12/12    npm test 760    tsc 干净    check_tools 57
 ```
 
 
+## P53 — 飞控参数 → 能力映射（P53，软件三连的最后一块）（2026-11-23）
+
+> 用户排的顺序：①接口契约 ④纯 C 算法（P50）→ ③三层分解（P51）→ ②真编译（P52）
+> → **⑤参数映射（本段）**。P50–P52 已各自落地，这一段补最后一环。
+
+### 问题
+
+`plan` 对 S1–S6 一律 `unknown`，理由写"增益来源不明"——**而参数就躺在工作区**：
+
+| 文件 | 格式 | 实测 |
+|---|---|---|
+| `config_20261021_102258.param` | `name=value` | 47 条 |
+| `H743PilotX-master/App/Inc/Config.h` | `MF_PARAM(...) /*注释*/` | 206 条 |
+
+在此之前**一条都没被读过**。
+
+### 做了什么
+
+`design/params.py` + `params` 命令 + `hw_params`（工具 57 → **58**）：
+
+1. 解析两种真实格式（`.param` 的 `name=value`；`MF_PARAM` 的 C 表，注释当语义）
+2. 按**参数名族**映射到能力，每条带 `basis`
+3. 算**族完整度**（`ready`/`partial`/`absent`）——这是唯一能判的东西
+4. `plan` 读 `params.json` 给能力挂 `evidence.params`，**不改 status**
+
+### 实测（真工作区）
+
+```
+206 参数 / 93 映射 / 113 未映射 / 15 族 / 6 能力
+族齐：H3 H8 S1 S2 S3 S5（6/6，S2 的 10 项必需增益全在）
+known_absent：H4（光流参数未进参数集）H5（GNSS 门限未进）
+整体 status = not_ready   ← 参数集里没有的能力就是缺口
+```
+
+### 三个坑（都已修，写进 runbook §16）
+
+1. **格式猜错**：第一版按 ArduPilot 的 `NAME,VALUE` 写 → 一条都读不到。
+   真实是 `name=value`。
+2. **枚举型 MF_PARAM**：`MF_PARAM( ahr_gizmo, 0, int32_t, 'e', mf_MAHONY, mf_MAHONY_BF)`
+   第 5 段是枚举列表 → 第一版正则只认 4 段，2 条被记成"不完整"。
+3. **`#define MF_PARAM(...)` 不是参数**：宏定义行里也有 `MF_PARAM(` →
+   第一版又报 2 条"不完整"。判据：`lstrip().startswith("#define")` 跳过。
+
+### 纪律
+
+**参数存在 ≠ 能力达标。** 有 `pid_in_roll_p=0.05` 只说明"增益有值"，
+不说明"角速率环稳定"。所以 `params` 只产出 `evidence`，`plan` 里 S2 仍是
+`unknown`（check_p53 的 3b 守着这条）。缺必需参数 = `partial`（2e 守着）。
+
+### 新增
+
+| 位置 | 内容 |
+|---|---|
+| `design/params.py`（新） | 两种解析器 + 15 族映射表 + 族完整度 + 冲突检测 |
+| `design_cli.py` | `params <id> [--roots=a;b]` |
+| `design/plan.py` | `_attach_param_evidence`（只加证据，不动状态）|
+| `design/agent_tools.py` / `src/tools.ts` | `hw_params`；顺手修 4 行重复注释 |
+| `scripts/check_p53.py` | **18 条**（含 1 条退化）|
+| `design/store.py` | `ARTIFACTS` 加 `params.json` / `params.md` |
+
+### 验收
+
+```
+check_p53 18/18    npm test 760    tsc 干净    check_tools 58
+```
+
+### 顺带
+
+- 删掉了我第一次跑 `params` 时误写进工作区的 `复刻-示例/`（§4.4 夹具不进用户区）
+- AGENTS 压到 63.5 KB（预算 65 KB / 有效 65.2 KB），细节全进 runbook §13–§16
+
+
 ---
 
 ## 参考对照（历史阶段，摘要）

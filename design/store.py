@@ -70,6 +70,8 @@ ARTIFACTS = (
     "interface.json",
     "fw_build.json",
     "interface.md",
+    "params.json",
+    "params.md",
 )
 
 

@@ -496,6 +496,28 @@ def _capabilities(design: DesignModel, requirement: dict[str, Any]) -> list[dict
     return out
 
 
+def _attach_param_evidence(capabilities: list[dict[str, Any]], store: Any) -> None:
+    """把 `params.json` 的族完整度挂到对应能力上。**只加证据，不动状态。**"""
+    payload = store.read("params.json") if store is not None else None
+    if not isinstance(payload, dict):
+        return
+    rows = {row.get("capability"): row
+            for row in (payload.get("readiness") or []) if isinstance(row, dict)}
+    if not rows:
+        return
+    for cap in capabilities:
+        row = rows.get(cap["id"])
+        if row is None:
+            continue
+        cap["evidence"]["params"] = {
+            "present": int(row.get("have") or 0),
+            "required": int(row.get("need") or 0),
+            "readiness": str(row.get("status") or "absent"),
+            "missing": list(row.get("missing") or []),
+            "basis": "params.json（飞控参数族完整度，**不是实测**）",
+        }
+
+
 def _cmp(value: float, criterion: dict[str, Any]) -> bool:
     op = str(criterion.get("op") or ">=")
     target = float(criterion.get("value") or 0)
@@ -792,6 +814,9 @@ def derive(store: Any, design: DesignModel, requirement: dict[str, Any],
     parent = (same["parent"] if same else _next_version(store)[1]) or ""
 
     capabilities = _capabilities(design, requirement)
+    # **参数证据**（P53）：`params.json` 在就给能力挂上"族齐不齐"。
+    # **不改 status** —— 参数说明"增益有值"，不说明"环稳定"（§0.1）。
+    _attach_param_evidence(capabilities, store)
     modules = _modules(design)
 
     # 任务：能力缺口 → 任务树；再把**任务间依赖**按能力依赖补上
@@ -859,6 +884,9 @@ def derive(store: Any, design: DesignModel, requirement: dict[str, Any],
         "tasks": tasks,
         "carried_tasks": carried,
         "counts": counts,
+        "param_evidence": sorted(
+            cap["id"] for cap in capabilities if (cap.get("evidence") or {}).get("params")
+        ),
         "note": ("每一版都是**自包含快照**；判据按当前需求重算，"
                  "任务状态按 id 继承。`unknown` 不是通过。"),
     }

@@ -637,3 +637,67 @@ fw/build/Makefile    给人手工编也能用
 | `undefined reference to SystemCoreClock` | `extern uint32_t SystemCoreClock;` 又在函数里赋值 = **声明不是定义**；改成定义 |
 | `ld: RAM 越界` 而容量明明够 | link.ld 里那条 `ASSERT(ORIGIN+LENGTH <= 同一表达式)` **恒等**，误报；删掉，容量交给 `size` 判 |
 | `firmware.bin` 永远不生成 | 写成 `gcc -O binary out in` —— gcc 的 `-O` 是优化级别、顺序也反；要用 **objcopy** |
+
+## 16. 飞控参数 → 能力映射（P53）
+
+### 16.1 真实数据在哪、长什么样
+
+| 文件 | 格式 | 实测 |
+|---|---|---|
+| `config_20261021_102258.param` | **`name=value`**，一行一个，`#` 注释 | 47 条（`pid_*` 40 + `alt_*` 2 + `cal_*` 3 + `sys_*`/`imu_*` 各 1）|
+| `H743PilotX-master/App/Inc/Config.h` | **`MF_PARAM(name, def, type, 'x') /*注释*/`** | 206 条；注释是**语义来源**（`/*飞行模式 0=手动 1=油门居中悬停*/`）|
+
+注意这是**自定义格式**，不是 ArduPilot 的 `NAME,VALUE`。第一版按 ArduPilot 写会一条都读不到。
+
+### 16.2 两种 MF_PARAM 形状（同一个宏，两种条目）
+
+```
+MF_PARAM( sys_fly_mode, 0, int32_t, 'i') /*飞行模式*/ \
+MF_PARAM( ahr_gizmo, 0, int32_t, 'e', mf_MAHONY,mf_MAHONY_BF) /*姿态解算*/ \
+```
+
+**枚举型**第 5 段是枚举列表。第一版正则只认 4 个字段 → 2 条枚举参数被记成
+"不完整"。修法：第 5 组 `(?:\s*,\s*([^)]*))?`。
+
+**还有一类不是参数**：`#define MF_PARAM(name, defval, ...)` 宏定义行里也有
+`MF_PARAM(` —— 第一版把它当条目，于是又报 2 条"不完整"。
+**判别**：`line.lstrip().startswith("#define")` 一律跳过。
+
+### 16.3 映射怎么定（三条）
+
+1. **按参数名族**，不按值：`pid_in_*` = 角速率内环、`pid_ou_*` = 姿态外环、
+   `pid_yaw_rate_*` = 偏航内环、`pid_gps_*` = GPS 位置环、`alt_*` = 定高控制侧、
+   `bar_*` = 定高观测侧、`bat_*` = 电源、`imu_*`/`cal_*`/`mag_*` = 融合。
+2. **最长前缀优先**：`pid_yaw_rate_p` 必须落进 `pid_yaw_rate`，不能落进 `pid_yaw`。
+3. **每条映射必须有 `basis`**（"凭什么说这个参数属于这条能力"）。写不出 → 进
+   `unmapped`（实测 113 条：`ahr_gizmo`/`bbx_spi_bus`/`led_on`… 确实不该硬塞）。
+
+### 16.4 唯一能判的东西：**族完整度**
+
+| 结论 | 条件 |
+|---|---|
+| `ready` | 该能力的必需参数齐全（S2 要 10 项，实测 10/10）|
+| `partial` | 缺一部分（**写明缺哪个**）|
+| `absent` | 一个都没有 |
+
+**参数存在 ≠ 能力达标**：有 `pid_in_roll_p=0.05` 只说明"增益有值"，
+不说明"角速率环稳定"。所以 `params` **不改能力状态**——`plan` 里 S2 仍是
+`unknown`，只多一条 `evidence.params`。
+
+### 16.5 实测（真工作区）
+
+```
+206 参数 / 93 映射 / 113 未映射 / 15 族 / 6 能力
+族齐：H3 H8 S1 S2 S3 S5（6/6）
+known_absent：H4（光流参数未进参数集）H5（GNSS 门限未进）
+整体 status = not_ready   ← **参数集里没有的能力就是缺口**，不是 ok
+```
+
+`known_absent` 是我**主动登记**的已知缺口（不是"没解析到"）：
+`S1` 的失效判据参数（角度/下降率/链路超时）**一条都没有** —— 这条写进报告，
+比"参数齐全所以没问题"有用得多。
+
+### 16.6 冲突检测
+
+两个 `.param` 同参数不同值 → `failed`（并指出是哪两份文件）。
+理由：两份"当前值"同时存在时，**哪份是真的没说清**，不能挑一个当准。

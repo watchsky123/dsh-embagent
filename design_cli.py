@@ -1826,6 +1826,34 @@ def cmd_fw_build(args: list[str]) -> dict[str, Any]:
             "build": result, "findings": result.get("findings") or []}
 
 
+def cmd_params(args: list[str]) -> dict[str, Any]:
+    """``params <id> [--roots=a;b]`` —— 飞控参数 → 能力映射（P53）。
+
+    解析两种真实格式：`name=value` 的 `.param`，和 `MF_PARAM(...)` 的参数表。
+    只报**族完整度**：参数存在说明"增益有值"，**不说明"环稳定"** ——
+    能力状态仍归 `plan` 的判据。缺必需参数 = `missing`，不是通过。
+    """
+    from .design import params as params_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **params_module.describe()}
+
+    store = _store(args[0])
+    roots: list[str] = []
+    for item in args[1:]:
+        if item.startswith("--roots="):
+            raw = item.split("=", 1)[1]
+            roots = [part for part in raw.split(";") if part.strip()]
+    if not roots:
+        from .design import workspace as ws  # noqa: PLC0415
+
+        roots = [str(ws.workspace_root())]
+    payload = params_module.build(roots=roots)
+    store.write(params_module.FILE, payload)
+    store.write_text("params.md", params_module.render(payload))
+    return {"status": payload["status"], "project_id": args[0], **payload}
+
+
 def cmd_interface(args: list[str]) -> dict[str, Any]:
     """``interface <id> [--ioc=PATH]`` —— 软硬接口契约（P50）。
 
@@ -4166,6 +4194,7 @@ COMMANDS = {
     "dfm": cmd_dfm,
     "plan": cmd_plan,
     "interface": cmd_interface,
+    "params": cmd_params,
     "fw-build": cmd_fw_build,
     "fw-algo": cmd_fw_algo,
     "audit": cmd_audit,
