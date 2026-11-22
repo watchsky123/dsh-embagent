@@ -3007,6 +3007,72 @@ check_p50 14/14    npm test 760    28 个离线 check_* 全 exit=0    check_tool
 3. **飞控参数 → 能力映射** —— `autopilot_config` / `.param` 还没接
 
 
+## P50b — 本地 ARM 工具链（装在仓库内，零污染）+ Low IL 坑（2026-11-22）
+
+> 用户问"ARM 工具链怎么安装？（希望装在这个文件夹里，不要污染）"。
+
+### 装了什么
+
+```
+workspace\hw_velxio\_tools\arm-gcc\13.3.rel1\     1.2 GB
+Arm GNU Toolchain 13.3.Rel1 (build arm-13.24)
+```
+
+### 零污染清单
+
+| 项 | 有没有 |
+|---|---|
+| 安装器 / 注册表 / PATH / 服务 / 计划任务 | **全无** |
+| 系统目录写入 | 无（全在仓库 `_tools/`）|
+| 唯一占用 | 1.2 GB；`.gitignore` 已忽略 `_tools/arm-gcc/`、`_tools/_dl/` |
+| 卸载 | **删一个目录** |
+
+### 验证（真编译，不是看版本号）
+
+```
+as 汇编 ✓   gcc -c ✓   链接 ELF ✓（Machine=ARM  Entry=0x8000000  text 108B）
+objdump: add.w r0,r0,r0,lsl#1 / adds r0,#1 / bx lr   ← Thumb
+Cortex-M7 + fpv5-d16 硬浮点 ✓
+doctor: arm_gcc ok（scope=repo）；PATH 里查不到 arm-none-eabi-gcc
+```
+
+### 撞到的坑：解压进来的 exe 带 **Low IL** → 编译全 Permission denied
+
+本仓库目录有继承标签 `Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)`
+→ 解压出的 exe 也带 Low → **Windows 用镜像 IL 起进程** → 写不了 Medium 目录
+（桌面工程 / `D:\tmp`），连自己的临时文件都建不了。
+
+三种症状：`Cannot create temporary file in ...Temp: Permission denied` /
+`can't create x.o` / `cannot open 'x.s' for writing`。
+
+修法（三条，顺序不能反）：
+
+```
+icacls _tools /remove:d Everyone                      # 摘掉 DENY(DC)
+icacls _tools\arm-gcc /grant "<user>:(OI)(CI)F" /T     # 拿 WRITE_DAC
+icacls _tools\arm-gcc /setintegritylevel "(OI)(CI)Medium" /T /C   # 8604 个文件
+```
+
+两条错路（我踩过）：以为是"沙箱拦路径"（同一 shell bash/w64devkit gcc 写同目录都成功）；
+以为是"i686 vs x64"（w64devkit 的 gcc **也是 i686**）。
+**差别只在标签。**
+
+### 新增
+
+| 位置 | 内容 |
+|---|---|
+| `design/doctor.py` | `LOCAL_TOOLCHAIN` 探测（先仓库内、再 PATH，带 `scope`）|
+| `scripts/check_p47.py` | `2a2`：`arm_gcc` 被探测到 |
+| `docs/runbook.md` | §13 装法 / 不污染 / 4 步验证 / Low IL 坑 |
+| `.gitignore` | `_tools/_dl/`、`_tools/arm-gcc/` |
+
+### 验收
+
+```
+check_p47 22/22    doctor 9 项（arm_gcc ok）    npm test 760
+```
+
+
 ---
 
 ## 参考对照（历史阶段，摘要）

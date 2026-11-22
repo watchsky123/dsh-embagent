@@ -125,6 +125,12 @@ def part_doctor() -> None:
                   if c["name"] not in doctor_module.REQUIRED))
     # **整体状态只由必需项决定**（lceda + workspace）。可选项缺只是
     # `not_ready` 的那几行 + 一句影响 —— 否则"没装 ffmpeg"会让医生永远 not_ready。
+    # 仓库内工具链（P50 装的 ARM GCC）：**位置也是事实** —— 装在哪、
+    # 能不能被一个目录删干净。这里只断言"探测认得它"，不断言"必须装"。
+    arm = next((c for c in payload["checks"] if c["name"] == "arm_gcc"), None)
+    check("2a2. 仓库内工具链被探测到（arm_gcc，scope=repo/path/none 三档）",
+          arm is not None and arm.get("scope") in ("repo", "path", "none"),
+          f"arm_gcc={arm}")
     check("2c. 必需项齐 → 整体 ok（可选项缺只记在行上，不拉低整体）",
           payload["status"] == "ok"
           or payload["counts"]["required_missing"] > 0,

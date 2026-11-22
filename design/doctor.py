@@ -39,15 +39,18 @@ REQUIRED = ("workspace", "lceda")
 
 
 def _row(name: str, status: str, detail: str, *, required: bool | None = None,
-         impact: str = "") -> dict[str, Any]:
+         impact: str = "", extra: dict[str, Any] | None = None) -> dict[str, Any]:
     """**`required` 只由 `REQUIRED` 这张表决定**（§1.1：一个事实源）。
 
     第一版在 `_check_bin` 里写死 `required=False`、在 workspace/lceda 里写死
     `True` —— 于是把某项提成必需时**不生效**（表改了，行还挂旧值）。
     """
-    return {"name": name, "status": status, "detail": detail,
-            "required": (name in REQUIRED) if required is None else required,
-            "impact": impact}
+    row = {"name": name, "status": status, "detail": detail,
+           "required": (name in REQUIRED) if required is None else required,
+           "impact": impact}
+    if extra:
+        row.update(extra)
+    return row
 
 
 def _check_workspace() -> dict[str, Any]:
@@ -130,6 +133,43 @@ def _check_bin(name: str, impact: str) -> dict[str, Any]:
     return _row(name, "not_ready", f"PATH 里没有 {name}", impact=impact)
 
 
+#: 仓库内工具链的相对位置（**不装到系统里**，删目录即卸载）。
+LOCAL_TOOLCHAINS = {
+    "arm_gcc": ("_tools/arm-gcc", "arm-none-eabi-gcc.exe",
+                "STM32 固件真编译做不了（只能验纯 C 逻辑）"),
+}
+
+
+def _check_local_toolchain(name: str, root: Path) -> dict[str, Any]:
+    """先在**仓库内**找，再看 PATH。**只探测，不装。**"""
+    rel, exe_name, impact = LOCAL_TOOLCHAINS[name]
+    base = root / rel
+    if base.is_dir():
+        found = sorted(base.glob(f"*/bin/{exe_name}"), reverse=True)
+        if found:
+            exe = found[0]
+            version = ""
+            try:
+                import subprocess  # noqa: PLC0415
+
+                proc = subprocess.run([str(exe), "--version"],
+                                      capture_output=True, text=True, timeout=30)
+                first = (proc.stdout or "").splitlines()
+                version = first[0].strip() if first else ""
+            except Exception as exc:  # noqa: BLE001 - 探测失败不该炸整体
+                version = f"(版本读不出：{type(exc).__name__})"
+            return _row(name, "ok", f"{exe}；{version}".strip(),
+                        impact="", extra={"scope": "repo", "rel": rel})
+        return _row(name, "not_ready", f"{rel} 在，但里面没有 {exe_name}",
+                    impact=impact, extra={"scope": "repo"})
+    path = shutil.which(exe_name)
+    if path:
+        return _row(name, "ok", path, impact="", extra={"scope": "path"})
+    return _row(name, "not_ready",
+                f"仓库内没有 {rel}，PATH 里也没有 {exe_name}",
+                impact=impact, extra={"scope": "none"})
+
+
 def run() -> dict[str, Any]:
     """逐项探测。**不装、不修、不联网**（LCSC 那一项只读本地缓存）。"""
     rows: list[dict[str, Any]] = []
@@ -143,6 +183,9 @@ def run() -> dict[str, Any]:
             # "可选项缺失"，整体变 not_ready —— 而它可能是必需项（§0.1 形状）。
             rows.append(_row(name, "not_ready", f"{type(exc).__name__}: {exc}",
                              required=name in REQUIRED))
+    # 仓库内工具链：**位置是事实的一部分**（装哪、能不能被卸载干净）
+    repo_root = Path(__file__).resolve().parents[1]
+    rows.append(_check_local_toolchain("arm_gcc", repo_root))
     rows.append(_check_bin("arduino-cli", "Arduino 编译（真 hex）做不了"))
     rows.append(_check_bin("gcc", "C 源码重编做不了"))
     rows.append(_check_bin("ffmpeg", "contact_sheet 拼缩略图做不了"))

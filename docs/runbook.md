@@ -444,3 +444,117 @@ ValueError: ParseXML: Error opening file
 
 ---
 
+## 13. 本地 ARM 工具链（装法 + 那个 Low IL 坑）
+
+### 13.1 装在哪
+
+```
+workspace\hw_velxio\_tools\arm-gcc\13.3.rel1\      ← 仓库内，1.2 GB
+    bin\arm-none-eabi-gcc.exe  (Arm GNU Toolchain 13.3.Rel1, build arm-13.24)
+```
+
+`_tools/arm-gcc/` 与 `_tools/_dl/` 已进 `.gitignore`（**不入库**）。
+
+### 13.2 装法（可复现，三步）
+
+```bash
+# 1) 下**官方 zip**（不要 exe 安装器；安装器会写注册表 + 改 PATH）
+curl -L -o _tools/_dl/arm-gcc.zip \
+  https://developer.arm.com/-/media/Files/downloads/gnu/13.3.rel1/binrel/arm-gnu-toolchain-13.3.rel1-mingw-w64-i686-arm-none-eabi.zip
+# 284 MiB；实测 2 分钟（2.4 MB/s）
+
+# 2) 解压，顶层目录改名为版本号
+python -m zipfile -e _tools/_dl/arm-gcc.zip _tools/arm-gcc/
+# 再把 arm-gnu-toolchain-13.3.rel1-.../ 改名为 13.3.rel1/
+
+# 3) **必做**：去继承的 Low 完整性标签（见 13.5，不做则编译全 Permission denied）
+icacls "workspace\hw_velxio\_tools" /remove:d Everyone
+icacls "workspace\hw_velxio\_tools\arm-gcc" /grant "%USERNAME%:(OI)(CI)F" /T
+icacls "workspace\hw_velxio\_tools\arm-gcc" /setintegritylevel "(OI)(CI)Medium" /T /C
+# 实测：8604 个文件，各 1 秒级
+```
+
+### 13.3 为什么不污染
+
+| 项 | 有没有 |
+|---|---|
+| 安装器 / 写注册表 | **无**（纯 zip 解压）|
+| 改系统 PATH | **无**（用绝对路径调用）|
+| 服务 / 计划任务 / 开机启动 | **无** |
+| 系统目录写入 | **无**（全在仓库 `_tools/`）|
+| 唯一占用 | `_tools/arm-gcc` **1.2 GB** |
+
+**卸载 = 删掉 `_tools/arm-gcc` 这一个目录**（那三条 `icacls` 只作用于它，删了即复原）。
+
+### 13.4 验证（4 步，缺一不可）
+
+```bash
+B=_tools/arm-gcc/13.3.rel1/bin
+$B/arm-none-eabi-as.exe  -o a.o a.s                 # ① 汇编器能写
+$B/arm-none-eabi-gcc.exe -mcpu=cortex-m4 -mthumb -Os -c t.c -o t.o   # ② 编译器能写
+$B/arm-none-eabi-gcc.exe -mcpu=cortex-m4 -mthumb -nostdlib \
+    --specs=nano.specs -Wl,-Ttext=0x08000000 -o fw.elf start.c t.c   # ③ 链接
+$B/arm-none-eabi-readelf.exe -h fw.elf | grep -E "Machine|Entry"      # ④ 目标对
+$B/arm-none-eabi-gcc.exe -mcpu=cortex-m7 -mthumb -mfloat-abi=hard \
+    -mfpu=fpv5-d16 -Os -c t.c -o m7.o                                 # M7 + 硬浮点
+```
+
+**实测结果（2026-11-22）**：
+
+```
+as ✓；gcc -c ✓；链接 ✓ → text 108 B / bss 4 B
+readelf: Type=EXEC  Machine=ARM  Entry=0x8000000
+objdump counter: add.w r0,r0,r0,lsl#1 / adds r0,#1 / bx lr   ← Thumb 指令
+Cortex-M7 + fpv5-d16 硬浮点 ✓
+```
+
+`doctor` 会报 `arm_gcc ok`（`scope=repo`，附版本号）；`PATH` 里**查不到**
+`arm-none-eabi-gcc` —— 这正是"不污染"的证据。
+
+### 13.5 那个坑：**Low 完整性标签 → 编译全 Permission denied**
+
+**症状**（三种，同一个根因）：
+
+```
+Cannot create temporary file in C:\Users\...\AppData\Local\Temp\: Permission denied
+Assembler messages: Fatal error: can't create x.o: Permission denied
+cc1.exe: fatal error: cannot open 'd.s' for writing: Permission denied
+```
+
+**根因**：本仓库目录带继承标签
+
+```
+hw_velxio\  Mandatory Label\Low Mandatory Level:(I)(OI)(CI)(NW)
+```
+
+于是**解压出来的 exe 也带 Low IL**；而 Windows 会**用镜像文件的 IL 启动进程**
+→ 工具链进程是 Low → `NW`（No-Write-Up）→ **写不了 Medium 目录**（桌面工程、
+`D:\tmp`），连自己的临时文件都建不了。
+
+**判别**（一行）：
+
+```bash
+icacls _tools/arm-gcc/13.3.rel1/bin/arm-none-eabi-gcc.exe | grep -i Mandatory
+# Low Mandatory Level → 就是它
+icacls <exe> /setintegritylevel Medium     # 报 Access is denied → 你缺 WRITE_OWNER
+```
+
+**为什么容易误判**（我踩过的两条错路）：
+
+| 当时以为 | 真相 |
+|---|---|
+| 「沙箱不让写这个路径」 | 同一 shell 里 bash / w64devkit gcc 写同一目录**都成功** |
+| 「i686 vs x64 位数问题」 | w64devkit 的 gcc **也是 i686**，一切正常 —— 差别只在标签 |
+| 「`TMP` 指错了」 | 改成 `D:/tmp/...` 仍 denied；换成 Low 目录才通 |
+
+**修法顺序**（缺一不可，顺序反了会被拒）：
+
+1. `icacls <_tools> /remove:d Everyone` —— 先摘掉 `(DENY)(DC)`
+2. `icacls <_tools/arm-gcc> /grant "<user>:(OI)(CI)F" /T` —— 拿到 WRITE_DAC/OWNER
+3. `icacls <_tools/arm-gcc> /setintegritylevel "(OI)(CI)Medium" /T /C` —— 递归提级
+
+**新装任何"从 zip 解压的可执行工具"到本仓库时，都要做第 3 步**，否则会以为是
+工具坏了（其实是这道标签墙）。
+
+**顺带**：这条也解释了一类"诡异"现象 —— 往本仓库里解压的 `.exe` 双击能跑但
+一写文件就失败；而 `D:\deeptool\w64devkit` 里的同名工具毫无问题（它没有标签）。

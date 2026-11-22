@@ -11,6 +11,10 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
+
+# 本地工具链（约 300 MB，按需下载；不入库。装法见 docs/runbook.md §13）
+_tools/_dl/
+_tools/arm-gcc/
 # 测试与临时目录（tests 会写 _tmp/fab-test）
 _tmp/
 
