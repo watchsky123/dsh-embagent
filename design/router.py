@@ -40,15 +40,15 @@ from .pcb_geo import BoardGeometry, Pad, _dist_point_segment
 
 __all__ = ["Plan", "Rules", "Segment", "ViaDrop", "plan", "stitch_sites"]
 
-#: 电源类网络名判据（走线加宽）。**保守**：只认这些前缀/整名，不认"看起来像"。
-_POWER_HINTS = ("GND", "AGND", "PGND", "VCC", "VDD", "VBUS", "VBAT", "PWR",
-                "+3V3", "3V3", "3.3V", "+5V", "5V", "5.0V", "+12V", "12V", "VIN",
-                "VOUT", "VREF")
+from . import power
+
+#: 电源类网络名判据（走线加宽）。**表与判据都在 `design/power.py`**，
+#: 这里只留两个别名 —— 布线器与发射器必须是同一张表（AGENTS §1.1）。
+_POWER_HINTS = power.POWER_HINTS
 
 
 def _is_power(net: str) -> bool:
-    up = (net or "").upper()
-    return any(up == h or up.startswith(h) or up.endswith(h) for h in _POWER_HINTS)
+    return power.is_power(net)
 
 
 @dataclass

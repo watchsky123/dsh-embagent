@@ -1824,6 +1824,189 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
+  // ---- 3c. hw_dims ------------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_dims',
+    description:
+      '每颗元件的 L/W/H **从哪来**：datasheet/measured/catalog 可信，'
+      + 'estimated/proposed 不可信，缺就是 unknown。不重新推导尺寸（推导只有'
+      + '`easyeda._size_from_attrs` 一份），只分类 + 报告；`apply` 用立创 3D 模型'
+      + '回写并标 catalog，**不冒充 datasheet**。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+      apply: { type: 'boolean', description: '把能补的尺寸写回 design.json（标 catalog）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          status: { type: 'string' },
+          total: { type: 'number' },
+          trusted: { type: 'number' },
+          counts: { type: 'string' },
+          fixable: { type: 'number' },
+          unknown: { type: 'number' },
+          applied: { type: 'number' },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; status: string; total: number; trusted: number
+          counts: string; fixable: number; unknown: number; applied: number
+          summary: string
+        }
+        const head = `# ${v.project} 尺寸来源：${v.status}`
+          + `（可信 ${v.trusted}/${v.total}）`
+        const body: string[] = []
+        if (v.counts !== '') body.push(`按来源：${v.counts}`)
+        if (v.fixable > 0) body.push(`能用立创 3D 模型补：${v.fixable} 颗（dims --apply）`)
+        if (v.unknown > 0) body.push(`完全没有尺寸：${v.unknown} 颗`)
+        if (v.applied > 0) body.push(`已回写 ${v.applied} 颗`)
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown; apply?: unknown }
+      const project = str(a.project)
+      const cliArgs: string[] = project === '' ? [] : [project]
+      if (a.apply === true) cliArgs.push('--apply')
+      const payload = await design('dims', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '尺寸来源检查失败')
+      }
+      const counts = (payload.counts ?? {}) as Record<string, unknown>
+      return {
+        project,
+        status: str(payload.status),
+        total: num(payload.total),
+        trusted: num(payload.trusted),
+        counts: Object.entries(counts).map(([k, n]) => `${k} ${num(n)}`).join('、'),
+        fixable: (Array.isArray(payload.fixable_by_3d) ? payload.fixable_by_3d : []).length,
+        unknown: (Array.isArray(payload.unknown_refs) ? payload.unknown_refs : []).length,
+        applied: (Array.isArray(payload.applied) ? payload.applied : []).length,
+        summary: str(payload.note),
+      }
+    },
+  })))
+
+  // ---- 3b. hw_mjcf ------------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_mjcf',
+    description:
+      '机械模型（MJCF）：把 design.json + joints 编成 MuJoCo 模型，并**真的'
+      + '加载一次**。判据落在"MuJoCo 编译通过"上，不是"我拼出了字符串"。'
+      + '没装 MuJoCo 时是 not_ready（没验证过 ≠ 通过）。`--build` 落 model.xml。'
+      + '关节范围要 `[lo, hi]`（或 min_deg/max_deg）：标量有歧义（±180 还是 0..180），'
+      + '**不猜**，直接跳过那个关节。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+      build: { type: 'boolean', description: '落盘 model.xml（不给我就只检查不写）' },
+      free: { type: 'boolean', description: '零件自由运动（默认焊死在世界里）' },
+      weld: { type: 'boolean', description: '每块板作为一个刚体（PCB 的正确力学模型）' },
+      noFloor: { type: 'boolean', description: '不加地板（默认加）' },
+      out: { type: 'string', description: '自定义输出路径（配合 build）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          status: { type: 'string' },
+          ok: { type: 'boolean' },
+          partsTotal: { type: 'number' },
+          partsSimulated: { type: 'number' },
+          partsSkipped: { type: 'number' },
+          jointsSkipped: { type: 'number' },
+          loadStatus: { type: 'string' },
+          njnt: { type: 'number' },
+          nbody: { type: 'number' },
+          xmlChars: { type: 'number' },
+          modelPath: { type: 'string' },
+          notes: { type: 'array', items: { type: 'string' } },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; status: string; ok: boolean
+          partsTotal: number; partsSimulated: number
+          partsSkipped: number; jointsSkipped: number
+          loadStatus: string; njnt: number; nbody: number
+          xmlChars: number; modelPath: string
+          notes: string[]; summary: string
+        }
+        const head = `# ${v.project} 机械模型：${v.status}`
+          + `（零件 ${v.partsSimulated}/${v.partsTotal}，关节 ${v.njnt}）`
+        const body: string[] = []
+        body.push(`MuJoCo 加载：${v.loadStatus}（nbody ${v.nbody}，XML ${v.xmlChars} 字）`)
+        if (v.partsSkipped > 0) body.push(`跳过零件：${v.partsSkipped}`)
+        if (v.jointsSkipped > 0) body.push(`跳过关节：${v.jointsSkipped}`)
+        if (v.modelPath !== '') body.push(`model.xml：${v.modelPath}`)
+        for (const note of v.notes.slice(0, 6)) body.push(`* ${note}`)
+        return text(head, ...body, v.summary)
+      },
+      // 产物落在工程目录里，界面暂时没有机械分区（P46 才做）——
+      // 指到有内容的「判定」页，而不是编一个不存在的分区（§3.13 那个坑）。
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        project?: unknown; build?: unknown; free?: unknown
+        weld?: unknown; noFloor?: unknown; out?: unknown
+      }
+      const project = str(a.project)
+      const cliArgs: string[] = project === '' ? [] : [project]
+      if (a.build === true) cliArgs.push('--build')
+      if (a.free === true) cliArgs.push('--free')
+      if (a.weld === true) cliArgs.push('--weld')
+      if (a.noFloor === true) cliArgs.push('--no-floor')
+      const out = str(a.out)
+      if (out !== '') cliArgs.push(`--out=${out}`)
+      const payload = await design('mjcf', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || 'MJCF 构建失败')
+      }
+      const stats = (payload.stats ?? {}) as Record<string, unknown>
+      const load = (payload.load ?? {}) as Record<string, unknown>
+      const xml = (payload.xml ?? {}) as Record<string, unknown>
+      const notes = Array.isArray(payload.notes)
+        ? (payload.notes as unknown[]).map((n) => str(n)) : []
+      const skipped = Array.isArray(stats.skipped_reasons)
+        ? (stats.skipped_reasons as unknown[]).length : 0
+      return {
+        project,
+        status: str(payload.status),
+        ok: payload.status === 'ok',
+        partsTotal: num(stats.parts_total),
+        partsSimulated: num(stats.parts_simulated),
+        partsSkipped: num(stats.parts_skipped),
+        jointsSkipped: num(stats.joints_skipped),
+        loadStatus: str(load.status),
+        njnt: num(load.njnt),
+        nbody: num(load.nbody),
+        xmlChars: num(xml.chars),
+        modelPath: str(xml.path),
+        notes,
+        summary: skipped > 0
+          ? `有 ${skipped} 项被跳过：模型不完整，逐条原因在 stats.skipped_reasons`
+          : (str(payload.status) === 'ok'
+            ? '模型完整且 MuJoCo 已编译通过'
+            : '见 notes：状态不是 ok 时不要当成验过'),
+      }
+    },
+  })))
+
   // ---- 4. hw_import -----------------------------------------------------
   disposers.push(tools.register(defineTool({
     name: 'hw_import',

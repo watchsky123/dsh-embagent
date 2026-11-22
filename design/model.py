@@ -35,7 +35,30 @@ from typing import Any, Iterable
 SCHEMA = "hw_velxio.design/1"
 UNITS = "mm"
 
-PHYSICAL_SOURCES = ("datasheet", "measured", "estimated", "derived")
+#: 允许的来源值。**这一份是唯一事实源**（`validate()` 与各处按它判，别另抄）。
+#:
+#: P41 补了两个：
+#: * `catalog` —— `parts_catalog.py:650` 一直在写它（JEDEC 尺寸），但这里没有，
+#:   于是"目录回填过的元件"**过不了 validate**。这是老 bug，不是新功能。
+#: * `proposed` —— AI 先给提案、人再改。它**比 estimated 更低**：estimated 至少
+#:   是按公式算的，proposed 只是"看起来像"。
+PHYSICAL_SOURCES = ("datasheet", "measured", "catalog", "estimated",
+                    "derived", "proposed")
+
+#: 来源可信度（**低 → 高**）。比较来源时用它，不要自己写 if/elif。
+#: `derived` 与 `proposed` 都低，但 `derived` 有推导过程，排在 proposed 之上。
+SOURCE_ORDER = ("proposed", "derived", "estimated", "catalog", "datasheet", "measured")
+
+#: 立创贴片档位。`basic` = 基础库（无上料费），`extended` = 扩展库（每个编号收费）。
+JLC_CLASSES = ("basic", "preferred", "extended")
+
+
+def source_at_least(source: str, floor: str) -> bool:
+    """`source` 的可信度是否**不低于** `floor`（两者都必须在表里）。"""
+    try:
+        return SOURCE_ORDER.index(source) >= SOURCE_ORDER.index(floor)
+    except ValueError:
+        return False
 MOUNTS = ("board", "panel", "air")
 ROTATIONS = (0, 90, 180, 270)
 
@@ -265,6 +288,12 @@ class Part:
     physical_source: str = "estimated"
     placement: Placement = field(default_factory=Placement)
     lcsc: str | None = None
+    #: 立创贴片档位：`basic` / `preferred` / `extended`（空 = 不知道）。
+    #:
+    #: **它决定贴片费**：basic 不收上料费，extended 每个编号一笔。所以它不是
+    #: 装饰字段——选料时它是约束（同一功能优先 basic）。值来自 LCSC 目录，
+    #: 不给就空着，**不猜**。
+    jlc_class: str = ""
     electrical: dict[str, Any] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
     # 引脚表：**只有导入器实测到才填**（立创 EDA 的焊盘号、KiCad 的焊盘）。
@@ -345,6 +374,10 @@ class Part:
         for axis, value in self.size_mm.items():
             if value < 0:
                 raise DesignError(f"part {self.ref}.size_mm.{axis} 不能为负")
+        if self.jlc_class and self.jlc_class not in JLC_CLASSES:
+            raise DesignError(
+                f"part {self.ref}.jlc_class 非法：{self.jlc_class!r}"
+                f"（允许 {', '.join(JLC_CLASSES)}）")
         if self.physical_source not in PHYSICAL_SOURCES:
             raise DesignError(
                 f"part {self.ref}.physical_source 非法：{self.physical_source!r}")
@@ -398,6 +431,8 @@ class Part:
         }
         if self.lcsc:
             out["lcsc"] = self.lcsc
+        if self.jlc_class:
+            out["jlc_class"] = self.jlc_class
         if self.electrical:
             out["electrical"] = dict(self.electrical)
         if self.notes:
@@ -434,6 +469,7 @@ class Part:
             physical_source=str(data.get("physical_source") or "estimated"),
             placement=Placement.from_dict(data.get("placement")),
             lcsc=data.get("lcsc"),
+            jlc_class=str(data.get("jlc_class") or "").strip(),
             electrical=dict(data.get("electrical") or {}),
             notes=[str(x) for x in (data.get("notes") or [])],
             pins=[str(x) for x in (data.get("pins") or [])],
@@ -871,6 +907,25 @@ class DesignModel:
     units_list: list[dict[str, Any]] = field(default_factory=list)
     #: 板间链路表（P5 落地）。**空 = 单板**，旧行为不变。
     links_list: list[dict[str, Any]] = field(default_factory=list)
+    # ---- 四域（P41）------------------------------------------------------
+    #
+    #: 显式声明的电源/地网（如 `["GND", "+3V3"]`）。
+    #:
+    #: **空 = 没声明**，此时退回按网名正则推断，并在报告里标 `source: inferred`。
+    #: 为什么要显式：正则会把 `PWR_EN` 当电源网加宽、把 `AGND_REF` 当地铺，
+    #: 猜错会让铺铜铺错网（AGENTS §1.2：推断不当结论）。
+    power_nets: list[str] = field(default_factory=list)
+    #: 固件域。形状见 `design/fwgen/`：
+    #: `{target, mcu, pinmap: {net: {pin, function, source}}, peripherals: [...]}`
+    #:
+    #: **None = 没有固件概念**（旧文件读进来就是 None，行为不变）。
+    firmware: dict[str, Any] | None = None
+    #: 机械域。形状：`{joints: [...], limits: {...}}`。
+    #:
+    #: **`joints` 仍只存 `joints_list`**：`from_dict` 会把这里的 joints 归并过去
+    #: 并从这个 dict 里删掉。两个存储位置就是两个事实源（AGENTS §1.1），
+    #: 所以这里只接形状、不做第二份存储。
+    mechanical: dict[str, Any] | None = None
     # ---- 多域（P15）----------------------------------------------------
     #
     # 全部可选、全部空列表/None 起手：旧文件读进来这些键不存在，
@@ -890,7 +945,38 @@ class DesignModel:
     schema: str = SCHEMA
     units: str = UNITS
 
+    def _absorb_mechanical_joints(self) -> int:
+        """把 `mechanical.joints` 归并进 `joints_list`，并清掉那个键。
+
+        返回并入的条数。**去重键是 (a, b, kind)**：同一对零件可以既有
+        hinge 又有 axle（不同 kind），那是两条关系，不该被去重吃掉。
+        """
+        if not isinstance(self.mechanical, dict):
+            return 0
+        raw = self.mechanical.pop("joints", None)
+        if not isinstance(raw, list):
+            if self.mechanical == {}:
+                self.mechanical = None
+            return 0
+        known = {(str(j.get("a")), str(j.get("b")), str(j.get("kind")))
+                 for j in self.joints_list if isinstance(j, dict)}
+        added = 0
+        for row in raw:
+            if not isinstance(row, dict):
+                continue
+            key = (str(row.get("a")), str(row.get("b")), str(row.get("kind")))
+            if key in known:
+                continue
+            self.joints_list.append(dict(row))
+            known.add(key)
+            added += 1
+        if self.mechanical == {}:
+            self.mechanical = None
+        return added
+
     def __post_init__(self) -> None:
+        # `mechanical.joints` → `joints_list`（只有一个存储位置）。
+        self._absorb_mechanical_joints()
         # 多板时保证 `board` 就是 `boards` 里的**同一个对象**。
         #
         # 不能用 `board in boards` 判：dataclass 的 `__eq__` 是**按值**比较，
@@ -1009,6 +1095,11 @@ class DesignModel:
                 problems.append(f"{part.ref}: 高度未知（d=0），3D 面板按薄片显示")
             if part.physical_source == "estimated" and w > 0:
                 problems.append(f"{part.ref}: 尺寸为估算值，不可当精确值")
+            elif part.physical_source == "proposed" and w > 0:
+                # proposed 比 estimated 更低：它只是"看起来像"，连公式都没有。
+                # 照样报出来，但措辞必须不同（否则人分不清是哪一种不可信）。
+                problems.append(
+                    f"{part.ref}: 尺寸是 **AI 提案**（未核对），不可当精确值")
             # 悬空归属：声明了 board_id 但没有这块板
             if (part.placement.board_id
                     and part.placement.board_id not in known_board_ids):
@@ -1040,6 +1131,51 @@ class DesignModel:
         for wire in self.wires:
             if wire.net not in {e.get("net") for e in self.nets}:
                 problems.append(f"导线 {wire.net} 不在网表里")
+        problems.extend(self._validate_domains())
+        return problems
+
+    def _validate_domains(self) -> list[str]:
+        """四域（P41）的检查。**只查"给了但不对"，不要求必须有。**"""
+        problems: list[str] = []
+        net_names = {str(e.get("net") or "") for e in self.nets if isinstance(e, dict)}
+        # 电源网：重复、空串、指向不存在的网
+        seen: set[str] = set()
+        for name in self.power_nets:
+            text = str(name or "").strip()
+            if text == "":
+                problems.append("power_nets 里有空名字")
+                continue
+            if text in seen:
+                problems.append(f"power_nets 重复：{text}")
+            seen.add(text)
+            # 网表为空时不做存在性检查（空网表 = 还没录网，不是"这个名字错"）
+            if net_names and text not in net_names:
+                problems.append(f"power_nets 里的 {text} 不在网表里")
+        # 固件域
+        fw = self.firmware
+        if fw is not None:
+            if not isinstance(fw, dict):
+                problems.append("firmware 必须是对象")
+            else:
+                if "pinmap" in fw and not isinstance(fw.get("pinmap"), dict):
+                    problems.append("firmware.pinmap 必须是 `{net: 分配}` 对象")
+                pinmap = fw.get("pinmap") if isinstance(fw.get("pinmap"), dict) else {}
+                for net, alloc in pinmap.items():
+                    if net_names and str(net) not in net_names:
+                        problems.append(f"firmware.pinmap 里的 {net} 不在网表里")
+                    if isinstance(alloc, dict):
+                        if not str(alloc.get("pin") or "").strip():
+                            problems.append(
+                                f"firmware.pinmap[{net}] 缺 pin（没指定物理引脚）")
+                    else:
+                        problems.append(f"firmware.pinmap[{net}] 必须是对象")
+        # 机械域
+        mech = self.mechanical
+        if mech is not None:
+            if not isinstance(mech, dict):
+                problems.append("mechanical 必须是对象")
+            elif "limits" in mech and not isinstance(mech.get("limits"), dict):
+                problems.append("mechanical.limits 必须是对象")
         return problems
 
     # -- serialisation ----------------------------------------------------
@@ -1064,6 +1200,13 @@ class DesignModel:
             out["units_list"] = [dict(u) for u in self.units_list]
         if self.links_list:
             out["links_list"] = [dict(l) for l in self.links_list]
+        # 四域（P41）：只在非空时写，旧文件往返不变。
+        if self.power_nets:
+            out["power_nets"] = [str(n) for n in self.power_nets]
+        if self.firmware is not None:
+            out["firmware"] = dict(self.firmware)
+        if self.mechanical is not None:
+            out["mechanical"] = dict(self.mechanical)
         # ---- 多域（P15）：同样只在非空时写 ----
         if self.joints_list:
             out["joints_list"] = [dict(j) for j in self.joints_list]
@@ -1100,6 +1243,11 @@ class DesignModel:
                         if isinstance(u, dict)],
             links_list=[dict(l) for l in (data.get("links_list") or [])
                         if isinstance(l, dict)],
+            power_nets=[str(n) for n in (data.get("power_nets") or [])],
+            firmware=(dict(data["firmware"])
+                      if isinstance(data.get("firmware"), dict) else None),
+            mechanical=(dict(data["mechanical"])
+                        if isinstance(data.get("mechanical"), dict) else None),
             # 旧文件没有这四个键 → 空/None，行为不变。
             joints_list=[dict(j) for j in (data.get("joints_list") or [])
                          if isinstance(j, dict)],

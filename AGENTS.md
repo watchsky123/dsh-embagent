@@ -861,6 +861,82 @@ mil 的 `EDGE_MARGIN_MIL` 比），判据永远成立 → 每个件都"超出边
 
 ---
 
+### 3.33 参数的**形状**没写清 → 标量把 `build()` 崩掉（P40 实测）
+
+`joints.py` 的 `REQUIRED_PARAMS` 只给了**键名**（`hinge: ("range_deg",)`），
+而 `mjcf._joint_xml` 里是 `lo, hi = joint.params.get("range_deg", [-180, 180])`
+—— 它要的是**一对数**。于是 `range_deg: 180`（标量，舵机文档里最常见的写法）
+直接抛：
+
+```
+TypeError: cannot unpack non-iterable float object
+```
+
+而且是在 `build()` **内部**抛：`ladder --with-sim`、`mjcf` 命令收到的都是
+异常，而不是"这个关节被跳过"。第一版 `cmd_mjcf` 把它折成
+`{"status": "failed"}`，看起来像"工具坏了"，其实是一条**契约没写清**。
+
+**修法（三条一起）**：
+
+1. `_range_pair()` 明确接受 `[lo, hi]` 或 `min_deg`/`max_deg`（仓库自带
+   fixture `folded-hinge.json` 用的就是后者——两种写法都得认）
+2. **标量不猜**：`180` 既可能 `±180` 也可能 `0..180`，物理不同 →
+   跳过该关节并**在原因里说清要 `[lo, hi]`**
+3. `describe()` 增 `param_shapes`，把形状写出来（`required_params` 只有键名，
+   不够）
+
+**判别**：`missing != []` 的检查通过、但 `build()` 抛 `TypeError` → 就是它。
+
+---
+
+### 3.34 MuJoCo `from_xml_path` 在**非 ASCII 路径**上必然失败（本机工作区就叫中文）
+
+```
+ValueError: ParseXML: Error opening file
+'C:\Users\<user>\Desktop\示例工作区\p40-fixture\model.xml'
+```
+
+文件**确实存在**（1345 字节），`read_text` 读得好好的；换成
+`MjModel.from_xml_string(xml)` 立刻就编译通过。`from_xml_path` 走的是底层 C
+接口，Windows 上对非 ASCII 路径没有处理。
+
+**修法**：`load_check()` **先用 Python 读文件、再喂字符串**，永远不把路径
+交给 MuJoCo。这样也顺带绕开"路径里有空格"之类的问题。
+
+**判别**：`FileNotFoundError` 形状的报错，而 `Path(p).is_file()` 是 `True`。
+
+---
+
+### 3.35 允许值清单漏一项 → 目录回填的元件过不了 validate（P41 实测）
+
+`parts_catalog.py:650` 一直在写 `physical_source = "catalog"`（JEDEC 尺寸可信），
+而 `model.PHYSICAL_SOURCES` 里**没有** `catalog`。于是"目录回填过的元件"
+在 `validate()` / `from_dict` 里直接抛 `DesignError`。
+
+这和 §3.15（验收侧抄了一份枚举）是同一个形状，只是这次**生产和校验各抄了一份**。
+
+**修法**：`PHYSICAL_SOURCES` 补 `catalog` 与 `proposed`，并加**唯一的排序表**
+`SOURCE_ORDER`（低 → 高）+ `source_at_least()`。判"这个来源够不够可信"时
+**只读这张表**，不要写 if/elif。
+
+**判别**：一个库自己写进去的值，读回来校验炸了 → 先查两边的枚举是不是同一份。
+
+---
+
+### 3.36 幂等判据要连"读取"一起验：`from_dict` 会把 `mechanical.joints` 搬走
+
+P41 让 `mechanical.joints` 可以写在机械域里，但**存储只有一处**（`joints_list`），
+所以 `from_dict` 会把它**搬过去并从 `mechanical` 里删掉**。
+
+这意味着"读进来再写回去"**不可能与原文件逐字节相同**（`mechanical.joints`
+没了）。所以幂等断言必须是 `to_dict → from_dict → to_dict`（写出的形状稳定），
+**不是** `from_dict(原文件) == 原文件`。
+
+判据写错会怎样：用一个"应该被规范化"的夹具去断言"往返逐字节一致"，
+会得到一条**永远红**的断言，然后有人去把规范化删掉。
+
+---
+
 ## 4. 测试与验收的约定
 
 ### 4.1 每条硬判据都要有退化验证
@@ -878,7 +954,7 @@ python -m hw_velxio.scripts.check_m1            # M1 硬验收
 python -m hw_velxio.scripts.check_units_links   # P5
 python -m hw_velxio.scripts.check_generate      # P6
 python -m hw_velxio.scripts.check_m3            # M3
-npm test                       # 751 项单测（test_design + test_phases）
+npm test                       # 753 项单测（test_design + test_phases）
 ```
 
 或 `npm run verify` / `verify:m2` / `verify:m3`。
@@ -959,6 +1035,10 @@ P8 第一版把 I2C1 的 SCL 和 SDA 各记一条"链路"，
 | 固件抽取只认 STM32 HAL | Arduino/AVR/ESP-IDF 报 `not_ready` | 加一族就加一张 `_API_KINDS` 表 |
 | 固件抽取是单行匹配 | 跨行写法抽不到，进 `unpaired` | 需要 AST 级分析（目前不做，不猜） |
 | 布局自动重排只保证不短路 | 不做电气分区/散热/装配顺序（那是人做的事） | 手工微调 |
+| 机械模型**已暴露**（P40） | `mjcf` 命令：构建 + **MuJoCo 真加载**；`--build` 落 model.xml。没装 MuJoCo 时 `not_ready` | 已修 |
+| 机械**关节仍要人给参数** | `joints` 缺参数报 error（纪律）；`joints-propose` 是 P42 | P42 |
+| 四域 spec **已落地**（P41） | `power_nets`/`firmware`/`mechanical` 可写；`proposed` 是最低信任层；`lcsc`+`jlc_class` 进模型 | 已修 |
+| 电源网**仍会猜**（未声明时） | `power_nets` 没写就按网名正则，报告里标 `source: inferred` | 写进 design.json 即精确 |
 | Bridge 通道已验（**限短操作**） | 单次 invoke ✅；整条 8 段发射成功过一次（76s）；重复发射/叠层段撞 30s 上限 → 用 `--channel=cli` | 长任务走 cli |
 | `contact_sheet` 没跑过 | 本机没有 ffmpeg → 返回可执行命令行 | 装 ffmpeg 后粘那条命令 |
 | 校准默认用 V7 判 | V7 只判翻倒，不判具体场景（爬台阶…） | 传自己的 `Runner` |
@@ -1174,7 +1254,7 @@ io.open("run.cmd", "wb").write(s.encode("ascii"))
 ```bash
 cd <repo-root>                    # 必须在这里，不在 hw_velxio/
 
-npm test                                         # 751 项单测
+npm test                                         # 753 项单测
 python -m hw_velxio.scripts.check_m1             # M1 四条硬验收
 python -m hw_velxio.scripts.check_units_links    # P5
 python -m hw_velxio.scripts.check_generate       # P6
@@ -1196,6 +1276,8 @@ python -m hw_velxio.scripts.check_p3             # P3 参数敏感度（接线�
 python -m hw_velxio.scripts.check_p4             # P4 固件矩阵（每脚一行 + 四类状态）
 python -m hw_velxio.scripts.check_p5             # P5 需求草稿 + 从零开局（38 条）
 python -m hw_velxio.scripts.check_p26            # 几何/连通/自研布线/布局/通道（28 条，全离线）
+python -m hw_velxio.scripts.check_p40            # 机械模型 mjcf（15 条：构建/真加载/三态/退化）
+python -m hw_velxio.scripts.check_p41            # 四域 spec（21 条：来源分级/声明优先/归并/往返）
 ```
 
 **立创侧诊断脚本**（不是验收，是「说不清就量一遍」用的）：

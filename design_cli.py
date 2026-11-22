@@ -1574,6 +1574,151 @@ def cmd_joints(args: list[str]) -> dict[str, Any]:
     return {"status": status, **report}
 
 
+def cmd_dims(args: list[str]) -> dict[str, Any]:
+    """``dims [<id>] [--apply]`` —— 每颗元件的 L/W/H 从哪来、能不能当精确值。
+
+    **P41 的"尺寸来源"段**：机械/布局/3D 全都吃 `size_mm`，但它的质量分三档
+    （datasheet/measured 可信、catalog 中等、proposed/estimated 不可信、空 = 没有）。
+    这个命令不重新推导尺寸——推导在 `easyeda._size_from_attrs` 只有一份，
+    这里只**分类 + 报告 + 可选回写**（回写标 `catalog`，不冒充 datasheet）。
+    """
+    from .design import dims as dims_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **dims_module.describe()}
+
+    store, design = _load(args[0])
+    report = dims_module.for_design(design)
+
+    applied: list[str] = []
+    if "--apply" in args:
+        # 只回写"能补的"：`physical_source` 标 catalog（3D 包围盒也是目录级）。
+        # 已经在 `size_mm` 里的真值不动 —— 人抄的数字不能被目录覆盖。
+        sizes = {row["ref"]: row.get("from_3d") for row in report["rows"]}
+        for part in design.parts:
+            size = sizes.get(part.ref)
+            if not size:
+                continue
+            if all(float(part.size_mm.get(k, 0) or 0) > 0 for k in ("w", "h", "d")):
+                continue
+            part.size_mm = {"w": float(size.get("w", 0)),
+                            "h": float(size.get("h", 0)),
+                            "d": float(size.get("d", 0))}
+            part.physical_source = "catalog"
+            applied.append(part.ref)
+        if applied:
+            store.save(design)
+    report["applied"] = applied
+    return {"status": report["status"], **report}
+
+
+def cmd_mjcf(args: list[str]) -> dict[str, Any]:
+    """``mjcf [<id>] [--build] [--free] [--weld] [--no-floor] [--out=PATH]``
+    —— 机械模型（MJCF）。
+
+    **P40 补的就是这一段**：`mjcf.build()` 一直存在，但没有任何命令调用它，
+    于是"机械仿真"在 CLI / 工具里根本不可达（死代码）。
+
+    三种动作：
+
+    * 不带工程 id → 返回 `describe()`（有哪些关节类型、各自要什么参数）
+    * `mjcf <id>` → **只检查**：构建 XML + 用 MuJoCo 真的加载一次，不写盘
+    * `mjcf <id> --build` → 落 `<工程>/model.xml`，并再做一次加载检查
+
+    判据（三态，**缺数据不是通过**）：
+
+    | 情况 | status |
+    |---|---|
+    | 能构建 + MuJoCo 加载通过 + 没有跳过件 + 有关节表 | `ok` |
+    | 没装 MuJoCo / 有零件被跳过 / 没有关节表 / 零件为空 | `not_ready`（各带原因）|
+    | MuJoCo 在位但编译报错 | `failed`（带异常原文）|
+
+    `--free` / `--weld` 是**必须显式给**的模型选择（见 `mjcf.build` 的说明）：
+    默认焊死在世界里（纯几何），`--free` 让零件自由下落，`--weld` 让每块板
+    成为一个刚体（PCB 的正确力学模型）。
+    """
+    from .design import joints as joints_module
+    from .design import mjcf as mjcf_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **mjcf_module.describe()}
+
+    store, design = _load(args[0])
+    rest = list(args[1:])
+    flags = {a for a in rest if a.startswith("--") and "=" not in a}
+    out_path = ""
+    for item in rest:
+        if item.startswith("--out="):
+            out_path = item.split("=", 1)[1]
+
+    free = "--free" in flags
+    weld = "--weld" in flags
+    include_floor = "--no-floor" not in flags
+    want_build = "--build" in flags
+
+    joints_report = joints_module.report(design)
+    try:
+        built = mjcf_module.build(design, free_bodies=free, weld_parts=weld,
+                                  include_floor=include_floor)
+    except Exception as exc:  # noqa: BLE001 - 构建失败要落成 status，不抛
+        return {"status": "failed",
+                "findings": [f"构建 MJCF 失败：{type(exc).__name__}: {exc}"]}
+
+    xml = built.xml
+    stats = built.stats()
+    reported_path = ""
+    if want_build:
+        target = Path(out_path) if out_path else store.path("model.xml")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(xml, encoding="utf-8")
+        reported_path = str(target)
+
+    load = mjcf_module.load_check(path=reported_path) if reported_path else \
+        mjcf_module.load_check(xml=xml)
+
+    notes: list[str] = []
+    if stats["parts_total"] == 0:
+        status = "not_ready"
+        notes.append("设计里一个零件都没有 —— 机械模型没有对象（空输入不算通过）")
+    elif load["status"] == "not_ready":
+        status = "not_ready"
+        notes.append(f"MuJoCo 不在位，**没有验证过**这份 XML：{load.get('reason')}")
+    elif load["status"] == "failed":
+        status = "failed"
+        notes.append(f"MuJoCo 编译报错：{load.get('reason')}")
+    elif stats["parts_skipped"] or stats.get("joints_skipped"):
+        status = "not_ready"
+        bits = []
+        if stats["parts_skipped"]:
+            bits.append(f"{stats['parts_skipped']}/{stats['parts_total']} 个零件"
+                        "（缺尺寸/质量）")
+        if stats.get("joints_skipped"):
+            bits.append(f"{stats['joints_skipped']} 个关节（缺必需参数）")
+        notes.append("被跳过：" + "，".join(bits) + " —— 模型不完整，"
+                     "跳过的原因逐条在 `stats.skipped_reasons`")
+    elif not (design.joints_list or []):
+        status = "not_ready"
+        notes.append("没有关节表（`joints` 段）—— 这是一份静几何，不是可动的机械结构；"
+                     "先跑 `joints <id>`")
+    else:
+        status = "ok"
+
+    return {
+        "status": status,
+        "mode": {"free_bodies": free, "weld_parts": weld,
+                 "include_floor": include_floor},
+        "stats": stats,
+        "load": load,
+        "joints": {"status": joints_report.get("status"),
+                   "declared": len(design.joints_list or []),
+                   "inferred": len(joints_report.get("inferred") or [])},
+        "xml": {"chars": len(xml), "path": reported_path},
+        "artifacts": {"model.xml": bool(reported_path)},
+        "notes": notes,
+        "warnings": list(built.warnings)[:12],
+    }
+
+
 def cmd_lceda(args: list[str]) -> dict[str, Any]:
     """``lceda [status|probe|sessions|close]`` —— 立创EDA 通道自检。
 
@@ -3374,6 +3519,8 @@ COMMANDS = {
     "coverify": cmd_coverify,
     "sim": cmd_sim,
     "joints": cmd_joints,
+    "mjcf": cmd_mjcf,
+    "dims": cmd_dims,
     "units": cmd_units,
     "links": cmd_links,
     "ioc-links": cmd_ioc_links,

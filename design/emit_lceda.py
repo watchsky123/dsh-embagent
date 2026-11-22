@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from . import lceda as lceda_mod
+from . import power as power_mod
 from . import stackup_spec
 from .model import DesignModel
 
@@ -1842,33 +1843,31 @@ return {ok: true, rows: rows, saved: saved, stitch: stitch,
 """
 
 #: 地网络的判据。**只认名字**，不猜"哪个网络焊盘最多" —— 那会替人做决定。
-_GROUND_HINTS = ("GND", "AGND", "PGND", "DGND", "VSS", "0V")
+#: 地网判据**不在这里另写一份**：见 `design/power.py`（P41 收拢）。
+_GROUND_HINTS = power_mod.GROUND_HINTS
 
 #: 铺铜内缩量（mil）。手工给的保守值：铺铜离板边 8 mil，避免被板框裁掉。
 POUR_INSET_MIL = 8.0
 
 
 def _power_nets(names: Iterable[str]) -> list[str]:
-    """所有电源类网络（含地）。判据与布线器共用一张表（`router._POWER_HINTS`）。"""
-    from . import router as router_mod
-
+    """所有电源类网络（含地）。判据在 `design/power.py`（与布线器同一张表）。"""
     seen: list[str] = []
     for name in names:
         text = str(name or "")
-        if not text or text in seen:
-            continue
-        if router_mod._is_power(text):  # noqa: SLF001 - 同一张判据表，不另抄一份
+        if text and text not in seen and power_mod.is_power(text):
             seen.append(text)
     return seen
 
 
 def _ground_nets(names: Iterable[str]) -> list[str]:
-    out = []
-    for name in names:
-        up = str(name or "").upper()
-        if any(up == h or up.startswith(h) or up.endswith(h) for h in _GROUND_HINTS):
-            out.append(str(name))
-    return out
+    """**仅按网名推断**的地网。要精确请用 `power.classify(design.power_nets, ...)`。"""
+    return [str(n) for n in names if n and power_mod.is_ground(str(n))]
+
+
+def _net_kinds(design: DesignModel, names: Iterable[str]) -> dict[str, Any]:
+    """电源/地分类：**声明优先**，没声明才按网名推断（并把来源写出来）。"""
+    return power_mod.classify(declared=design.power_nets or (), nets=names)
 
 
 def _run_pour(session: lceda_mod.LcedaSession, design: DesignModel,
@@ -1903,7 +1902,9 @@ def _run_pour(session: lceda_mod.LcedaSession, design: DesignModel,
             row["status"] = "not_ready"
             row["note"] = "板框读不到坐标（outline 源数组为空）"
             continue
-        names = _ground_nets(list(geo.nets) + design_nets)
+        kinds = _net_kinds(design, list(geo.nets) + design_nets)
+        row["nets_source"] = kinds["source"]
+        names = kinds["ground"]
         row["box"] = [round(v, 1) for v in box]
         if not names:
             row["status"] = "not_ready"
@@ -1915,8 +1916,9 @@ def _run_pour(session: lceda_mod.LcedaSession, design: DesignModel,
         # **其它电源网也要铺**（用户要求 +3V3/VBUS 也覆盖）：
         # 地网铺整板；别的电源网铺自己焊盘的包围盒（外扩一圈），
         # 两张铜之间由立创按间距规则自动避让。
-        power_nets = [n for n in _power_nets(
-            [p.net for p in geo.pads] + list(geo.nets) + design_nets) if n != net]
+        power_nets = [n for n in _net_kinds(
+            design, [p.net for p in geo.pads] + list(geo.nets) + design_nets
+        )["power"] if n != net]
         copper_layers = int(stackup_spec.derive(design).copper_layers or 2)
         row["power_nets"] = power_nets
         extra: list[dict[str, Any]] = []

@@ -2342,6 +2342,107 @@ npm test                                # 751 项（新增 9 条：布局 6 + �
 **设计里有、板上不足 2 焊盘的网 → verify 记 `not_connected_vs_design` 并 not_ready**。
 
 
+## P40 — 机械链打通：`mjcf` 命令（2026-11-22）
+
+> 计划见 [`docs/plan-v5.md`](docs/plan-v5.md) P40。这一段只做一件事：
+> 把 `mjcf.build()` 从**死代码**接出来，并且把判据落在「MuJoCo 真的编译过」上。
+
+### 新增
+
+| 位置 | 内容 |
+|---|---|
+| `design/mjcf.py` | `load_check()`（`ok`/`not_ready`/`failed` 三态）、`_range_pair()`、`describe().param_shapes` |
+| `design_cli.py` | `cmd_mjcf` + `COMMANDS["mjcf"]`（`--build/--free/--weld/--no-floor/--out=`） |
+| `design/store.py` | `ARTIFACTS` 加 `model.xml` |
+| `design/agent_tools.py` | `hw_mjcf` ToolSpec（`arg_style="eq"`） |
+| `src/tools.ts` | `hw_mjcf` DSH 工具（工具数 43 → **44**） |
+| `scripts/check_p40.py` | **15 条**验收（构建/真加载/三态/退化） |
+
+### 实测
+
+| 用例 | 结果 |
+|---|---|
+| 关节齐 + 尺寸齐 | `ok`；MuJoCo **3.12.0** 编译通过，`nbody=4`、`njnt=1` |
+| `--build` | `model.xml` 落盘，1345 字，内容与返回值一致 |
+| hinge 缺 `range_deg` | `not_ready`，`joints_skipped=1`、`parts_skipped=0`，原因点名 `range_deg` |
+| **标量** `range_deg: 180` | `not_ready` + 原因写「有歧义，不猜」（**原来会抛 TypeError**） |
+| 没有关节表 | `not_ready` + 「静几何不是可动结构」 |
+| `HWV_NO_MUJOCO=1` | `not_ready`（没验证过 ≠ 通过），不抛异常 |
+| 退化：拆掉「关节跳过」闸门 | 3a 从 `not_ready` 变绿 → 断言确实挂在闸门上 |
+
+### 同轮修掉的两个真 bug
+
+1. **`range_deg` 形状契约没写清**（AGENTS §3.33）：`REQUIRED_PARAMS` 只给键名，
+   代码要一对数 → 标量直接 `TypeError` 抛在 `build()` 里，`ladder --with-sim`
+   也会中招。改成：接受 `[lo, hi]` 或 `min_deg`/`max_deg`，**标量不猜**（跳过并
+   说明），`describe()` 增 `param_shapes`。
+2. **MuJoCo `from_xml_path` 在非 ASCII 路径必然失败**（AGENTS §3.34）：
+   工作区叫 `示例工作区`，文件存在却报 `ParseXML: Error opening file`。
+   改成**先用 Python 读、再 `from_xml_string`**。
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p40   # 15/15
+npm test                               # 752 通过
+node scripts/check_tools.mjs           # 44 个工具，全过
+npm run check                          # tsc 干净
+```
+
+
+## P41 — spec 扩四域（2026-11-22）
+
+> 计划见 [`docs/plan-v5.md`](docs/plan-v5.md) P41。目标只有一个：让 `design.json`
+> 能表达**固件怎么想**、**机械怎么连**、**哪些网是电源**，并且把两个"靠名字猜"
+> 的地方变成**可以显式声明**。
+
+### 新增
+
+| 位置 | 内容 |
+|---|---|
+| `design/model.py` | `power_nets` / `firmware` / `mechanical` 三块；`SOURCE_ORDER` + `source_at_least()`；`Part.jlc_class`；`catalog`/`proposed` 两种来源 |
+| `design/power.py`（新） | 电源/地判据**唯一一份** + `classify(declared, nets)`（声明优先，未声明标 `inferred`）|
+| `design/router.py` | `_POWER_HINTS`/`_is_power` 改为 `power.py` 的别名（一张表，两个用家）|
+| `design/emit_lceda.py` | 铺铜改用 `power.classify`，每块板记 `nets_source` |
+| `design/dims.py`（新） | 尺寸来源分类（`datasheet/measured/catalog` 可信；`estimated/proposed/unknown` 不可信）|
+| `design_cli.py` | `dims` 命令（`--apply` 用立创 3D 模型回写，标 `catalog`）|
+| `design/agent_tools.py` / `src/tools.ts` | `hw_dims`（工具数 44 → **45**）|
+| `scripts/check_p41.py` | **21 条**验收（含 1 条退化）|
+
+### 修掉的两个老 bug
+
+1. **`catalog` 不在允许值里**（§3.35）：`parts_catalog` 一直在写它 →
+   "目录回填过的元件"过不了 `validate()`。
+2. **电源/地判据有两份**：`emit_lceda._GROUND_HINTS` 与 `router._POWER_HINTS`，
+   还靠一个私有函数互借。现在只有 `design/power.py` 一份。
+
+### 实测
+
+| 用例 | 结果 |
+|---|---|
+| 全部夹具 `to_dict→from_dict→to_dict` | **逐字节一致**；旧文件**不长出新键** |
+| `power_nets` 声明 vs 缺省 | `declared` vs `inferred`，结果不同且来源都写出来 |
+| 只声明 `+3V3`（没声明地）| 地按名字兜底，来源记 `declared+inferred-ground` |
+| `mechanical.joints` | 归并进 `joints_list`，`mechanical` 里不再留 `joints`（一遍读一次不会变两条）|
+| `dims` 3D Transform | `100,60,40` mil → 2.54/1.524/1.016 mm |
+| `dims` 3D Title | `C0402_L1.0-W0.5-H0.5` → 1.0/0.5/0.5 mm |
+| `proposed` | `dims` 判**不可信**；`source_at_least("proposed","estimated") == False` |
+| 退化：把 proposed 塞进可信表 | 6d 变红 → 闸门确实在那张表上 |
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p41   # 21/21
+python -m hw_velxio.scripts.check_p40   # 15/15（没回归）
+python -m hw_velxio.scripts.check_p26   # 28/28
+npm test                                # 753 通过
+node scripts/check_tools.mjs            # 45 个工具
+```
+
+**注**：`check_p0` / `check_p23` 在 **GBK 控制台**下会崩在 `✓` 的编码上
+（与本段无关）；设 `PYTHONIOENCODING=utf-8` 后两者均 exit=0。
+
+
 ---
 
 ## 参考对照（历史阶段，摘要）

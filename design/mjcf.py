@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from .model import DesignModel, Joint, Part
@@ -157,10 +158,17 @@ class MjcfParts:
         # 是虚增——实际只有 1 个板刚体。
         simulated = [p for p in self.parts if p.xml and p.in_world]
         estimated = [p for p in simulated if p.mass_estimated]
+        # `skipped` 里**混了两类**：被跳过的零件（没有 `kind`）与被跳过的
+        # 关节（有 `kind`）。第一版把它们都算进 `parts_skipped`，于是
+        # "一个 gear 关节缺 ratio 被跳过"会被报成"1 个零件被跳过"——
+        # 数字对不上种类，人照着去查零件会查不到（AGENTS §3.2 的同形状）。
+        part_skips = [s for s in self.skipped if "kind" not in s]
+        joint_skips = [s for s in self.skipped if "kind" in s]
         return {
             "parts_total": len(self.parts),
             "parts_simulated": len(simulated),
-            "parts_skipped": len(self.skipped),
+            "parts_skipped": len(part_skips),
+            "joints_skipped": len(joint_skips),
             "mass_estimated": len(estimated),
             "skipped_reasons": self.skipped,
             "groups_used": list(self.groups_used),
@@ -174,7 +182,8 @@ class MjcfParts:
                     f"（其中 {s['mass_estimated']} 个质量是估算）")
         else:
             head = (f"{s['parts_simulated']}/{s['parts_total']} 零件进入仿真，"
-                    f"**{s['parts_skipped']} 个被跳过**")
+                    f"**{s['parts_skipped']} 个零件 + {s['joints_skipped']} 个关节"
+                    f"被跳过**")
         return (head + "；物理域：" + ", ".join(self.groups_used)
                 + "。**跳过不是失败，但也不是完整**。")
 
@@ -260,6 +269,42 @@ def _part_body(part: Part, parent_pos: tuple[float, float, float],
 # 关节 / 约束 / 驱动
 # ---------------------------------------------------------------------------
 
+def _range_pair(joint: Joint, key: str, pair_keys: tuple[str, str]
+                ) -> tuple[float, float] | None:
+    """把 `range_deg` / `range_mm` 解成 `(lo, hi)`。
+
+    【为什么不接受标量】
+
+    实测踩到：`range_deg: 180` 被这里的 `lo, hi = ...` 直接解包 →
+    `TypeError: cannot unpack non-iterable float object`，而且是**在
+    `build()` 内部**抛，调用方（`ladder --with-sim`、`mjcf` 命令）收到的是
+    异常而不是"这个关节被跳过"。
+
+    更根本的问题是**标量有歧义**：`180` 既可能是 `±180`（舵机常见写法），
+    也可能是 `0..180`（单边限位）——物理上完全不同。所以正确做法是
+    **跳过并说清要 `[lo, hi]`**，而不是挑一种解释（AGENTS §1.2 同规）。
+
+    仓库自带 fixture（`folded-hinge.json`）写的是 `min_deg`/`max_deg`
+    这一对，所以两种写法都接受。
+    """
+    p = joint.params or {}
+    value = p.get(key)
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        try:
+            return float(value[0]), float(value[1])
+        except (TypeError, ValueError):
+            return None
+    if value is not None:
+        return None                      # 标量/错形状：不猜
+    lo, hi = p.get(pair_keys[0]), p.get(pair_keys[1])
+    if lo is None or hi is None:
+        return None
+    try:
+        return float(lo), float(hi)
+    except (TypeError, ValueError):
+        return None
+
+
 def _joint_xml(joint: Joint, params: ParamSet,
                reasons: list[str]) -> tuple[str, str]:
     """一个 Joint → (body 内的 joint 片段, equality 片段)。
@@ -283,14 +328,29 @@ def _joint_xml(joint: Joint, params: ParamSet,
 
     if mode == "joint":
         if joint.kind == "hinge":
-            lo, hi = joint.params.get("range_deg", [-180.0, 180.0])
+            pair = _range_pair(joint, "range_deg", ("min_deg", "max_deg"))
+            if pair is None:
+                reasons.append(
+                    f"{joint.a}-{joint.b}（hinge）的 `range_deg` 要是 `[lo, hi]` "
+                    f"两个数、或 `min_deg`/`max_deg` 一对（收到 "
+                    f"{joint.params.get('range_deg')!r}）；标量有歧义"
+                    f"（±180 还是 0..180），不猜 → 跳过这个关节")
+                return "", ""
+            lo, hi = pair
             return (f'  <joint name="{name}" type="hinge" axis="0 0 1" '
                     f'range="{_f(math.radians(float(lo)))} '
                     f'{_f(math.radians(float(hi)))}" '
                     f'frictionloss="{_f(float(params.get("axle_fric_nm", 0.0005)))}"/>\n',
                     "")
         if joint.kind == "slide":
-            lo, hi = joint.params.get("range_mm", [-10.0, 10.0])
+            pair = _range_pair(joint, "range_mm", ("min_mm", "max_mm"))
+            if pair is None:
+                reasons.append(
+                    f"{joint.a}-{joint.b}（slide）的 `range_mm` 要是 `[lo, hi]` "
+                    f"两个数、或 `min_mm`/`max_mm` 一对（收到 "
+                    f"{joint.params.get('range_mm')!r}）→ 跳过这个关节")
+                return "", ""
+            lo, hi = pair
             return (f'  <joint name="{name}" type="slide" axis="1 0 0" '
                     f'range="{_f(float(lo) * 1e-3)} {_f(float(hi) * 1e-3)}"/>\n',
                     "")
@@ -626,11 +686,74 @@ def _excludes(design: DesignModel) -> list[str]:
     return out
 
 
+def load_check(*, xml: str = "", path: str | Path | None = None) -> dict[str, Any]:
+    """用 MuJoCo **真的加载一次**这份 MJCF。
+
+    【为什么单独做这一步】
+
+    `build()` 只保证"我拼出了字符串"。XML 合法不等于 MuJoCo 能编译它：
+    关节父子、`inertiafromgeom`、`<size memory>`、重复的 body 名——这些
+    只有真加载才暴露。仓库里已经有过"XML 看着对、关节其实全丢了"的教训
+    （见 `build()` 里那段注释：先拼 world 再插关节，关节静默丢失）。
+
+    三态：
+
+    | 结果 | 含义 |
+    |---|---|
+    | `ok` | MuJoCo 编译通过，带 `nbody/njnt/ngeom/nq` |
+    | `not_ready` | **MuJoCo 不在位**（`vendor/pylib` 没装，或被 `HWV_NO_MUJOCO` 关掉）|
+    | `failed` | MuJoCo 在位但**编译报错**，`reason` 带异常原文 |
+
+    `not_ready` 不是 `pass`：没加载过就不知道模型对不对（AGENTS §0.1）。
+    """
+    from . import mujoco_backend
+
+    available, why = mujoco_backend.available()
+    if not available:
+        return {"status": "not_ready", "backend": "none", "reason": why}
+
+    mujoco = mujoco_backend._import_mujoco()  # noqa: SLF001 - 同包内的加载器
+    if path is not None and not xml:
+        # **用 Python 读文件、再喂字符串**：`MjModel.from_xml_path()` 走的是
+        # 底层 C 接口，在 Windows 上遇到非 ASCII 路径直接报
+        # `ValueError: ParseXML: Error opening file '...'` —— 而本仓库的工作区
+        # 叫 `示例工作区`，必然踩到（P40 实测）。同一个文件用
+        # `from_xml_string` 就能编译。
+        try:
+            xml = Path(path).read_text(encoding="utf-8")
+        except OSError as exc:
+            return {"status": "failed", "backend": "mujoco",
+                    "reason": f"读不了 {path}：{exc}"}
+    try:
+        model = mujoco.MjModel.from_xml_string(xml)
+    except Exception as exc:  # noqa: BLE001 - MuJoCo 的报错类型不统一
+        return {"status": "failed", "backend": "mujoco",
+                "reason": f"{type(exc).__name__}: {exc}"}
+    return {
+        "status": "ok",
+        "backend": "mujoco",
+        "path": str(path) if path is not None else "",
+        "version": str(getattr(mujoco, "__version__", "")),
+        "nbody": int(model.nbody),
+        "njnt": int(model.njnt),
+        "ngeom": int(model.ngeom),
+        "nq": int(model.nq),
+    }
+
+
 def describe() -> dict[str, Any]:
     return {
         "module": "hw_velxio.design.mjcf",
         "mapping": dict(JOINT_MAPPING),
         "required_params": {k: list(v) for k, v in _REQUIRED_PARAMS.items()},
+        # **形状也要说清**：`required_params` 只给键名。`range_deg` 是"一个数"
+        # 还是"[lo, hi]"，不说清就会有人传标量（实测撞过 TypeError）。
+        "param_shapes": {
+            "hinge": {"range_deg": "[lo, hi]（度）或 min_deg/max_deg"},
+            "slide": {"range_mm": "[lo, hi]（mm）或 min_mm/max_mm"},
+            "gear": {"ratio": "数（从动/主动，正数）"},
+            "axle": {"diameter_mm": "数（mm）"},
+        },
         "default_density_kg_m3": DEFAULT_DENSITY,
         "discipline": (
             "inferred 关节不进仿真；缺尺寸/质量的零件进 skipped 并说明；"
