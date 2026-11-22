@@ -3973,7 +3973,125 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
-  // ---- 3h. hw_plan ------------------------------------------------------
+  // ---- 3i. hw_interface / hw_fw_algo（软件：契约 + 可跑的纯 C）-----------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_interface',
+    description:
+      '**软硬接口契约**：从 `design.json`（引脚+网表）与 `.ioc` 合成 `interface.json`/`.md`。'
+      + '固件与检查器共用同一份事实。**唯一硬判据是引脚↔网络逐条一致**；'
+      + '没有 `.ioc` 时外设分组标 `inferred`；时钟/中断/AF/时序一律 `unknown`。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名' },
+      ioc: { type: 'string', description: '可选：.ioc 路径（有就按它定外设）' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          project: { type: 'string' }, status: { type: 'string' },
+          rows: { type: 'string' }, summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as { project: string; status: string; rows: string; summary: string }
+        return text(`# ${v.project} 接口契约：${v.status}`,
+          ...v.rows.split('\n').filter((x) => x !== ''), v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'firmware')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown; ioc?: unknown }
+      const project = str(a.project)
+      const cliArgs: string[] = [project]
+      const ioc = str(a.ioc)
+      if (ioc !== '') cliArgs.push(`--ioc=${ioc}`)
+      const payload = await design('interface', ...cliArgs)
+      const counts = (payload.counts ?? {}) as Record<string, unknown>
+      const peripherals = Array.isArray(payload.peripherals) ? payload.peripherals : []
+      const unknown = Array.isArray(payload.unknown) ? payload.unknown : []
+      const rows: string[] = [
+        `引脚 ${num(counts.pins)}（连通 ${num(counts.connected)} / 未接 ${num(counts.unconnected)}）`,
+        `外设 ${peripherals.map((raw) => {
+          const g = (raw ?? {}) as Record<string, unknown>
+          return `${str(g.family)}(${str(g.source)})`
+        }).join(' ') || '无'}`,
+      ]
+      for (const raw of unknown.slice(0, 4)) {
+        const u = (raw ?? {}) as Record<string, unknown>
+        rows.push(`* unknown：${str(u.what)} —— 需要 ${str(u.need)}`)
+      }
+      return {
+        project,
+        status: str(payload.status),
+        rows: rows.join('\n'),
+        summary: str(payload.note),
+      }
+    },
+  })))
+  disposers.push(tools.register(defineTool({
+    name: 'hw_fw_algo',
+    description:
+      '**纯 C 算法 + PC 侧单元测试**：把不依赖硬件的那部分（状态机/滤波/限幅）'
+      + '写成 C，用本机 gcc **真编译真跑**。`ok`=全过、`failed`=有用例失败、'
+      + '`not_ready`=没 gcc/编译不过。Renode 跑不了时，这是唯一能验软件的路。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名' },
+      algo: { type: 'string', description: 'failsafe / lpf（不给则列算法）' },
+      out: { type: 'string', description: '输出目录（默认 fw/<algo>）' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          project: { type: 'string' }, status: { type: 'string' },
+          rows: { type: 'string' }, summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as { project: string; status: string; rows: string; summary: string }
+        return text(`# ${v.project} 算法测试：${v.status}`,
+          ...v.rows.split('\n').filter((x) => x !== ''), v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'firmware')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown; algo?: unknown; out?: unknown }
+      const project = str(a.project)
+      const algo = str(a.algo)
+      const cliArgs: string[] = [project]
+      if (algo === '') cliArgs.push('list')
+      else cliArgs.push(`--algo=${algo}`)
+      const out = str(a.out)
+      if (out !== '') cliArgs.push(`--out=${out}`)
+      const payload = await design('fw-algo', ...cliArgs)
+      const cases = (payload.cases ?? {}) as Record<string, unknown>
+      const failed = Array.isArray(cases.failed) ? (cases.failed as string[]) : []
+      const lists = Array.isArray(payload.algorithms) ? payload.algorithms : []
+      const rows = lists.length > 0
+        ? lists.map((raw) => {
+          const x = (raw ?? {}) as Record<string, unknown>
+          return `* ${str(x.name)}：${str(x.proves)}`
+        })
+        : [
+          `用例 ${num(cases.passed)}/${num(cases.total)} 通过`,
+          ...failed.slice(0, 6).map((x) => `* ${x}`),
+        ]
+      return {
+        project,
+        status: str(payload.status),
+        rows: rows.join('\n'),
+        summary: str(payload.reason) || str(payload.note) || str(payload.dir),
+      }
+    },
+  })))
+
+  // ---- 3h. hw_plan ------------------------------------------------------  // ---- 3h. hw_plan ------------------------------------------------------
   disposers.push(tools.register(defineTool({
     name: 'hw_plan',
     description:

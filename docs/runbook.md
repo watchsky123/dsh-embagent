@@ -205,6 +205,7 @@ python -m hw_velxio.scripts.check_p44            # 机械判据（16 条：干�
 python -m hw_velxio.scripts.check_p45            # 制造可行性（17 条：DFM 三态/DRC 分级/合成/命令/退化）
 check_p46            # 前端两分区（26 条：分区/面板/动作/RPC/快照/跳转/退化）
 check_p47            # 审计/环境/样例/有界自修（21 条：八段/缺产物 not_ready/必需项/样例/停法/退化）
+check_p50            # 接口契约 + 纯 C 算法（14 条：逐引脚/外设 inferred/unknown/真编译/退化）
 check_p49            # 项目计划图（27 条：版本/id 唯一/判据/坐标/四层图/任务 verify/退化）
 check_p48            # 闭环修复（20 条：网表不再丢/空网表判死/deliverable 要证据/命令 status/parity 守卫/3 条退化）
 ```
@@ -392,6 +393,54 @@ P3 查清的事实：**136 个仿真参数里只有 4 个真的被代码读**（
 （手写的表和代码分叉的方式是"表里多一个、代码里没有"）。
 `(?<![\w.])` 这个后向断言是必要的——`joint.params.get("range_deg")` 是
 **关节私有参数**，不是 `ParamSet`，不加断言会把它误报成"表里缺项"。
+
+---
+
+## 12. 参数形状与 MuJoCo 路径（从 AGENTS §3.33–§3.34 搬来，一字未改）
+
+### 3.33 参数的**形状**没写清 → 标量把 `build()` 崩掉（P40 实测）
+
+`joints.py` 的 `REQUIRED_PARAMS` 只给了**键名**（`hinge: ("range_deg",)`），
+而 `mjcf._joint_xml` 里是 `lo, hi = joint.params.get("range_deg", [-180, 180])`
+—— 它要的是**一对数**。于是 `range_deg: 180`（标量，舵机文档里最常见的写法）
+直接抛：
+
+```
+TypeError: cannot unpack non-iterable float object
+```
+
+而且是在 `build()` **内部**抛：`ladder --with-sim`、`mjcf` 命令收到的都是
+异常，而不是"这个关节被跳过"。第一版 `cmd_mjcf` 把它折成
+`{"status": "failed"}`，看起来像"工具坏了"，其实是一条**契约没写清**。
+
+**修法（三条一起）**：
+
+1. `_range_pair()` 明确接受 `[lo, hi]` 或 `min_deg`/`max_deg`（仓库自带
+   fixture `folded-hinge.json` 用的就是后者——两种写法都得认）
+2. **标量不猜**：`180` 既可能 `±180` 也可能 `0..180`，物理不同 →
+   跳过该关节并**在原因里说清要 `[lo, hi]`**
+3. `describe()` 增 `param_shapes`，把形状写出来（`required_params` 只有键名，
+   不够）
+
+**判别**：`missing != []` 的检查通过、但 `build()` 抛 `TypeError` → 就是它。
+
+---
+
+### 3.34 MuJoCo `from_xml_path` 在**非 ASCII 路径**上必然失败（本机工作区就叫中文）
+
+```
+ValueError: ParseXML: Error opening file
+'C:\Users\<user>\Desktop\示例工作区\p40-fixture\model.xml'
+```
+
+文件**确实存在**（1345 字节），`read_text` 读得好好的；换成
+`MjModel.from_xml_string(xml)` 立刻就编译通过。`from_xml_path` 走的是底层 C
+接口，Windows 上对非 ASCII 路径没有处理。
+
+**修法**：`load_check()` **先用 Python 读文件、再喂字符串**，永远不把路径
+交给 MuJoCo。这样也顺带绕开"路径里有空格"之类的问题。
+
+**判别**：`FileNotFoundError` 形状的报错，而 `Path(p).is_file()` 是 `True`。
 
 ---
 

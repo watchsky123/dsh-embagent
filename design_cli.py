@@ -1788,6 +1788,62 @@ def cmd_dfm(args: list[str]) -> dict[str, Any]:
     return {"status": merged["status"], **merged}
 
 
+def cmd_interface(args: list[str]) -> dict[str, Any]:
+    """``interface <id> [--ioc=PATH]`` —— 软硬接口契约（P50）。
+
+    从 `design.json` 的引脚+网表 + `.ioc` 合成 `interface.json` / `interface.md`：
+    固件侧读它，检查器也读它。**唯一硬判据是引脚↔网络逐条一致**；
+    没有 `.ioc` 时外设分组标 `inferred`；时钟/中断/AF/时序一律 `unknown`。
+    """
+    from .design import interface as iface_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **iface_module.describe()}
+
+    store, design = _load(args[0])
+    ioc = ""
+    for item in args[1:]:
+        if item.startswith("--ioc="):
+            ioc = item.split("=", 1)[1]
+    payload = iface_module.build(design, ioc_path=(ioc or None))
+    store.write(iface_module.FILE, payload)
+    store.write_text("interface.md", iface_module.render(payload))
+    return {"status": payload["status"], "project_id": args[0], **payload}
+
+
+def cmd_fw_algo(args: list[str]) -> dict[str, Any]:
+    """``fw-algo list`` / ``fw-algo <id> --algo=failsafe [--out=fw]``
+
+    **纯 C 算法 + PC 侧单元测试**（P50）：Renode 在本机跑不了、也没有目标板，
+    所以只验不依赖硬件的逻辑（状态机/滤波/…）。用本机 gcc 真编译真跑。
+    """
+    from .design import fw_algo as algo_module
+
+    if not args or args[0] == "list" or args[0].startswith("-"):
+        return {"status": "ok", **algo_module.list_algos()}
+
+    store, _design = _load(args[0])
+    algo = ""
+    out = ""
+    for item in args[1:]:
+        if item.startswith("--algo="):
+            algo = item.split("=", 1)[1]
+        elif item.startswith("--out="):
+            out = item.split("=", 1)[1]
+    if not algo:
+        return {"status": "failed",
+                "findings": ["需要 --algo=（可用："
+                             + "、".join(algo_module.ALGOS) + "）"]}
+    target = out or f"fw/{algo}"
+    directory = store.path(target)
+    written = algo_module.generate(algo, directory)
+    if written["status"] != "ok":
+        return written
+    result = algo_module.build_and_run(algo, directory)
+    return {"status": result["status"], "project_id": args[0], **result,
+            "dir": target}
+
+
 def cmd_plan(args: list[str]) -> dict[str, Any]:
     """``plan <id> [--req='<json>'] [--text=...] [--list] [--show=v1] [--graph]``
 
@@ -4071,6 +4127,8 @@ COMMANDS = {
     "mech": cmd_mech,
     "dfm": cmd_dfm,
     "plan": cmd_plan,
+    "interface": cmd_interface,
+    "fw-algo": cmd_fw_algo,
     "audit": cmd_audit,
     "doctor": cmd_doctor,
     "examples": cmd_examples,

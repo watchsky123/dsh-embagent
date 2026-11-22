@@ -367,6 +367,16 @@ TOOLS: list[ToolSpec] = [
               "mode": "string"}, ("project",),
              arg_style="eq",
              note="mode=list 列版本；mode=graph 出 2D 投影；mode=show 看某版"),
+    ToolSpec("hw_interface", "judge", "interface",
+             "**软硬接口契约**：从 design.json + .ioc 合成引脚↔网络契约；"
+             "唯一硬判据是逐引脚一致，时钟/中断/AF/时序标记 unknown",
+             {"project": "string", "ioc": "string"}, ("project",),
+             arg_style="eq"),
+    ToolSpec("hw_fw_algo", "judge", "fw-algo",
+             "**纯 C 算法 + PC 侧单元测试**：用本机 gcc 真编译真跑"
+             "（Renode 跑不了、没有目标板时，这是唯一能验软件的路）",
+             {"project": "string", "algo": "string", "out": "string"},
+             ("project",), arg_style="eq"),
     ToolSpec("hw_audit", "judge", "audit",
              "六段审计：需求→单元→选料→原理图→PCB→固件→机械→交接；"
              "缺产物是 not_ready（不是 ok），每段带 checked 与 basis",

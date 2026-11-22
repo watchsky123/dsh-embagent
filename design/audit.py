@@ -179,6 +179,7 @@ def _stage_pcb(store: Any, design: Any) -> dict[str, Any]:
 def _stage_firmware(store: Any, design: Any) -> dict[str, Any]:
     payload = store.read("firmware_matrix.json")
     pinmap = (getattr(design, "firmware", None) or {}).get("pinmap") or {}
+    contract = store.read("interface.json")
     if isinstance(payload, dict) and payload.get("counts"):
         counts = payload.get("counts") or {}
         bad = int(counts.get("ghost") or 0) + int(counts.get("direction") or 0)
@@ -195,8 +196,17 @@ def _stage_firmware(store: Any, design: Any) -> dict[str, Any]:
                     basis="design.json / firmware.pinmap",
                     note=("有引脚表但没有固件矩阵：跑 `fw-matrix` 才知道"
                           "固件有没有用到不存在的脚"))
-    return _row("firmware", "not_ready", basis="firmware_matrix.json / pinmap 都缺",
-                note="既没有引脚表也没有固件矩阵")
+    if isinstance(contract, dict) and contract.get("counts"):
+        counts = contract.get("counts") or {}
+        return _row("firmware", "not_ready",
+                    checked={"pins": int(counts.get("pins") or 0),
+                             "peripherals": int(counts.get("peripherals") or 0)},
+                    basis="interface.json（软硬接口契约）",
+                    note=(f"接口契约在（{counts.get('connected')} 脚已连 / "
+                          f"{counts.get('peripherals')} 个外设组），"
+                          "但**还缺固件本体**：跑 `fw-matrix` 才知道固件有没有用错脚"))
+    return _row("firmware", "not_ready", basis="firmware_matrix.json / pinmap / interface 都缺",
+                note="既没有引脚表、没有接口契约，也没有固件矩阵")
 
 
 def _stage_mechanical(store: Any, design: Any) -> dict[str, Any]:
