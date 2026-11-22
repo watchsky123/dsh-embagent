@@ -1117,6 +1117,10 @@ return {"status": "ok", **result}   # ← result 里没有 status，写死的活
 > * **§16**：`.param` 是 `name=value`（不是 ArduPilot 的 `NAME,VALUE`）；
 >   `MF_PARAM` 有**枚举型**和 `#define` 两类别混进来；**参数只进 evidence，
 >   不改能力状态**（S2 仍 `unknown`）；缺必需参数 = `partial`，不是通过。
+> * **§17**：引脚契约进固件 —— `hwv_pins.h` 由 `interface.json` 生成，
+>   `HWV_CHECK_GPIO`/`HWV_EXPECT` 让"用错脚/线被挪走"**在编译期报错**；
+>   **判据反着来：三条负例必须编不过**（编过 = 闸门没挂上）。
+>   坑：同网多脚宏重定义；负例样本别从生成物里正则找（自指脆性）。
 
 ---
 

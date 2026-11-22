@@ -701,3 +701,84 @@ known_absent：H4（光流参数未进参数集）H5（GNSS 门限未进）
 
 两个 `.param` 同参数不同值 → `failed`（并指出是哪两份文件）。
 理由：两份"当前值"同时存在时，**哪份是真的没说清**，不能挑一个当准。
+
+## 17. 引脚契约进固件：用错脚 = 编译期错误（P54）
+
+### 17.1 之前的问题
+
+P52 的骨架里引脚是**两套来源**：`main.c` 里的 TODO 注释 vs `interface.json`
+的契约。于是"板子把 UART_TX 从 30 改到 31"这种事，固件不知道，
+**只能等台架才发现**（或者永远发现不了）。
+
+### 17.2 现在：`hwv_pins.h` 由契约生成
+
+`fw-build` 多写一个 `hwv_pins.h`（唯一来源 = `interface.json`）：
+
+```c
+#define HWV_MCU_REF "U1"
+#define HWV_MCU_PINS 48
+#define HWV_PIN_NET_3V3            1  /* 同网还有脚 24, 36, 48 */
+#define HWV_PIN_UART_TX           30
+#define HWV_PIN_GPIO_1      0  /* power 3V3 */
+#define HWV_PIN_GPIO_30     1
+```
+
+四个检查宏（**必须在函数体内用**，`_Static_assert` 是块作用域的）：
+
+| 宏 | 判什么 | 失败时看到什么 |
+|---|---|---|
+| `HWV_PIN(NAME)` | 名字在契约里吗 | `'HWV_PIN_NOSUCH_NET' undeclared`（还会 `did you mean`）|
+| `HWV_CHECK_GPIO(NAME)` | 能当 GPIO 吗 | `static assertion failed: "HWV_CHECK_GPIO: pin NET_3V3 is power/ground ..."` |
+| `HWV_CHECK_PIN_NUMBER(n)` | 脚号超范围吗 | `static assertion failed: "pin number out of MCU range"` |
+| `HWV_EXPECT(NAME, n)` | **契约把线挪走了吗** | `"HWV_EXPECT: interface.json moved ..."` |
+
+`HWV_EXPECT` 是**真正的回归保护**：固件里写"我假设 UART_TX 在 30"，
+某天 interface 改成 31 → 编译期就报错。
+
+### 17.3 判据是**反**的：负例必须编不过
+
+`build()` 现在跑三条负例，每条都**期望编译失败**：
+
+| 负例 | 源码 | 实测 |
+|---|---|---|
+| 电源脚当 GPIO | `HWV_CHECK_GPIO(NET_3V3)` | `error: static assertion failed: ... is power/ground` |
+| 脚号超范围 | `HWV_CHECK_PIN_NUMBER(HWV_MCU_PINS + 1)` | `error: ... out of MCU range` |
+| 名字不在契约 | `HWV_PIN(NOSUCH_NET)` | `error: 'HWV_PIN_NOSUCH_NET' undeclared` |
+
+**任一条编过 → 整体 `failed`**，findings 里写"契约约束没生效（用错脚不会被拦住）"。
+理由：闸门写了但没挂上去，就是 §0.1 的假绿。
+
+### 17.4 三个踩过的坑
+
+1. **同网多脚 → 宏重定义**：GND 落在 4 个脚上，第一版每脚定义一个
+   `HWV_PIN_GND` → `warning: "HWV_PIN_GND" redefined`，而且读的人以为这个网
+   只有一根线。修法：**同名只定义一次**（取最小脚号），注释写其余脚号。
+2. **负例的样本从生成物里正则找 = 自指脆性**：第一版让 `_negative_cases`
+   去 `hwv_pins.h` 里找 `GPIO_x 0` 挑电源脚 —— 退化实验把 0 改成 1 之后
+   **样本找不到了，负例跟着消失**，于是"闸门拆掉"看起来像"闸门还在"。
+   修法：`generate` 把 `contract_pins` 记进 `fw_build.json`，负例从那里取。
+3. **错误信息抓错行**：detail 取"含 error 或 HWV_ 的行"，先命中的是无关
+   `warning: "HWV_PIN_GND" redefined`。修法：**先找 `error:`**。
+
+### 17.5 实测
+
+```
+骨架：Machine=ARM  Entry=0x8000045  text 168 B
+负例：3/3 全部编不过，错误信息都指向真原因
+退化：把 HWV_PIN_GPIO_<n> 全改成 1 → power_as_gpio 编过 → 整体 failed
+无契约：不凭空造引脚宏（HWV_MCU_PINS 0）
+```
+
+### 17.6 一条验收纪律（两次踩过）
+
+`check_p0`–`p4` 依赖**当前工作区**。为了跑 `fw-build` 把工作区切到别的目录之后，
+这五个会**全部 FAIL**（`工程 '示例-多板' 没有 design.json`），
+看起来像功能坏了，其实是环境变了。
+
+**约定**：切过工作区之后，跑全套验收前先切回去：
+`design_cli workspace set "C:\Users\<user>\Desktop\示例工作区"`。
+
+### 17.7 边界（诚实）
+
+`hwv_pins.h` 只保证**引脚这一层**一致。它不能证明：外设寄存器配置对、
+时序对、功能对。那些要靠 `.ioc`/datasheet 和台架。

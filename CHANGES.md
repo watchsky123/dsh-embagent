@@ -3244,6 +3244,81 @@ check_p53 18/18    npm test 760    tsc 干净    check_tools 58
 - AGENTS 压到 63.5 KB（预算 65 KB / 有效 65.2 KB），细节全进 runbook §13–§16
 
 
+## P54 — 引脚契约进固件：用错脚 = **编译期**错误（2026-11-23）
+
+> 用户点的第 6 件事：`fw-build` 接 `interface.json`。
+
+### 之前的问题
+
+P52 的骨架里引脚是**两套来源**：`main.c` 的 TODO 注释 vs `interface.json` 的契约。
+板子把 `UART_TX` 从 30 改到 31，固件不知道 —— 只能等台架才发现（或永远发现不了）。
+
+### 现在：`hwv_pins.h` 由契约生成 + 四个编译期检查宏
+
+```c
+#define HWV_MCU_PINS 48
+#define HWV_PIN_NET_3V3            1  /* 同网还有脚 24, 36, 48 */
+#define HWV_PIN_UART_TX           30
+#define HWV_PIN_GPIO_1      0  /* power 3V3 */
+#define HWV_PIN_GPIO_30     1
+```
+
+| 宏 | 判什么 | 失败时看到什么 |
+|---|---|---|
+| `HWV_PIN(NAME)` | 名字在契约里吗 | `'HWV_PIN_NOSUCH_NET' undeclared`（带 `did you mean`）|
+| `HWV_CHECK_GPIO(NAME)` | 能当 GPIO 吗 | `static assertion failed: "HWV_CHECK_GPIO: pin NET_3V3 is power/ground ..."` |
+| `HWV_CHECK_PIN_NUMBER(n)` | 脚号超范围吗 | `"pin number out of MCU range"` |
+| `HWV_EXPECT(NAME, n)` | **契约把线挪走了吗** | `"interface.json moved ..."` |
+
+`HWV_EXPECT` 是**真回归保护**：固件写"我假设 UART_TX 在 30"，interface 改成 31 → 编译期报错。
+
+### 判据反着来：负例必须编不过
+
+`build()` 跑三条负例，**每条都期望编译失败**；任一条编过 → 整体 `failed`
+（闸门写了没挂上 = §0.1 的假绿）。
+
+实测（`复刻-示例`，真工具链）：
+
+```
+骨架：Machine=ARM  Entry=0x8000045  text 168 B
+负例 3/3 全编不过：
+  power_as_gpio       → error: static assertion failed: "HWV_CHECK_GPIO: pin GND is power/ground ..."
+  pin_out_of_range    → error: static assertion failed: "pin number out of MCU range"
+  name_not_in_contract→ error: 'HWV_PIN_NOSUCH_NET' undeclared
+退化：把 HWV_PIN_GPIO_<n> 全改成 1 → power_as_gpio 编过 → 整体 failed
+无契约：不凭空造引脚宏（HWV_MCU_PINS 0）
+```
+
+### 三个坑（runbook §17.4）
+
+1. **同网多脚 → 宏重定义**：GND 落 4 个脚，第一版每脚定义 `HWV_PIN_GND`
+   → `warning: redefined` + 读的人以为这网只有一根线。修法：同名只定义一次（最小脚号），注释写其余。
+2. **负例样本从生成物里正则找 = 自指脆性**：退化实验把 `GPIO_x 0` 改成 1 后
+   **样本消失、负例跟着消失**，"闸门拆掉"看起来像"闸门还在"。修法：`generate` 记
+   `contract_pins` 进 `fw_build.json`，负例从那里取。
+3. **错误信息抓错行**：detail 先命中无关 `warning: "HWV_PIN_GND" redefined`。修法：先找 `error:`。
+
+### 新增/改动
+
+| 位置 | 内容 |
+|---|---|
+| `design/fw_build.py` | `_pins_header()` 生成契约头；`_negative_cases()` 三条负例；`generate` 记 `contract_pins`；`main.c` include + 自检 |
+| `scripts/check_p54.py` | **13 条**（含 1 条退化：拆闸门 → 负例编过）|
+| `docs/runbook.md` | §17（含三个坑与边界）|
+| `AGENTS.md` | §3.51–3.53 段扩成"软件三连+契约"，压到 65.2 KB 内 |
+
+### 边界（诚实）
+
+`hwv_pins.h` 只保证**引脚这一层**一致。外设寄存器配置、时序、功能对不对，
+它不管 —— 那些要靠 `.ioc`/datasheet 和台架。
+
+### 验收
+
+```
+check_p54 13/13    32 个离线 check 全 exit=0     npm test 765    tsc 干净
+```
+
+
 ---
 
 ## 参考对照（历史阶段，摘要）

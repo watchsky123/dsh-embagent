@@ -172,13 +172,121 @@ SECTIONS
 """
 
 
+def _c_name(net: str) -> str:
+    """网络名 → C 标识符片段。`3V3` 不能当标识符（以数字开头）→ `NET_3V3`。"""
+    cleaned = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in str(net))
+    cleaned = cleaned.strip("_") or "UNNAMED"
+    return cleaned if not cleaned[0].isdigit() else f"NET_{cleaned}"
+
+
+def _pins_header(interface: dict[str, Any]) -> str:
+    """把 `interface.json` 的引脚契约变成**编译期可判**的头文件（P54）。
+
+    这套头文件要解决的是"**固件和板子各记一套引脚**"——板子改了、固件不知道，
+    板子回来了才发现线接错。所以：
+
+    | 宏 | 判什么 | 用什么手段 |
+    |---|---|---|
+    | `HWV_PIN(NAME)` | 这个名字在契约里吗 | 名字不存在 → **未声明标识符**（编译错）|
+    | `HWV_CHECK_GPIO(NAME)` | 这个脚能当 GPIO 吗 | 电源/地 → `_Static_assert` 失败（带人话）|
+    | `HWV_CHECK_PIN_NUMBER(n)` | 脚号在范围内吗 | 超范围 → `_Static_assert` 失败 |
+    | `HWV_EXPECT(NAME, n)` | 契约把线挪走了吗 | 位置变了 → `_Static_assert` 失败 |
+
+    `HWV_EXPECT` 是**真正的回归保护**：固件里写"我假设 UART_TX 在 30"，
+    某天 interface 改成 31 → **编译期就报错**，不用等台架。
+    """
+    mcu = interface.get("mcu") or {}
+    pins = [row for row in (interface.get("pins") or []) if isinstance(row, dict)]
+    total = int(mcu.get("pins") or 0) or (max(
+        (int(row["pin"]) for row in pins if str(row.get("pin", "")).isdigit()),
+        default=0))
+    lines = [
+        "/* 生成物（fw-build / P54）—— **引脚契约的头文件版本**。",
+        " * 唯一来源：interface.json（由 design.json 的网表合成）。",
+        " * **不要手改**：改了它就和板子脱钩，那正是这套宏要防的事。",
+        " */",
+        "#ifndef HWV_PINS_H",
+        "#define HWV_PINS_H",
+        "",
+        f'#define HWV_MCU_REF "{mcu.get("ref", "")}"',
+        f"#define HWV_MCU_PINS {total}",
+        "",
+        "/* 契约里有的脚 → 宏（名字取自网络名；`3V3` 这类以数字开头的加 NET_ 前缀） */",
+    ]
+    # **同一个网可能落在多个脚上**（GND 4 个、3V3 4 个）。名字宏只能有一个值，
+    # 所以取**最小脚号**并在注释里写清"还有哪些脚"——否则宏重定义（告警）
+    # 且读的人以为这个网只有一根线。
+    by_net: dict[str, list[int]] = {}
+    for row in pins:
+        net = str(row.get("net") or "")
+        pin = str(row.get("pin") or "")
+        if net and pin.isdigit():
+            by_net.setdefault(net, []).append(int(pin))
+    for net, numbers in sorted(by_net.items(), key=lambda kv: min(kv[1])):
+        numbers.sort()
+        name = _c_name(net)
+        extra = ""
+        if len(numbers) > 1:
+            extra = f"  /* 同网还有脚 {', '.join(str(n) for n in numbers[1:])} */"
+        lines.append(f"#define HWV_PIN_{name:<18} {numbers[0]}{extra}")
+    lines += ["", "/* 能不能当 GPIO：**电源/地写 0**，信号/未接写 1。"
+              " 契约里没有的脚号 → 这个宏不存在 → 编译期就炸 */"]
+    for row in sorted(pins, key=lambda r: int(str(r.get("pin") or 0)
+                                             if str(r.get("pin") or "").isdigit() else 0)):
+        pin = row.get("pin")
+        if not str(pin).isdigit():
+            continue
+        kind = str(row.get("kind") or "")
+        usable = "0" if kind in ("power", "ground") else "1"
+        note = f"  /* {kind or '?'} {row.get('net') or ''} */" if usable == "0" else ""
+        lines.append(f"#define HWV_PIN_GPIO_{pin:<6} {usable}{note}")
+    lines += [
+        "",
+        "/* ---- 四个检查宏（必须在**函数体内**用；`_Static_assert` 是块作用域的）---- */",
+        "",
+        "/* ① 名字在契约里吗：HWV_PIN_NOSUCH 未定义 → 未声明标识符，编译期报错 */",
+        "#define HWV_PIN(name) (HWV_PIN_ ## name)",
+        "",
+        "#define HWV_CAT_(a, b) a##b",
+        "#define HWV_CAT(a, b) HWV_CAT_(a, b)",
+        "",
+        "/* ② 这个脚能当 GPIO 吗：电源/地 → 断言失败（人话就在字符串里） */",
+        "#define HWV_CHECK_GPIO(name) \\",
+        '    _Static_assert(HWV_CAT(HWV_PIN_GPIO_, HWV_PIN_ ## name) == 1, \\',
+        '                   "HWV_CHECK_GPIO: pin " #name \\',
+        '                   " is power/ground (or missing) in interface.json")',
+        "",
+        "/* ③ 脚号在范围内吗 */",
+        "#define HWV_CHECK_PIN_NUMBER(n) \\",
+        '    _Static_assert((n) >= 1 && (n) <= HWV_MCU_PINS, \\',
+        '                   "HWV_CHECK_PIN_NUMBER: pin number out of MCU range")',
+        "",
+        "/* ④ 契约把这条线挪走了吗（**固件旧假设的回归保护**） */",
+        "#define HWV_EXPECT(name, pin) \\",
+        '    _Static_assert(HWV_PIN_ ## name == (pin), \\',
+        '                   "HWV_EXPECT: interface.json moved " #name \\',
+        '                   " away from the pin this firmware assumes")',
+        "",
+        "#endif",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _main_c(interface: dict[str, Any]) -> str:
     peripherals = interface.get("peripherals") or []
+    # 选一个**信号脚**做自检样本：只用电源脚自检等于没验"能不能当 GPIO"。
+    sig = [row for row in (interface.get("pins") or [])
+           if isinstance(row, dict) and str(row.get("net") or "")
+           and str(row.get("kind") or "") in ("signal", "unconnected")]
     lines = [
         "/* 生成物（fw-build）—— **骨架**：证明能编、能链、地址对；",
         " * 外设初始化只有 TODO，不证明功能对。",
+        " * 引脚**只认 hwv_pins.h**（interface.json 的头文件版）—— 不另记一套。",
         " */",
         "#include <stdint.h>",
+        '',
+        '#include "hwv_pins.h"',
         "",
         "/* 定义（不是 extern）：第一版写成 extern 又在函数里赋值，链接报",
         " * `undefined reference to SystemCoreClock` —— 声明≠定义。 */",
@@ -186,6 +294,12 @@ def _main_c(interface: dict[str, Any]) -> str:
         "void SystemInit(void) { SystemCoreClock = 8000000u; }",
         "",
         "volatile uint32_t g_ticks;",
+        "",
+        "/* 用一次宏值：证明 `HWV_PIN(name)` 的展开真能当数用（不是只写在断言里） */",
+        "static uint32_t hwv_pin_probe(void)",
+        "{",
+        "    return (uint32_t)HWV_PIN(" + (_c_name(str(sig[0].get("net"))) if sig else "NET_NONE") + ");",
+        "}",
         "",
         "int main(void)",
         "{",
@@ -197,6 +311,20 @@ def _main_c(interface: dict[str, Any]) -> str:
             lines.append(f"    /* TODO {group.get('family')}: {pins} */")
     else:
         lines.append("    /* TODO 没有外设（interface 里 peripherals 为空） */")
+    # 骨架自检：**编译期**确认契约里有这些脚、能用、位置没变（P54）。
+    # 一条都不自检等于"宏有了但没人用"，那和没接一样。
+    if sig:
+        first = sig[0]
+        name = _c_name(str(first.get("net")))
+        pin = int(str(first.get("pin")))
+        lines += [
+            "    /* ---- 引脚契约自检（编译期；改了 interface.json 这里会先炸） ---- */",
+            f"    HWV_CHECK_PIN_NUMBER(HWV_MCU_PINS);   /* 契约里记的引脚总数，{pin} 也在范围内 */",
+            f"    HWV_CHECK_GPIO({name});",
+            f"    HWV_EXPECT({name}, {pin});",
+            "    (void)hwv_pin_probe();",
+            "",
+        ]
     lines += [
         "    for (;;) {",
         "        g_ticks++;",
@@ -224,7 +352,7 @@ LDFLAGS ?= -nostdlib --specs=nano.specs -Wl,--gc-sections -T link.ld
 
 all: firmware.elf firmware.bin
 
-firmware.elf: startup.c main.c link.ld
+firmware.elf: startup.c main.c hwv_pins.h link.ld
 \t$(CC) $(CFLAGS) $(LDFLAGS) -o $@ startup.c main.c
 \t$(SIZE) $@
 
@@ -256,6 +384,7 @@ def generate(store: Any, design: DesignModel, interface: dict[str, Any],
         "startup.c": _startup(str(mem["core"])),
         "link.ld": _linker(mem),
         "main.c": _main_c(interface or {}),
+        "hwv_pins.h": _pins_header(interface or {}),
         "Makefile": _makefile(str(mem["core"])),
     }
     written = []
@@ -263,10 +392,86 @@ def generate(store: Any, design: DesignModel, interface: dict[str, Any],
         path = target / name
         path.write_text(text, encoding="utf-8")
         written.append(str(path))
+    # **负例的样本要在生成时记下来**：第一版让 `_negative_cases` 去头文件里正则
+    # 找 `GPIO_x 0` —— 一旦有人把生成物改坏（退化实验），样本就找不到了，
+    # 负例跟着消失，于是"闸门拆掉"看起来像"闸门还在"。这是自指脆性。
+    pins = [row for row in (interface.get("pins") or []) if isinstance(row, dict)]
+    power_names = sorted({_c_name(str(row.get("net"))) for row in pins
+                          if str(row.get("net") or "")
+                          and str(row.get("kind") or "") in ("power", "ground")})
+    signal_names = sorted({_c_name(str(row.get("net"))) for row in pins
+                           if str(row.get("net") or "")
+                           and str(row.get("kind") or "") in ("signal", "unconnected")})
     return {"status": "ok", "mcu": key, "ref": ref, "core": mem["core"],
+            "contract_pins": {"power": power_names, "signal": signal_names},
             "memory": {"flash_kb": mem["flash_kb"], "ram_kb": mem["ram_kb"],
                        "basis": mem["basis"]},
             "dir": out_dir, "files": written}
+
+
+def _negative_cases(target: Path, cc: str, cpu: str, env: dict[str, str],
+                    timeout_s: int, record: dict[str, Any] | None = None
+                    ) -> dict[str, Any]:
+    """三条"必须编不过"的源码。**每条的期望都是 `fail`。**
+
+    | 负例 | 用什么 | 期望的错 |
+    |---|---|---|
+    | 电源脚当 GPIO | `HWV_CHECK_GPIO(3V3)` | `_Static_assert` 失败（人话）|
+    | 脚号超范围 | `HWV_CHECK_PIN_NUMBER(HWV_MCU_PINS+1)` | `_Static_assert` 失败 |
+    | 名字不在契约 | `HWV_PIN(NOSUCH_NET)` | 未声明标识符 |
+
+    头文件是**生成物**，所以负例也由这里生成 —— 不用手写、不会和契约脱钩。
+    """
+    header = target / "hwv_pins.h"
+    if not header.is_file():
+        return {"status": "not_ready", "reason": "没有 hwv_pins.h", "cases": []}
+    cases: list[dict[str, Any]] = []
+    specs: list[tuple[str, str, str]] = []
+    # 样本优先取 `fw_build.json`（生成时记的），回退才去头文件里找
+    power_names = list(((record or {}).get("contract_pins") or {}).get("power") or [])
+    if power_names:
+        specs.append(("power_as_gpio",
+                      f"void t(void) {{ HWV_CHECK_GPIO({power_names[0]}); }}",
+                      "电源/地脚被当 GPIO 用，必须编不过"))
+    specs.append(("pin_out_of_range",
+                  "void t(void) { HWV_CHECK_PIN_NUMBER(HWV_MCU_PINS + 1); }",
+                  "脚号超范围，必须编不过"))
+    specs.append(("name_not_in_contract",
+                  "unsigned long t(void) { return (unsigned long)HWV_PIN(NOSUCH_NET); }",
+                  "契约里没有这个网名，必须编不过"))
+
+    for name, body, why in specs:
+        source = target / f"neg_{name}.c"
+        source.write_text('#include "hwv_pins.h"\n' + body + "\n", encoding="utf-8")
+        obj = target / f"neg_{name}.o"
+        try:
+            proc = subprocess.run(
+                [cc, f"-mcpu={cpu}", "-mthumb", "-Os", "-c", source.name, "-o", obj.name],
+                cwd=str(target), capture_output=True, text=True,
+                timeout=timeout_s, env=env)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            cases.append({"name": name, "why": why, "expect": "fail", "got": "error",
+                          "detail": f"编译没跑起来：{exc}"})
+            continue
+        got = "fail" if proc.returncode != 0 else "pass"
+        detail = ""
+        if got == "fail":
+            out_lines = (proc.stderr or proc.stdout or "").strip().splitlines()
+            # **先找 `error:`**：第一版按 "error 或 HWV_" 找，先命中的是一条
+            # 无关的 `warning: "HWV_PIN_GND" redefined`，把真错信息挡在后面。
+            detail = next((line.strip() for line in out_lines
+                           if "error:" in line.lower()), "")
+            if not detail:
+                detail = next((line.strip() for line in out_lines
+                               if "HWV_" in line), "")
+        cases.append({"name": name, "why": why, "expect": "fail", "got": got,
+                      "detail": detail[:160]})
+
+    bad = [row for row in cases if row["got"] != "fail"]
+    return {"status": "ok" if cases and not bad else
+            ("failed" if bad else "not_ready"),
+            "cases": cases, "passed": len(cases) - len(bad), "total": len(cases),
+            "note": "**负例必须编不过**；编过了就说明约束没生效"}
 
 
 def build(store: Any, *, out_dir: str = OUT_DIR, timeout_s: int = 180,
@@ -377,14 +582,27 @@ def build(store: Any, *, out_dir: str = OUT_DIR, timeout_s: int = 180,
     if not bin_ok:
         findings.append("firmware.bin 没生成")
 
-    status = "ok" if (ok_machine and ok_entry and ok_flash and ok_ram and bin_ok) \
-        else "failed"
+    # ⑤ **编译期负例**：证明"用错脚会炸"不是口号（P54）
+    #
+    # 判据是反的：**负例必须编译失败**。若负例编过了，说明约束没生效 = 假绿
+    # （§0.1 的形状：闸门写了但没挂上去）。
+    negative = _negative_cases(target, str(tool), cpu, env, timeout_s, record)
+    for row in negative["cases"]:
+        if row["got"] == "pass":
+            findings.append(
+                f"负例 {row['name']} 竟然编译通过 —— 契约约束没生效（用错脚不会被拦住）")
+    if not negative["cases"]:
+        findings.append("没有可跑的负例（interface 里既没有电源脚也没有信号脚）")
+
+    status = "ok" if (ok_machine and ok_entry and ok_flash and ok_ram and bin_ok
+                      and negative["status"] == "ok") else "failed"
     return {
         "status": status, "toolchain": str(tool), "dir": out_dir,
         "checks": {"machine": machine, "entry": checks.get("entry", ""),
                    "text_b": text, "data_b": data, "bss_b": bss,
                    "flash_limit_b": flash_b, "ram_limit_b": ram_b},
         "findings": findings,
+        "negative": negative,
         "size": {"text": text, "data": data, "bss": bss},
         "elf": str(target / "firmware.elf"), "bin": str(target / "firmware.bin"),
         "note": "骨架能编能链、地址与容量对得上；**不代表功能对**",
@@ -395,9 +613,13 @@ def describe() -> dict[str, Any]:
     return {
         "module": "hw_velxio.design.fw_build",
         "out_dir": OUT_DIR,
-        "generates": ["startup.c", "link.ld", "main.c", "Makefile"],
+        "generates": ["startup.c", "link.ld", "main.c", "hwv_pins.h", "Makefile"],
         "hard_checks": ["编译返回 0", "Machine=ARM", "Entry 在 FLASH",
-                        "text+data <= FLASH 且 data+bss <= RAM", "能出 .bin"],
+                        "text+data <= FLASH 且 data+bss <= RAM", "能出 .bin",
+                        "**三条编译期负例都必须编不过**（用错脚/超范围/名字不在契约）"],
+        "pin_contract": ("hwv_pins.h 由 interface.json 生成；"
+                         "HWV_PIN 用名字、HWV_CHECK_GPIO 挡电源脚、"
+                         "HWV_CHECK_PIN_NUMBER 挡超范围、HWV_EXPECT 挡线被挪走"),
         "mcu_memory": {k: f"{v['flash_kb']}K/{v['ram_kb']}K" for k, v in MCU_MEMORY.items()},
         "discipline": ("内存表缺型号 → not_ready（不猜）；无工具链 → not_ready；"
                        "生成的 main.c 是骨架，只证明能编能链，不证明功能对"),
