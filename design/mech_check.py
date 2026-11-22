@@ -91,25 +91,36 @@ def _interference(design: DesignModel) -> list[dict[str, Any]]:
             continue
         if joint.kind in _INTENTIONAL_CONTACT:
             pairs.add(tuple(sorted((joint.a, joint.b))))
-    parts = [p for p in design.parts if _bbox(p) is not None]
+    # **必须按板分组**：多板工程的 `placement` 是各板的**局部坐标**，
+    # 跨板两两比较会把 "A 板的 U1 与 B 板的 U2" 判成实体重叠。
+    # 实测（3 板工程）：7 条 fail 里 5 条是跨板误报，只有 2 条是同板真重叠。
+    by_board: dict[str, list[Part]] = {}
+    for part in design.parts:
+        if _bbox(part) is None:
+            continue
+        board = str(getattr(part.placement, "board_id", "") or "")
+        by_board.setdefault(board, []).append(part)
     checked = 0
-    for index, left in enumerate(parts):
-        for right in parts[index + 1:]:
-            if tuple(sorted((left.ref, right.ref))) in pairs:
-                continue
-            checked += 1
-            dx, dy, dz = _overlap(_bbox(left), _bbox(right))  # type: ignore[arg-type]
-            if dx > TOUCH_EPS_MM and dy > TOUCH_EPS_MM and dz > TOUCH_EPS_MM:
-                rows.append(_row(
-                    "interference", "fail", refs=[left.ref, right.ref],
-                    message=(f"{left.ref} 与 {right.ref} 实体重叠 "
-                             f"{round(dx, 2)}×{round(dy, 2)}×{round(dz, 2)} mm"),
-                    basis=f"bbox（{len(parts)} 个有尺寸的零件，{checked} 对）",
-                    need="fix_interference"))
+    for board, parts in by_board.items():
+        for index, left in enumerate(parts):
+            for right in parts[index + 1:]:
+                if tuple(sorted((left.ref, right.ref))) in pairs:
+                    continue
+                checked += 1
+                dx, dy, dz = _overlap(_bbox(left), _bbox(right))  # type: ignore[arg-type]
+                if dx > TOUCH_EPS_MM and dy > TOUCH_EPS_MM and dz > TOUCH_EPS_MM:
+                    rows.append(_row(
+                        "interference", "fail", refs=[left.ref, right.ref],
+                        message=(f"{left.ref} 与 {right.ref} 实体重叠 "
+                                 f"{round(dx, 2)}×{round(dy, 2)}×{round(dz, 2)} mm"
+                                 f"（同一块板 {board}）"),
+                        basis=f"bbox（{len(design.parts)} 件 / {len(by_board)} 块板，"
+                              f"**按板分组**比，{checked} 对）",
+                        need="fix_interference"))
     if not rows:
         rows.append(_row("interference", "pass",
-                         message=f"{checked} 对零件无实体重叠",
-                         basis="bbox + 有意接触的白名单（有 joint 的对跳过）"))
+                         message=f"{checked} 对零件无实体重叠（{len(by_board)} 块板分别比）",
+                         basis="bbox + 按板分组 + 有意接触白名单（有 joint 的对跳过）"))
     return rows
 
 

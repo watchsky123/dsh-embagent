@@ -107,6 +107,37 @@ def part_interference() -> None:
           f"{[(r['status'], r.get('message')) for r in rows2]}")
 
 
+def part_multi_board() -> None:
+    """**多板：跨板不算干涉**（P49 实测的真 bug）。
+
+    多板的 `placement` 是**各板局部坐标**。3 板工程第一次跑时 7 条 fail 里
+    5 条是"A 板的 U1 与 B 板的 U2 重叠"——纯粹坐标巧合。
+    """
+    d = DesignModel(id="p44-multiboard", board=_board())
+    d.boards = [Board(kind="custom", name="A", id="PCB#a",
+                      outline=[(0.0, 0.0), (40.0, 0.0), (40.0, 30.0), (0.0, 30.0)],
+                      size_mm={"w": 40, "h": 30}),
+                Board(kind="custom", name="B", id="PCB#b",
+                      outline=[(0.0, 0.0), (30.0, 0.0), (30.0, 25.0), (0.0, 25.0)],
+                      size_mm={"w": 30, "h": 25})]
+    for ref, board in (("A1", "PCB#a"), ("B1", "PCB#b")):
+        part = _part(ref, "ic", 10.0, 10.0, 6.0, 6.0, 2.0, mass=5.0)
+        part.placement.board_id = board
+        d.add_part(part)
+    rows = _by_check(mech_check.report(d), "interference")
+    check("1d. **跨板的两件（局部坐标相同）不算干涉**",
+          all(r["status"] == "pass" for r in rows),
+          str([(r["status"], r.get("message")) for r in rows]))
+
+    # 退化：把两件塞到同一块板 → 必须 fail（证明"按板分组"真的在起作用）
+    for part in d.parts:
+        part.placement.board_id = "PCB#a"
+    rows2 = _by_check(mech_check.report(d), "interference")
+    check("1e. 退化：同一块板上同坐标 → `fail`（分组不是恒真判断）",
+          any(r["status"] == "fail" for r in rows2),
+          str([(r["status"], r.get("message")) for r in rows2]))
+
+
 # ---------------------------------------------------------------------------
 # 2. 重心
 # ---------------------------------------------------------------------------
@@ -256,6 +287,7 @@ def part_degeneration() -> None:
 def main() -> int:
     print("=== P44 机械判据 ===")
     part_interference()
+    part_multi_board()
     part_cog()
     part_torque()
     part_range()
