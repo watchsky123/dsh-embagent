@@ -1788,6 +1788,44 @@ def cmd_dfm(args: list[str]) -> dict[str, Any]:
     return {"status": merged["status"], **merged}
 
 
+def cmd_fw_build(args: list[str]) -> dict[str, Any]:
+    """``fw-build <id> [--out=fw/build] [--no-build]`` —— 可编译骨架 + **真编译**（P52）。
+
+    从 `design.json` + `interface.json` 生成启动文件 / 链接脚本 / main / Makefile，
+    再用**仓库内** arm-none-eabi-gcc 编成 `.elf` + `.bin`。四条硬判据：
+    编译过 / Machine=ARM / Entry 在 FLASH / text+data ≤ FLASH 且 data+bss ≤ RAM。
+    """
+    from .design import fw_build as build_module
+    from .design import interface as iface_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **build_module.describe()}
+
+    store, design = _load(args[0])
+    out = ""
+    for item in args[1:]:
+        if item.startswith("--out="):
+            out = item.split("=", 1)[1]
+    out = out or build_module.OUT_DIR
+
+    contract = store.read(iface_module.FILE)
+    if not isinstance(contract, dict):
+        contract = iface_module.build(design)
+        store.write(iface_module.FILE, contract)
+
+    made = build_module.generate(store, design, contract, out_dir=out)
+    if made["status"] != "ok":
+        return {"status": "not_ready", "project_id": args[0], **made}
+    store.write(build_module.FILE, made)
+    if "--no-build" in args:
+        return {"status": "ok", "project_id": args[0], **made,
+                "note": "只生成了骨架（--no-build）"}
+
+    result = build_module.build(store, out_dir=out)
+    return {"status": result["status"], "project_id": args[0], **made,
+            "build": result, "findings": result.get("findings") or []}
+
+
 def cmd_interface(args: list[str]) -> dict[str, Any]:
     """``interface <id> [--ioc=PATH]`` —— 软硬接口契约（P50）。
 
@@ -4128,6 +4166,7 @@ COMMANDS = {
     "dfm": cmd_dfm,
     "plan": cmd_plan,
     "interface": cmd_interface,
+    "fw-build": cmd_fw_build,
     "fw-algo": cmd_fw_algo,
     "audit": cmd_audit,
     "doctor": cmd_doctor,

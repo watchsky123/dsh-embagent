@@ -367,6 +367,12 @@ TOOLS: list[ToolSpec] = [
               "mode": "string"}, ("project",),
              arg_style="eq",
              note="mode=list 列版本；mode=graph 出 2D 投影；mode=show 看某版"),
+    ToolSpec("hw_fw_build", "judge", "fw-build",
+             "**可编译骨架 + 真编译**：生成 startup/link.ld/main/Makefile，用仓库内 "
+             "arm-none-eabi-gcc 编成 .elf/.bin；四条判据（编译过 / Machine=ARM / "
+             "Entry 在 FLASH / 容量装得下）",
+             {"project": "string", "out": "string"}, ("project",),
+             arg_style="eq"),
     ToolSpec("hw_interface", "judge", "interface",
              "**软硬接口契约**：从 design.json + .ioc 合成引脚↔网络契约；"
              "唯一硬判据是逐引脚一致，时钟/中断/AF/时序标记 unknown",

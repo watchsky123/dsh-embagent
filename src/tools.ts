@@ -3973,7 +3973,68 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
-  // ---- 3i. hw_interface / hw_fw_algo（软件：契约 + 可跑的纯 C）-----------
+  // ---- 3j. hw_fw_build（骨架 + 真编译成 .elf/.bin）-----------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_fw_build',
+    description:
+      '**可编译骨架 + 真编译**：从 design.json + interface.json 生成 startup.c / link.ld /'
+      + ' main.c / Makefile，用仓库内 arm-none-eabi-gcc 编成 `.elf` + `.bin`。'
+      + '四条硬判据：编译过 / Machine=ARM / Entry 在 FLASH / `text+data ≤ flash` 且'
+      + ' `data+bss ≤ ram`。生成的 main.c 是**骨架**，只证明能编能链，不证明功能对。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名' },
+      out: { type: 'string', description: '输出目录（默认 fw/build）' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          project: { type: 'string' }, status: { type: 'string' },
+          rows: { type: 'string' }, summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as { project: string; status: string; rows: string; summary: string }
+        return text(`# ${v.project} 固件构建：${v.status}`,
+          ...v.rows.split('\n').filter((x) => x !== ''), v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'firmware')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown; out?: unknown }
+      const project = str(a.project)
+      const cliArgs: string[] = [project]
+      const out = str(a.out)
+      if (out !== '') cliArgs.push(`--out=${out}`)
+      const payload = await design('fw-build', ...cliArgs)
+      const b = (payload.build ?? {}) as Record<string, unknown>
+      const checks = (b.checks ?? {}) as Record<string, unknown>
+      const rows: string[] = []
+      if (payload.mcu !== undefined) {
+        const memory = (payload.memory ?? {}) as Record<string, unknown>
+        rows.push(`MCU ${str(payload.mcu)}（${str(payload.core)}）`
+          + ` ${num(memory.flash_kb)}K flash / ${num(memory.ram_kb)}K ram`)
+      }
+      if (checks.machine !== undefined) {
+        rows.push(`Machine=${str(checks.machine)}  Entry=${str(checks.entry)}`
+          + `  text=${num(checks.text_b)}B data=${num(checks.data_b)}B bss=${num(checks.bss_b)}B`)
+      }
+      for (const raw of (payload.findings as unknown[] | undefined) ?? []) {
+        rows.push(`* ${str(raw)}`)
+      }
+      return {
+        project,
+        status: str(payload.status),
+        rows: rows.join('\n'),
+        summary: str(b.reason) || str(payload.reason) || str(b.note) || '',
+      }
+    },
+  })))
+
+  // ---- 3i. hw_interface / hw_fw_algo（软件：契约 + 可跑的纯 C）-----------  // ---- 3i. hw_interface / hw_fw_algo（软件：契约 + 可跑的纯 C）-----------
   disposers.push(tools.register(defineTool({
     name: 'hw_interface',
     description:

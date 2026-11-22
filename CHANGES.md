@@ -3124,6 +3124,54 @@ check_p51 14/14    npm test 760
 ```
 
 
+## P52 — 可编译骨架 + 真编译（进 .elf/.bin）（2026-11-22）
+
+> 用户第 2 项。工具链（P50b）装好后，这一步就能真跑了。
+
+### 产出
+
+```
+fw-build <工程> → fw/build/{startup.c, link.ld, main.c, Makefile}
+                 → firmware.elf（9548 B）+ firmware.bin（172 B）
+```
+
+### 实测（复刻-示例，STM32F103C8T6）
+
+```
+status: ok
+Machine = ARM        Entry = 0x8000045（FLASH 区）
+text 168 B + data 4 B ≤ flash 65536 B
+data  4 B + bss  4 B ≤ ram   20480 B
+```
+
+### 四条硬判据 + 三条退化
+
+| 退化 | 结果 |
+|---|---|
+| FLASH 挪到 0x20000000 | `Entry '0x20000045' 不在 FLASH` → failed |
+| RAM 改到 1 B | `data+bss = 8 B 超过 RAM 1 B` → failed |
+| main.c 插语法错 | 编译不过 + 编译器原文 → failed |
+| MCU 不在表（stm32l476）| `not_ready` + 列出已知型号（**不猜容量**）|
+
+### 同一次真编译里踩到三个坑（runbook §15）
+
+1. `undefined reference to SystemCoreClock` —— `extern` 声明 + 赋值 ≠ 定义
+2. `ld: RAM 越界` 而容量明明够 —— link.ld 的 `ASSERT(ORIGIN+LENGTH <= 同式)` **恒等**
+3. `firmware.bin` 不生成 —— 写成 `gcc -O binary out in`；gcc 的 `-O` 是优化级别，
+   且顺序反了。要用 **objcopy**
+
+### 新增
+
+`design/fw_build.py`、`fw-build` 命令、`hw_fw_build`（工具 56 → **57**）、
+`scripts/check_p52.py`（12 条，含 3 条退化）、store 登记 `fw_build.json`
+
+### 验收
+
+```
+check_p52 12/12    npm test 760    tsc 干净    check_tools 57
+```
+
+
 ---
 
 ## 参考对照（历史阶段，摘要）

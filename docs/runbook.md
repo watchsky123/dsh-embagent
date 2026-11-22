@@ -594,3 +594,46 @@ S6 遥测    frame → impl → rate → V
 **踩过的一个小坑**：我在 `check_p51` 的 2a 第一版写了
 `all(... or True for ...)` —— 一个**恒真子句**，正是 §4.1 说的"永远绿的断言"。
 自己写完读一遍才抓到。写 `or True` 之前先问：这半句还会失败吗？
+
+## 15. 可编译骨架 + 真编译（P52）
+
+`fw-build <工程>` 从 `design.json` + `interface.json` 生成最小工程，用**仓库内**
+`_tools/arm-gcc/13.3.rel1` 真编成 `.elf` + `.bin`：
+
+```
+fw/build/startup.c   向量表（16 个 Cortex-M 标准异常）+ Reset_Handler + 弱符号
+fw/build/link.ld     MEMORY 块（FLASH/RAM 容量**带 datasheet 出处**）
+fw/build/main.c      main + 外设 TODO（来自 interface 的 peripherals）
+fw/build/Makefile    给人手工编也能用
+```
+
+### 四条硬判据（缺一条就不是 ok）
+
+| 判据 | 实测（复刻-示例，F103C8）|
+|---|---|
+| 编译返回 0 | ✅ |
+| `Machine = ARM` | `ARM` |
+| Entry 在 FLASH | `0x8000045` |
+| `text+data ≤ flash`、`data+bss ≤ ram` | 168+4 ≤ 65536、4+4 ≤ 20480 |
+| 出得来 `.bin` | 172 B |
+
+### 三条退化（`check_p52` 守）
+
+* FLASH 挪到 `0x20000000` → Entry 不在 FLASH → `failed`
+* RAM 改到 1 B → `data+bss = 8 B 超过 RAM 1 B` → `failed`
+* `main.c` 插语法错 → 编译不过 → `failed` + 编译器原文
+
+### 诚实边界
+
+* **内存表只有 7 个型号**（`MCU_MEMORY`），表外型号 → `not_ready` + 列出已知，**不猜容量**
+* `main.c` 是**骨架**：外设初始化只有 `TODO`。它证明"能编、能链、地址与容量对"，
+  **不证明功能对**——功能对要靠 `fw-algo` 的用例和台架实测
+* 没有工具链 → `not_ready`（环境缺 ≠ 设计错）
+
+### 三个踩过的坑（都在同一次真编译里）
+
+| 症状 | 真因 |
+|---|---|
+| `undefined reference to SystemCoreClock` | `extern uint32_t SystemCoreClock;` 又在函数里赋值 = **声明不是定义**；改成定义 |
+| `ld: RAM 越界` 而容量明明够 | link.ld 里那条 `ASSERT(ORIGIN+LENGTH <= 同一表达式)` **恒等**，误报；删掉，容量交给 `size` 判 |
+| `firmware.bin` 永远不生成 | 写成 `gcc -O binary out in` —— gcc 的 `-O` 是优化级别、顺序也反；要用 **objcopy** |
