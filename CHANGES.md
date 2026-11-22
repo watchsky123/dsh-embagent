@@ -2851,6 +2851,62 @@ check_p48  20/20        npm test 760 通过        全套离线 26 个 check_* �
 ```
 
 
+## P49 — 项目计划图 `plan`：需求 → 能力 → 模块 → 3D 图 → 任务（2026-11-22）
+
+> 用户要的：**AI 每次分析需求时默认维护一份项目文件**，代码式、可细化延申；
+> 同一项目后加需求就新增 `vN`；细化到**一个 3D 信息图**（后续 3D 图的源头），
+> 图上能联系到每个模块的位置；再从图上衍生任务并拆解到可执行。
+
+### 数据形状
+
+```
+<工程>/plan/v1.json        自包含快照（capabilities + modules + graph + tasks）
+<工程>/plan/v2.json        继承 v1 的任务状态，判据按当前需求重算
+<工程>/plan/index.json     版本索引（version / requirement_hash / created / counts）
+```
+
+| 层 | 内容 | 证据 |
+|---|---|---|
+| `capabilities[]` | 14 条能力（H1–H8 硬件 / S1–S6 软件），每条带 `metric/op/value/unit` | 能力模板 + 实物索引 + 需求数值 |
+| `modules[]` | **每个元件一个节点**（含 0402 电容）+ 板 | `design.json` 的 `placement`（真实 mm）|
+| `graph` | **四层 3D**：任务 z=-60 / 能力 z=+60 / 模块 / 板 | 边来源 `net`/`joint`/`placement`/`task`/`template` |
+| `tasks[]` | 由能力缺口生成，2 层（动作 + 验收）| 每条必须带 `verify` |
+
+### 实测（21 件板）
+
+```
+plan → v1：14 能力（全 unknown）/ 22 模块 / 64 节点 / 211 边 / 28 任务
+加需求 {thrust_weight:2.4, rail_5v:4.85, phase_margin:35} → v2（parent v1）
+        H1/H8/S2 变 pass，任务 28 → 22
+同需求再跑 → created=False（不新建）
+snapshot（前端轮询路径）→ 不建版，只报最新；有旧版对应时 stale=True
+```
+
+### 三个必须记住的设计点（AGENTS §3.48）
+
+1. **判据先行**：能力模板自带量化判据；写不出判据的进 `missing_need` 不进表
+2. **只有需求给了数值才判 pass/fail**，否则 `unknown`（"买了件"≠"能飞"）
+3. **任务 id 带动作后缀**（`-P/-D/-V`）：实测同能力"补数据"与"改设计"都叫
+   `T-H1-1`，依赖与状态继承会指到随机一条
+
+### 新增
+
+| 位置 | 内容 |
+|---|---|
+| `design/plan.py`（新） | 能力模板 + 证据索引 + 模块/3D 图 + 任务树 + 版本 |
+| `design_cli.py` | `plan <id> [--req] [--text] [--list] [--show=vN] [--graph]`；`snapshot` 自动 bootstrap |
+| `design/store.py` | `ARTIFACTS` 加 `plan/index.json` |
+| `design/agent_tools.py` / `src/tools.ts` | `hw_plan`（工具 53 → **54**）|
+| `scripts/check_p49.py` | **27 条**（含 1 条退化）|
+
+### 验收
+
+```
+check_p49  27/27      npm test 760      tsc 干净      check_tools 54
+全套离线验收 27 个 check_* 全 exit=0
+```
+
+
 ---
 
 ## 参考对照（历史阶段，摘要）

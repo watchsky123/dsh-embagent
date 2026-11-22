@@ -360,6 +360,13 @@ TOOLS: list[ToolSpec] = [
              {"project": "string", "apply": "boolean"},
              ("project",), arg_style="eq",
              note="proposed/estimated 不可进机械与布局判据"),
+    ToolSpec("hw_plan", "judge", "plan",
+             "**项目计划图**：需求→能力（带可测判据）→模块（真实坐标）→3D 图→任务树；"
+             "每次加需求建 plan/vN.json（同需求不重复建）",
+             {"project": "string", "req": "string", "text": "string",
+              "mode": "string"}, ("project",),
+             arg_style="eq",
+             note="mode=list 列版本；mode=graph 出 2D 投影；mode=show 看某版"),
     ToolSpec("hw_audit", "judge", "audit",
              "六段审计：需求→单元→选料→原理图→PCB→固件→机械→交接；"
              "缺产物是 not_ready（不是 ok），每段带 checked 与 basis",

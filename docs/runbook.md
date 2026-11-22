@@ -205,6 +205,7 @@ python -m hw_velxio.scripts.check_p44            # 机械判据（16 条：干�
 python -m hw_velxio.scripts.check_p45            # 制造可行性（17 条：DFM 三态/DRC 分级/合成/命令/退化）
 check_p46            # 前端两分区（26 条：分区/面板/动作/RPC/快照/跳转/退化）
 check_p47            # 审计/环境/样例/有界自修（21 条：八段/缺产物 not_ready/必需项/样例/停法/退化）
+check_p49            # 项目计划图（27 条：版本/id 唯一/判据/坐标/四层图/任务 verify/退化）
 check_p48            # 闭环修复（20 条：网表不再丢/空网表判死/deliverable 要证据/命令 status/parity 守卫/3 条退化）
 ```
 
@@ -309,4 +310,56 @@ digest **是运行时算的**（`sha256(PATCH_BODY)[:16]`，见 `_expected_diges
 不是写死的常量——改了 `PATCH_BODY` 就会自动重算，`status` 会报不匹配。
 **必须在模块 exec 之前打补丁**——第一版在 exec 之后替换
 `module.arduino_cli`，构造已经发生了，无效。
+
+## 10. 客户端接线类坑（从 AGENTS §3.13–§3.14 搬来，内容一字未改）
+
+### 3.13 宿主给了字段、客户端不读 → 那 14 处调用全是死代码
+
+`service.ts` 早就在 hint 里放了 `view`（`hintState.view`），
+但客户端 `poll()` **只读 `project`**：
+
+```ts
+if (hint.project !== undefined && hint.project !== '') { … }   // view 从来没被读
+```
+
+后果不是报错，是**功能静默缺失**：`tools.ts` 里 14 处
+`viewHint(project, 'checks')` 全成了装饰，用户跑完 `hw_ladder`
+还得自己点页签去找结论。
+
+**判别**：一个字段在**发送侧**有赋值、在**接收侧**没有读取，就是这种形状。
+grep 一次即可——`grep -rn "hint\.view" src/`，只有发送侧命中就是死的。
+
+**修法**：读它，并且**只认已知值**（未知字符串忽略而不是猜）：
+
+```ts
+if (typeof view === 'string' && isSectionId(view)) { … }
+```
+
+切分区必须同时切分组，否则会出现"选中了不在当前分组里的分区"这种错位状态。
+
+**同类风险**：任何"宿主塞进 payload、客户端按需取"的契约字段
+（`presentationMeta`、`phase`、`verdict`）都可能是这个形状。
+加字段时**同时写一条断言它被读到**——`check_p0` 的 6b/6c/6d 就是干这个的
+（读 TS 源码断言"已 import 并渲染"，因为 tsc 抓不到"只定义不接线"）。
+
+### 3.14 `fix.need` 是一串散在十几个文件里的字面量 → 漏一个就静默失去按钮
+
+`physical.py` / `links.py` / `coverify.py` 各自写 `"need": "xxx"`，
+由 `nextstep.NEEDS` 翻成可点的动作。**新加一个 need 而忘了进表**的后果是：
+
+    那条 finding 没有按钮 —— 不报错、不失败、只是没了
+
+和 §1.2 的闸门是同一个形状。所以 `check_p1` 的 1a **扫源码**收集所有
+`"need": "..."` 再比对表，把"漏了"变成红的。加 need 时必须同时加表项。
+
+三条同时记住：
+
+* **降级不是填空，是换一句话**。命令模板缺 `{lcsc}` 时不要把占位符填空
+  然后显示「查  的尺寸」——读起来像 bug，人会怀疑工具而不是怀疑参数。
+* **没有靶子就不给按钮**。"整个设计一个申报都没有"这类，挑第一个元件当靶子
+  是猜；点"去改"跳到一个随机件，比没按钮更糟。
+* **refs 可能在 finding 顶层**（`physical` 的惯用法），不在 `fix` 里。
+  两者都要接受，否则下一步会显示「把 ? 分开」。
+
+---
 

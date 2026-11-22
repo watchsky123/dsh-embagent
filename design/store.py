@@ -66,6 +66,7 @@ ARTIFACTS = (
     "scaffold.json",
     "open_items.md",
     "mech.json",
+    "plan/index.json",
 )
 
 

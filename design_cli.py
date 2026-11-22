@@ -455,6 +455,21 @@ def snapshot(project_id: str, *, pitch_mm: float = 0.5) -> dict[str, Any]:
                            "reason": f"{type(exc).__name__}: {exc}",
                            "counts": {}, "rows": [], "checked": 0, "used_pins": 0}
 
+    # ---- 项目计划图（P49）-----------------------------------------------
+    #
+    # **默认维护**：每次打开快照就保证有一版 `plan/vN.json`。幂等——同一份
+    # 需求刷新十次也只留一个文件（按 requirement_hash 判重）。
+    try:
+        from .design import plan as plan_module
+        requirement = store.read("req.json")
+        if not isinstance(requirement, dict):
+            requirement = {}
+        out["plan"] = plan_module.ensure(store, design, requirement,
+                                         allow_new=False)
+    except Exception as exc:  # noqa: BLE001 - 计划失败不该拖垮快照
+        out["plan"] = {"status": "not_ready",
+                       "note": f"{type(exc).__name__}: {exc}"}
+
     # ---- 发射 / 半成品（P46）------------------------------------------
     #
     # 这两块此前在 UI 上**完全不可见**：8 段发射只回聊天里，`open_items.md`
@@ -1771,6 +1786,67 @@ def cmd_dfm(args: list[str]) -> dict[str, Any]:
     merged["project"] = args[0]
     merged["checked"] = {"drc_boards": len(boards), "dfm_boards": len(dfm_rows)}
     return {"status": merged["status"], **merged}
+
+
+def cmd_plan(args: list[str]) -> dict[str, Any]:
+    """``plan <id> [--req='<json>'] [--text=...] [--list] [--show=v1] [--graph]``
+
+    **项目计划图**（P49）：需求 → 能力（带判据）→ 模块（带真实坐标）→
+    3D 信息图 → 任务树。每次给同一个项目**加需求**就多一个 `plan/vN.json`；
+    同一份需求不会重复建版。
+
+    `--list` 只列版本；`--graph` 输出 2D 投影（3D 图的画布入口）。
+    """
+    from .design import plan as plan_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **plan_module.describe()}
+
+    store = _store(args[0])
+    if not store.exists():
+        return {"status": "not_ready",
+                "findings": [f"工程 {args[0]!r} 还没有 design.json"]}
+
+    if "--list" in args:
+        rows = plan_module.list_versions(store)
+        return {"status": "ok", "project": args[0], "versions": rows,
+                "count": len(rows),
+                "note": ("还没有计划（第一次会建 v1）" if not rows
+                         else f"{len(rows)} 版")}
+
+    store_design = store.load()
+    version = ""
+    requirement: dict[str, Any] = {}
+    text = ""
+    for item in args[1:]:
+        if item.startswith("--show="):
+            version = item.split("=", 1)[1]
+        elif item.startswith("--req="):
+            try:
+                requirement = json.loads(item.split("=", 1)[1])
+            except ValueError as exc:
+                return {"status": "failed", "findings": [f"--req 需要 JSON：{exc}"]}
+        elif item.startswith("--text="):
+            text = item.split("=", 1)[1]
+
+    if "--show" in args and not version:
+        rows = plan_module.list_versions(store)
+        version = rows[-1]["version"] if rows else ""
+    if version:
+        payload = plan_module.load_version(store, version)
+        if payload is None:
+            return {"status": "not_ready",
+                    "findings": [f"没有 {version}（用 --list 看有哪些）"]}
+        if "--graph" in args:
+            return {"status": "ok", "version": version,
+                    **plan_module.graph2d(payload)}
+        return {"status": "ok", **payload}
+
+    result = plan_module.ensure(store, store_design, requirement, text=text)
+    payload = plan_module.load_version(store, result.get("version", "")) or {}
+    if "--graph" in args:
+        return {"status": "ok", **plan_module.graph2d(payload)}
+    return {"status": "ok", **result, "plan": payload}
 
 
 def cmd_audit(args: list[str]) -> dict[str, Any]:
@@ -3994,6 +4070,7 @@ COMMANDS = {
     "scaffold": cmd_scaffold,
     "mech": cmd_mech,
     "dfm": cmd_dfm,
+    "plan": cmd_plan,
     "audit": cmd_audit,
     "doctor": cmd_doctor,
     "examples": cmd_examples,

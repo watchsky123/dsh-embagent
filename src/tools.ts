@@ -3973,7 +3973,103 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
-  // ---- 3g. hw_audit / hw_doctor / hw_examples / hw_fixloop（P47）--------
+  // ---- 3h. hw_plan ------------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_plan',
+    description:
+      '**项目计划图**：需求 → 能力（每条带可测判据）→ 模块（design.json 的**真实坐标**）'
+      + '→ 四层 3D 信息图（任务 z=-60 / 能力 z=+60 / 模块 / 板）→ 任务树。'
+      + '每次给同一项目**加需求**就多一份 `plan/vN.json`（同一份需求不重复建版）；'
+      + '缺证据的能力是 `unknown`，**不是通过**。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名' },
+      req: { type: 'string', description: '新需求 JSON（会建新版本 vN+1）' },
+      text: { type: 'string', description: '需求原文（记进版本）' },
+      mode: { type: 'string', description: 'list / graph / show（默认建/刷新）' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          project: { type: 'string' }, version: { type: 'string' },
+          status: { type: 'string' }, rows: { type: 'string' },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; version: string; status: string
+          rows: string; summary: string
+        }
+        return text(`# ${v.project} 计划：${v.version}（${v.status}）`,
+          ...v.rows.split('\n').filter((x) => x !== ''), v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'verdict')
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        project?: unknown; req?: unknown; text?: unknown; mode?: unknown
+      }
+      const project = str(a.project)
+      const mode = str(a.mode)
+      const cliArgs: string[] = [project]
+      if (mode === 'list') cliArgs.push('--list')
+      if (mode === 'graph') cliArgs.push('--graph')
+      const req = str(a.req)
+      if (req !== '') cliArgs.push(`--req=${req}`)
+      const plain = str(a.text)
+      if (plain !== '') cliArgs.push(`--text=${plain}`)
+      const payload = await design('plan', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '计划生成失败')
+      }
+      const versions = Array.isArray(payload.versions) ? payload.versions : []
+      if (mode === 'list') {
+        return {
+          project, version: '', status: str(payload.status),
+          rows: versions.map((raw) => {
+            const v = (raw ?? {}) as Record<string, unknown>
+            return `* ${str(v.version)}（parent ${str(v.parent) || '—'}）${str(v.created)}`
+          }).join('\n'),
+          summary: str(payload.note),
+        }
+      }
+      const caps = Array.isArray(payload.capabilities) ? payload.capabilities : []
+      const tasks = Array.isArray(payload.tasks) ? payload.tasks : []
+      const graph = (payload.graph ?? {}) as Record<string, unknown>
+      const counts = (graph.counts ?? {}) as Record<string, unknown>
+      const lines: string[] = []
+      if (caps.length > 0) {
+        lines.push(`能力 ${caps.length}：` + caps.map((raw) => {
+          const c = (raw ?? {}) as Record<string, unknown>
+          return `${str(c.id)}=${str(c.status)}`
+        }).join(' '))
+      }
+      if (tasks.length > 0) {
+        lines.push(`任务 ${tasks.length}（每条都有验收方式）：`)
+        for (const raw of tasks.slice(0, 12)) {
+          const t = (raw ?? {}) as Record<string, unknown>
+          lines.push(`* ${str(t.id)} ${str(t.kind)}：${str(t.title).slice(0, 40)}`)
+        }
+      }
+      if (counts.nodes !== undefined) {
+        lines.push(`3D 图：${num(counts.nodes)} 节点 / ${num(counts.edges)} 边`
+          + `（模块 ${num(counts.modules)}，能力 ${num(counts.capabilities)}，任务 ${num(counts.tasks)}）`)
+      }
+      return {
+        project,
+        version: str(payload.version),
+        status: str(payload.status),
+        rows: lines.join('\n'),
+        summary: str(payload.reason) || str(payload.note),
+      }
+    },
+  })))
+
+  // ---- 3g. hw_audit / hw_doctor / hw_examples / hw_fixloop（P47）--------  // ---- 3g. hw_audit / hw_doctor / hw_examples / hw_fixloop（P47）--------
   disposers.push(tools.register(defineTool({
     name: 'hw_audit',
     description:
