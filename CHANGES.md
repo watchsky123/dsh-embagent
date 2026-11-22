@@ -2796,6 +2796,61 @@ node scripts/check_tools.mjs            # 53 个工具
 **plan-v5（P40–P47）至此全部完成。**
 
 
+## P48 — 闭环修复：网表不再丢 / 空输入不再绿 / 第二意见生效（2026-11-22）
+
+> 起因：用户让"读原工程写规格 → 从 0 重建 → 比对"。手工版跑到一半发现
+> **重建出来的 5 件骨架 0 条网表，却被判「可打板」**。这三处一修，链才成立。
+
+### 修了什么
+
+| # | 缺陷（实测） | 修法 |
+|---|---|---|
+| **F1** | `generate.materialize()` 恒 `nets=0`（`ref_of` 用角色名、链路用 `unit:` 前缀）| `ref_of` 认两种键；链路按协议族挑**真实引脚名**（`spi`→`SPI1`…）；挑不到记 `unresolved_links` |
+| **F2** | 0 网表设计：`check`=ok、`ladder`=ok、`deliverable=True` | V0 加 `symbol.empty_netlist`（error）+ `thin_net`（warning）；`deliverable` 还要求 `emit.verify == ok` |
+| **F3** | `check`/`ladder`/`handoff` 顶层 `status` 写死 `ok`（payload 里 `ok=false, failed=2`）| 新增 `_judge_status()`：从 payload 推，**阶梯按层看**（unknown≠failed）|
+| **F4** | `parity` 在"设计侧 0 引脚"时容易被读成没问题 | `design_pins` 为空 → `not_ready` 并写明「对空输入没有意义」|
+
+### 20 件板真机跑通（工作区 `示例复现区/重建-最小系统板`）
+
+STM32F103C8T6 + LDO + Micro-USB + 8M/32.768k 晶振 + 14 个无源，**21 件 / 14 网**，
+料号全部来自 BOM（缺件号的 6 颗 100nF 用 LCSC 目录里的 `C1591`）：
+
+```
+put        ok（21 件 15 网 → 修后 14 网）
+check      ok（0 failed；先前 2 → 2 → 0 是改了两轮布局）
+ladder     not_ready（V0 pass，V1–V6 unknown：没申报电气参数）
+schematic  ok（装 21 器件 / 62 引脚接线）
+pcb        ok（21/21 摆上板）
+route      ok（190 段 / 17 过孔；铺铜前 10/14）
+pour       ok（GND 铺铜）
+verify     not_ready（**11/14**；未连通 VBUS / USB_DP / USB_DM）
+parity     **ok，逐引脚 62/62 一致**（第二意见生效）
+audit      failed（parts ok / schematic ok / pcb failed 11/14）
+handoff    deliverable=False（final: route=ok, pour=ok, verify=not_ready）
+```
+
+引擎自述 `failedNets=['VBUS','USB_DP','USB_DM']`，`verify` 独立判几何也确认这 3 条不通
+—— **两个来源一致**，这正是之前缺的"第二意见"。
+
+### 新增
+
+- `scripts/check_p48.py`（**20 条**，含 3 条退化）
+- `docs/plan-v6.md`（spec/compare 的方案，本次未做）
+- 工作区 `C:\Users\<user>\Desktop\示例复现区`：`spec.md`（读原工程手写的规格）+ `比对.md`（手工比对）
+
+### 顺带修
+
+- `check_handoff` / `check_m18` 的 `deliverable` 断言按新语义改写（并改成**不钉数组总数**）
+- `audit` 的 `pcb` 段读 `verify_detail.totals`（**这个键不存在**）→ 改成按 `boards[]` 累加；
+  修前永远显示"连通 0/0"
+
+### 验收
+
+```
+check_p48  20/20        npm test 760 通过        全套离线 26 个 check_* 全 exit=0
+```
+
+
 ---
 
 ## 参考对照（历史阶段，摘要）

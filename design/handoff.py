@@ -117,15 +117,33 @@ class Handoff:
     def by_category(self, category: str) -> list[Item]:
         return [i for i in self.items if i.category == category]
 
+    #: **最终连通性证据**（P47 实测补）。`emit` 的 route/pour/verify 三段的结论。
+    #: 没有这份证据时**不许声称可打板** —— 见 `deliverable`。
+    final_status: dict[str, Any] = field(default_factory=dict)
+
     @property
     def deliverable(self) -> bool:
-        """能不能打板。**只看 blocking**——其余都是"提醒"，不是否决。"""
-        return not self.by_category("blocking")
+        """能不能打板。
+
+        **两个条件都满足才算**：
+
+        1. 没有 `blocking`（老规矩）
+        2. **有最终连通性证据**：`emit` 的 `verify` 判过、并且不是 `not_ready`
+
+        第 2 条是 P47 真实验收逼出来的：一份 5 元件 **0 网表**的设计，
+        blocking=0 → 老逻辑直接报"可打板"，而同一份设计的 `emit` 说
+        「没有可布的对象，0 条违规不算通过」。**没有证据的"干净"不是干净。**
+        """
+        if self.by_category("blocking"):
+            return False
+        final = self.final_status or {}
+        return bool(final.get("present")) and str(final.get("verify") or "") == "ok"
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
             "project": self.project,
             "deliverable": self.deliverable,
+            "final_status": dict(self.final_status),
             "sources": dict(self.sources),
             "counts": {c: len(self.by_category(c)) for c in CATEGORIES},
             "checked": dict(self.checked),
@@ -942,6 +960,33 @@ def build(store: Any) -> Handoff:
         + _mechanical(mech_payload)
         + _orphan(design, justify)
     )
+    # **最终证据**：从 emit.json 取 route/pour/verify 三段结论。
+    # 只读产物，不重判；缺 emit.json 时 present=False。
+    verify_job = ((emit_payload or {}).get("jobs") or {}).get("verify") or {}
+    route_job = ((emit_payload or {}).get("jobs") or {}).get("route") or {}
+    pour_job = ((emit_payload or {}).get("jobs") or {}).get("pour") or {}
+    result.final_status = {
+        "present": bool(emit_payload),
+        "verify": str(verify_job.get("status") or "") if emit_payload else "",
+        "route": str(route_job.get("status") or "") if emit_payload else "",
+        "pour": str(pour_job.get("status") or "") if emit_payload else "",
+        "note": ("没有 emit.json：**没有最终连通性证据**，不能声称可打板"
+                 if not emit_payload else
+                 f"verify={verify_job.get('status')} "
+                 f"route={route_job.get('status')} pour={pour_job.get('status')}"),
+    }
+    if not result.final_status["present"] or result.final_status["verify"] != "ok":
+        result.items = list(result.items) + [Item(
+            category="unverifiable",
+            title="没有最终连通性证据（emit 的 verify 没判过 / 不是 ok）",
+            status="not_ready",
+            action=("先跑 `emit`（8 段）：只有 verify 段（铺铜之后的连通性）"
+                    "才能支持「可打板」这个结论"),
+            risk="没有连通性证据就导出 = 交一块可能断网的板",
+            basis=f"emit.json / jobs.verify（{result.final_status['note']}）",
+            fix={"need": "run_emit"},
+        )]
+
     result.checked = {
         "ladder": len((ladder or {}).get("levels") or []),
         "claims": int((claims or {}).get("count") or 0),

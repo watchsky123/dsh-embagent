@@ -247,56 +247,14 @@ risk="不是"通过"，是"没算""     # SyntaxError
 实测多次触发。**约定**：文档字符串、注释随便用中文引号；
 但**字符串值里**改用「」或去掉引号。
 
-### 3.4 Windows 文件锁：Renode 在 DSH 沙箱内跑不起来
+### 3.4–3.6 环境类坑（Renode 文件锁 / Velxio 计划任务 / 后端 77 秒）
 
-Renode 在 `TranslationCPU.Init()` 时对 `%APPDATA%\renode\cache_lock`
-做独占打开，DSH 作业对象下被拒：
-
-```
-System.UnauthorizedAccessException: Access to the path '...\cache_lock' is denied.
-```
-
-**关键对照**：不带 CPU 的 `mach create "x"` 能成功，
-一加 `LoadPlatformDescription` 就失败。
-
-试过并失败的旁路（不要重复）：
-`--config` 指向别处、重定向 `APPDATA`/`TEMP`、`cmd` 包装、
-Windows 计划任务、预建目录、预建非空锁文件。
-
-ACL 确认当前用户有完全控制权、无 Deny，Python 子进程
-`CreateFileW(share=0)` 独占打开也成功 → 是 DSH 对 Renode 进程的特定拦截，
-**不是文件权限问题**。
-
-**现状**：`renode.report()` 如实报 `runnable_here: False`，
-产物（`.resc` + `run.cmd`）交人在 DSH 外执行。
-`run.cmd` 里预建 `%APPDATA%\renode`——Renode **只会写、不会建**该目录。
-
-### 3.5 Velxio 后端存活要靠 Windows 计划任务
-
-DSH 的 Job Object 有 `KILL_ON_JOB_CLOSE`，bash 调用结束时整棵进程树被回收。
-
-试过并失败的方案：`Popen`、`CREATE_BREAKAWAY_FROM_JOB`、`DETACHED_PROCESS`、
-WMI `Win32_Process.Create`。
-
-**可用方案**：`schtasks`（`hw_velxio/serve.py` 已封装）。
-三个必须注意的点：
-* 不要加 `/RL HIGHEST`（Access denied）
-* 包装 `.cmd` 必须写成**二进制 CRLF**，否则 `\r\r\n` 会破坏 `--port 3080`
-* 直接 exec uvicorn，不要用 `start`
-
-### 3.6 后端导入慢 77 秒的根因是模块级网络调用
-
-`compile.py:35` 在模块级构造 `ArduinoCLIService()`，触发
-`_ensure_board_urls()` + `_ensure_core_installed()`，三个不可达的
-board-manager URL 各耗一次超时。
-
-实测：清除后 `core list` 从 76.0s → 0.14s。
-
-修法：venv 的 `sitecustomize.py`（`hw_velxio/patch.py` 是唯一生成处）。
-digest **是运行时算的**（`sha256(PATCH_BODY)[:16]`，见 `_expected_digest()`），
-不是写死的常量——改了 `PATCH_BODY` 就会自动重算，`status` 会报不匹配。
-**必须在模块 exec 之前打补丁**——第一版在 exec 之后替换
-`module.arduino_cli`，构造已经发生了，无效。
+> 这三条是**环境**问题，不是设计问题，全文已搬到
+> [`docs/runbook.md`](docs/runbook.md) 的「§9 环境类坑」。要点：
+>
+> * **Renode 在 DSH 沙箱内跑不起来**（`cache_lock` 独占打开被拒）；旁路全试过并失败
+> * **Velxio 后端要靠 `schtasks` 存活**（Job Object `KILL_ON_JOB_CLOSE` 会回收整棵树）
+> * **后端导入 77 秒的根因是模块级网络调用**，修法是 venv 的 `sitecustomize.py`
 
 ### 3.7 pydantic v2 的 `extra="ignore"` 会静默吃掉错参数
 
@@ -1125,6 +1083,72 @@ P45 我要新建"制造可行性"模块，想当然地写了 `design/fabrication
 
 ---
 
+### 3.45 一个字符串前缀，让**所有生成的设计 0 网表**（P48 实测）
+
+`generate.to_design()` 里 `ref_of` 的键是**角色名**（`mcu`），
+而链路对象里 `unit` 字段带前缀（`unit:mcu`，取自 `unit.id`）：
+
+```python
+ref_a = ref_of.get(str(link["a"]["unit"]))   # "unit:mcu" → None → continue
+```
+
+于是**每条链路都被跳过**，`design.nets` 恒为 `[]`。后果链：
+
+```
+0 网表 → V0 无对象可查 → pass
+       → check 9 项全过 → ok
+       → handoff blocking=0 → **deliverable=True（可打板）**
+       → 而同一份设计 emit 说「没有可布的对象」
+```
+
+**实测**：`materialize(cand)` → `nets=0`；把 link 的 `unit:` 前缀去掉 → `nets=2`。
+
+**修法两条**（缺一不可）：
+
+1. `ref_of` 同时以 `role` 与 `unit:<role>` 为键（两种写法都认）
+2. 网表引脚名**必须真实存在**：按协议族去能力表的外设组里挑
+   （`spi`→`SPI1`/`SPI2`…），挑不到就记 `unresolved_links` 而不是写 `""`
+
+**判别**：生成器的输出"看起来没问题"时，先数 `len(design.nets)`。
+
+---
+
+### 3.46 空输入要在**最便宜的一层**就判死（P48）
+
+V0（符号层）原来只查"引用是否成立"——0 网表时**没有任何引用可查**，
+于是 pass。现在 V0 先查两件事：
+
+| 判据 | 级别 | 理由 |
+|---|---|---|
+| `parts ≥2 且 nets == 0` | **error** | 不是"没有违规"，是"没有东西可判" |
+| 某条网引脚 < 2 | **warning** | 部分模型里常见（对面在别的板/未建模的连接器）；判 fail 会把 V1 截断（实测把 `check_ladder` 三条断言打红）|
+
+**同时**：`handoff.deliverable` 加第二个条件 —— **必须有最终连通性证据**
+（`emit.json` 的 `verify == ok`）。老规矩"无阻断即可打板"会把
+"没查到问题"当成"能打板"。
+
+**判别**：任何 `ok` 都问一句"这条结论依赖的对象存在吗？"
+
+---
+
+### 3.47 判定类命令的顶层 `status` 不能写死（P48 真机实测）
+
+```python
+return {"status": "ok", **result}   # ← result 里没有 status，写死的活了
+```
+
+于是 `check` 报 `status=ok` 而同一份 payload 里 `ok=false, failed=2`。
+人读顶层、工具读顶层，全都以为过了。这是 §1.1 在**命令包装层**的复刻。
+
+**修法**：`_judge_status(payload)` 从 payload 自己的结论推，并且**阶梯要按层看**
+（全是 `unknown` → `not_ready`，不是 `failed`）。
+
+**顺带一个坑**：`handoff` 的 `summary` 是**一句话（str）**，
+`summary.get()` 直接抛 `AttributeError: 'str' object has no attribute 'get'` ——
+所以取 `summary` 前必须 `isinstance(summary, dict)`。
+
+---
+
 ## 4. 测试与验收的约定
 
 ### 4.1 每条硬判据都要有退化验证
@@ -1261,6 +1285,10 @@ P8 第一版把 I2C1 的 SCL 和 SDA 各记一条"链路"，
 | **`examples` 已落地**（P47） | 三个可抄的半成品：blink / button / gimbal；`copy` **不覆盖**已有工程 | 已修 |
 | **`fixloop` 是"有界"的**（P47） | 默认 3 轮、连续 2 轮无改善即停；**不改设计**（`stop=needs_editor` 只出计划）| 要真改走 agent 循环 |
 | `audit` 里 `release` 段**现场聚合 handoff** | 每次跑都重算交接单（几秒）；不读旧 `handoff.json` | 需要时改读缓存 |
+| **生成器网表已修**（P48） | `ref_of` 认 `role` 与 `unit:<role>` 两种键；链路按协议族挑真实引脚名；挑不到记 `unresolved_links` | 已修 |
+| **空网表已判死**（P48） | V0 `symbol.empty_netlist`（error）；`deliverable` 还要求 `emit.verify == ok` | 已修 |
+| 生成器只做**外设级示意连接** | 每条链路 1 个引脚（真实 SPI 要 4 根）；网表标 `level=peripheral` | 人补真实连接 |
+| 布线器布不通的网**是真的不通** | 21 件板实测：引擎 `failedNets=['VBUS','USB_DP','USB_DM']`，`verify` 独立判几何也确认不通 | 布线靠引擎；不通就报 |
 
 `示例-多板` 当前 `handoff` 结论：**不可打板**，
 12 阻断 / 6 缺数据 / 7 默认值 / 2 不会验 / 175 未接线。

@@ -296,8 +296,15 @@ def check_external_category(f: Failures) -> None:
             not any(i["category"] == "blocking" for i in result["items"]),
             str([i["title"] for i in result["items"]
                  if i["category"] == "blocking"]))
-    f.check("external 不否决交付（deliverable 只看 blocking）",
-            result["deliverable"] is True, str(result["deliverable"]))
+    # **语义变了（P48）**：`external` 仍然不进 blocking，但它已不再是"能否打板"
+    # 的唯一条件 —— 还必须**有最终连通性证据**（emit 的 verify=ok）。
+    # 这份夹具没有 emit.json，所以 deliverable=False 是**正确**的；
+    # 这里断言的是"external 不进 blocking"，而不是"一定可打板"。
+    f.check("external 不进 blocking（交付另由最终连通性证据把关）",
+            result["deliverable"] is False
+            and not any(i["category"] == "blocking" for i in result["items"]),
+            f"deliverable={result['deliverable']} "
+            f"blocking={[i['title'] for i in result['items'] if i['category'] == 'blocking']}")
     f.check("external 的说明点明「不阻断」",
             any("不阻断" in (i.get("risk") or "") for i in ext),
             str([i.get("risk", "")[:40] for i in ext]))

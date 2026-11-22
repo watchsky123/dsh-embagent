@@ -176,8 +176,12 @@ def main() -> int:
 
     h = handoff.build(FakeStore("p", _design(), {"ladder.json": _ladder()}))
     unverifiable = h.by_category("unverifiable")
+    # **别按总数钉死**：这一类里还会有别的"没法验"（如"没有最终连通性证据"）。
+    # 只数 V5/V6 那两条（P46 的教训：整表计数一加东西就红）。
+    v56 = [i for i in unverifiable
+           if i.title.strip().startswith(("V5", "V6"))]
     f.check("V5/V6 的 not_run 进'不会验'而不是阻断",
-            len(unverifiable) == 2, f"{len(unverifiable)} 条")
+            len(v56) == 2, f"{len(v56)} 条 / 全类 {len(unverifiable)} 条")
     f.check("V5 的动作说明要接固件",
             any("固件" in i.action for i in unverifiable),
             str([i.action for i in unverifiable]))
@@ -277,17 +281,43 @@ def main() -> int:
     f.check("空表渲染成『无。』而不是被省略",
             "_无。_" in markdown)
 
-    print("\n== 交付判定只看阻断 ==")
+    print("\n== 交付判定：阻断 + 最终连通性证据（两条都要） ==")
 
-    h = handoff.build(FakeStore("p", _design(), {"ladder.json": _ladder()}))
-    f.check("无阻断时 deliverable=True（尽管有缺数据）",
-            h.deliverable is True, str([i.title for i in h.by_category("blocking")]))
+    # **新规矩**（P47 真实验收逼出来的）：没有 `emit` 的最终连通性证据时，
+    # "无阻断"只能说明**没查到问题**，不能说明能打板。
+    # 实测反例：5 元件 0 网表的设计，blocking=0 曾经直接报"可打板"，
+    # 而同一份设计的 emit 说"没有可布的对象"。
+    no_emit = handoff.build(FakeStore("p", _design(), {"ladder.json": _ladder()}))
+    f.check("无阻断但**没有 emit 证据** → deliverable=False",
+            no_emit.deliverable is False,
+            f"final={no_emit.final_status}")
+    f.check("并写清缺的是最终连通性证据（不是沉默）",
+            any("最终连通性证据" in i.title for i in no_emit.items),
+            str([i.title for i in no_emit.items]))
+
+    emit_ok = {"jobs": {"route": {"status": "ok"},
+                        "pour": {"status": "ok"},
+                        "verify": {"status": "ok"}}}
+    with_emit = handoff.build(FakeStore("p", _design(), {
+        "ladder.json": _ladder(), "emit.json": emit_ok}))
+    f.check("无阻断 + verify=ok → deliverable=True（旧语义仍然成立）",
+            with_emit.deliverable is True, str(with_emit.final_status))
+
+    emit_bad = {"jobs": {"route": {"status": "not_ready"},
+                         "pour": {"status": "not_ready"},
+                         "verify": {"status": "not_ready"}}}
+    with_bad = handoff.build(FakeStore("p", _design(), {
+        "ladder.json": _ladder(), "emit.json": emit_bad}))
+    f.check("emit 判 verify=not_ready → deliverable=False",
+            with_bad.deliverable is False, str(with_bad.final_status))
 
     h = handoff.build(FakeStore("p", _design(), {
         "ladder.json": _ladder(),
         "deferred.json": {"open_irreversible": ["package_family"]},
+        "emit.json": emit_ok,
     }))
-    f.check("有阻断时 deliverable=False", h.deliverable is False)
+    f.check("有阻断时 deliverable=False（**即使**有 emit 证据）",
+            h.deliverable is False)
 
     print("\n== 产物指纹 ==")
 

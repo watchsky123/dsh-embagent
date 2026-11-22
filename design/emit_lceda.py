@@ -2505,8 +2505,20 @@ def parity_from_netlists(design: DesignModel, netlists: Iterable[str],
             parsed_any = True
         live_pins.update(parsed)
 
+    # **第二意见的前置**：设计里根本没有网表时，"两边一致"是空话。
+    # 实测（P47）：5 元件 0 网表的设计，parity 曾经能算出 ok——
+    # 因为 `design_pins` 是空的，missing/wrong/extra 全空 → `ok and checked`
+    # 里 `checked=0` 挡住了，但**计数全 0 很容易被读成"没有问题"**。
+    # 现在显式说清：设计侧没有可比的引脚。
+    if not design_pins:
+        return {"status": "not_ready", "checked": 0, "design_pins": 0,
+                "design_nets": len(design.nets),
+                "note": ("design.json 里没有可比较的引脚（0 条网表）——"
+                         "「两边一致」对空输入没有意义")}
+
     if not parsed_any:
         return {"status": "not_ready", "checked": 0,
+                "design_pins": len(design_pins), "design_nets": len(design.nets),
                 "note": "没有拿到立创 PCB 网表（回读失败），无法比较"}
 
     comparable = {k: v for k, v in live_pins.items() if k[0] in design_refs}
@@ -2524,6 +2536,7 @@ def parity_from_netlists(design: DesignModel, netlists: Iterable[str],
     return {
         "status": "ok" if ok and checked else "not_ready",
         "checked": checked,
+        "design_nets": len(design.nets),
         "lceda_pins": len(comparable),
         "missing": missing[:40],
         "wrong": wrong[:40],

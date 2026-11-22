@@ -175,7 +175,7 @@ io.open("run.cmd", "wb").write(s.encode("ascii"))
 ```bash
 cd <repo-root>                    # 必须在这里，不在 hw_velxio/
 
-npm test                                         # 756 项单测
+npm test                                         # 760 项单测
 python -m hw_velxio.scripts.check_m1             # M1 四条硬验收
 python -m hw_velxio.scripts.check_units_links    # P5
 python -m hw_velxio.scripts.check_generate       # P6
@@ -205,6 +205,7 @@ python -m hw_velxio.scripts.check_p44            # 机械判据（16 条：干�
 python -m hw_velxio.scripts.check_p45            # 制造可行性（17 条：DFM 三态/DRC 分级/合成/命令/退化）
 check_p46            # 前端两分区（26 条：分区/面板/动作/RPC/快照/跳转/退化）
 check_p47            # 审计/环境/样例/有界自修（21 条：八段/缺产物 not_ready/必需项/样例/停法/退化）
+check_p48            # 闭环修复（20 条：网表不再丢/空网表判死/deliverable 要证据/命令 status/parity 守卫/3 条退化）
 ```
 
 **立创侧诊断脚本**（不是验收，是「说不清就量一遍」用的）：
@@ -255,3 +256,57 @@ rm -f *.json.tmp
 **P23 的新约定**：合成夹具放在 `tests/fixtures/designs/*.json`，**每个都要在
 `test_phases.FIXTURE_EXPECT` 里登记它存在的理由**（`clean` / `validate` /
 `geometry`）。没登记的夹具只是躺在磁盘上的 JSON——`check_p23` 的 3b 条会点名。
+
+## 9. 环境类坑（从 AGENTS §3.4–§3.6 搬来，内容一字未改）
+
+### 3.4 Windows 文件锁：Renode 在 DSH 沙箱内跑不起来
+
+Renode 在 `TranslationCPU.Init()` 时对 `%APPDATA%\renode\cache_lock`
+做独占打开，DSH 作业对象下被拒：
+
+```
+System.UnauthorizedAccessException: Access to the path '...\cache_lock' is denied.
+```
+
+**关键对照**：不带 CPU 的 `mach create "x"` 能成功，
+一加 `LoadPlatformDescription` 就失败。
+
+试过并失败的旁路（不要重复）：
+`--config` 指向别处、重定向 `APPDATA`/`TEMP`、`cmd` 包装、
+Windows 计划任务、预建目录、预建非空锁文件。
+
+ACL 确认当前用户有完全控制权、无 Deny，Python 子进程
+`CreateFileW(share=0)` 独占打开也成功 → 是 DSH 对 Renode 进程的特定拦截，
+**不是文件权限问题**。
+
+**现状**：`renode.report()` 如实报 `runnable_here: False`，
+产物（`.resc` + `run.cmd`）交人在 DSH 外执行。
+`run.cmd` 里预建 `%APPDATA%\renode`——Renode **只会写、不会建**该目录。
+
+### 3.5 Velxio 后端存活要靠 Windows 计划任务
+
+DSH 的 Job Object 有 `KILL_ON_JOB_CLOSE`，bash 调用结束时整棵进程树被回收。
+
+试过并失败的方案：`Popen`、`CREATE_BREAKAWAY_FROM_JOB`、`DETACHED_PROCESS`、
+WMI `Win32_Process.Create`。
+
+**可用方案**：`schtasks`（`hw_velxio/serve.py` 已封装）。
+三个必须注意的点：
+* 不要加 `/RL HIGHEST`（Access denied）
+* 包装 `.cmd` 必须写成**二进制 CRLF**，否则 `\r\r\n` 会破坏 `--port 3080`
+* 直接 exec uvicorn，不要用 `start`
+
+### 3.6 后端导入慢 77 秒的根因是模块级网络调用
+
+`compile.py:35` 在模块级构造 `ArduinoCLIService()`，触发
+`_ensure_board_urls()` + `_ensure_core_installed()`，三个不可达的
+board-manager URL 各耗一次超时。
+
+实测：清除后 `core list` 从 76.0s → 0.14s。
+
+修法：venv 的 `sitecustomize.py`（`hw_velxio/patch.py` 是唯一生成处）。
+digest **是运行时算的**（`sha256(PATCH_BODY)[:16]`，见 `_expected_digest()`），
+不是写死的常量——改了 `PATCH_BODY` 就会自动重算，`status` 会报不匹配。
+**必须在模块 exec 之前打补丁**——第一版在 exec 之后替换
+`module.arduino_cli`，构造已经发生了，无效。
+

@@ -1140,6 +1140,49 @@ def cmd_tiers(args: list[str]) -> dict[str, Any]:
             "summary": report.summary(), "project": project_id}
 
 
+def _judge_status(payload: dict[str, Any]) -> str:
+    """判定类命令的顶层 `status` —— **从 payload 自己的结论推**，不要写死。
+
+    ## 为什么（P47 真机实测）
+
+    `cmd_check` / `cmd_ladder` 原来是 `return {"status": "ok", **result}`。
+    于是同一份 payload 里出现 **`status="ok"` 而 `ok=false / failed=2`**：
+    人读顶层、工具读顶层，全都以为过了。`payload` 自带的结论被这层包装
+    覆盖掉（写死的 ok 在前，payload 的键在后，但 payload 里**没有**
+    `status` 这个键，所以写死的那个活下来了）。
+
+    这是 §1.1（判定只有一份）在**命令包装层**的复刻。
+    """
+    if str(payload.get("status") or ""):
+        return str(payload["status"])
+    # **阶梯要按层看**：`ok=False` 可能只是"某层 unknown"（判不出来），
+    # 那不是 `failed`（判出来是错的）。两者对下游的意义完全不同。
+    levels = [l for l in (payload.get("levels") or []) if isinstance(l, dict)]
+    if levels:
+        if any(str(l.get("status")) == "fail" for l in levels):
+            return "failed"
+        if any(str(l.get("status")) in ("unknown", "not_run") for l in levels):
+            return "not_ready"
+        return "ok"
+    # **`summary` 不一定是对象**：`handoff` 的 summary 是一句话（str）。
+    # 第一版直接 `.get()` → `AttributeError: 'str' object has no attribute 'get'`
+    # （实测：`handoff 重建-最小系统板` 直接 failed）。
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+    if int(summary.get("errors") or 0) > 0:
+        return "failed"
+    if payload.get("ok") is False:
+        return "failed"
+    if int(summary.get("failed") or 0) > 0 or int(summary.get("warnings") or 0) > 0:
+        return "not_ready"
+    if payload.get("vacuous"):
+        return "not_ready"
+    if payload.get("ok") is None:
+        return "not_ready"
+    return "ok"
+
+
 def cmd_check(args: list[str]) -> dict[str, Any]:
     from .design import discipline, physical
 
@@ -1159,7 +1202,7 @@ def cmd_check(args: list[str]) -> dict[str, Any]:
     store.write("checks.json", result)
     discipline.append(store, "cli", "checks.run",
                       {"ok": result["ok"], "failed": result["summary"]["failed"]})
-    return {"status": "ok", **result}
+    return {"status": _judge_status(result), **result}
 
 
 def cmd_ladder(args: list[str]) -> dict[str, Any]:
@@ -1211,7 +1254,7 @@ def cmd_ladder(args: list[str]) -> dict[str, Any]:
 
     payload = result.to_dict()
     store.write("ladder.json", payload)
-    return {"status": "ok", **payload}
+    return {"status": _judge_status(payload), **payload}
 
 
 def cmd_claims(args: list[str]) -> dict[str, Any]:
@@ -1350,7 +1393,7 @@ def cmd_handoff(args: list[str]) -> dict[str, Any]:
     markdown = handoff_module.render_markdown(payload)
     store.write_text("handoff.md", markdown)
     payload["markdown"] = markdown
-    return {"status": "ok", **payload}
+    return {"status": _judge_status(payload), **payload}
 
 
 def cmd_renode(args: list[str]) -> dict[str, Any]:

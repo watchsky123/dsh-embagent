@@ -164,6 +164,11 @@ NEEDS: dict[str, dict[str, str]] = {
         "label": "说清哪些零件着地（{refs}）：支撑面判不出就没法算重心",
         "by": "人（标着地件/给支撑面）",
     },
+    "run_emit": {
+        "kind": "run_command",
+        "label": "跑 `emit`（8 段）：拿到 verify 段才能说「可打板」",
+        "command": "python -m hw_velxio.design_cli emit {project}",
+    },
     "mech_unknown": {
         "kind": "external",
         "label": "机械判据缺数据（{refs}）：见 action 里缺什么",

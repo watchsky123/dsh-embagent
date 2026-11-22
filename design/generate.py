@@ -387,6 +387,35 @@ def _score(candidate: Candidate, design: DesignModel) -> None:
         for p in candidate.parts if capability.get(p["model"]) is not None))
 
 
+#: 协议族 → 能力表里可能的外设组名（按"组名包含"匹配）。
+_PROTOCOL_GROUPS: dict[str, tuple[str, ...]] = {
+    "SPI": ("SPI",), "UART": ("USART", "UART"), "I2C": ("I2C",),
+    "CAN": ("CAN",), "USB": ("USB",), "PWM": ("PWM", "TIM"),
+}
+
+
+def _pick_pin(cap: dict[str, Any], protocol: str,
+              used: set[str]) -> str:
+    """从能力表的外设组里挑一个**真实存在的引脚名**。挑不到返回 `""`（不猜）。"""
+    groups = cap.get("pins") or {}
+    if not isinstance(groups, dict):
+        return ""
+    keys = _PROTOCOL_GROUPS.get(protocol.upper(), (protocol.upper(),))
+    for group in sorted(groups):
+        label = str(group).upper()
+        if not any(key in label for key in keys):
+            continue
+        pins = groups.get(group) or []
+        if not isinstance(pins, list):
+            continue
+        for pin in pins:
+            name = str(pin)
+            if name and name not in used:
+                used.add(name)
+                return name
+    return ""
+
+
 def to_design(candidate: Candidate, req: Requirement) -> DesignModel:
     """把候选变成一份真设计，好让阶梯能验它。
 
@@ -406,6 +435,7 @@ def to_design(candidate: Candidate, req: Requirement) -> DesignModel:
         board=boards[0], boards=boards)
     parts: list[Part] = []
     ref_of: dict[str, str] = {}
+    pin_of: dict[str, dict[str, Any]] = {}
     for index, row in enumerate(candidate.parts):
         cap = capability.get(row["model"]) or {}
         pins = sorted({p for group in (cap.get("pins") or {}).values()
@@ -416,7 +446,14 @@ def to_design(candidate: Candidate, req: Requirement) -> DesignModel:
         board_id = f"unit:{owners[0]}"
         ref = f"U{index + 1}"
         for owner in owners:
+            # **两种键都要放**：`ref_of` 在单元建立时用的是 role（`mcu`），
+            # 而链路里的 `unit` 字段带前缀（`unit:mcu`，来自 `unit.id`）。
+            # 只放 role 会让 `ref_of.get("unit:mcu")` 永远取不到 →
+            # 每条链路都 `continue` → **生成的每个候选都没有网表**
+            # （P47 实测：materialize(cand) 恒 nets=0，去掉前缀就出现 SPI_1/UART_2）。
             ref_of[str(owner)] = ref
+            ref_of[f"unit:{owner}"] = ref
+        pin_of[ref] = cap
         parts.append(Part(
             ref=ref, kind=row["model"], label=row["model"],
             role="module",
@@ -429,23 +466,49 @@ def to_design(candidate: Candidate, req: Requirement) -> DesignModel:
     design.parts = parts
 
     # 链路 → 网表
+    #
+    # **引脚名必须真实存在**：空字符串会让 V0 报 `symbol.pin_unnamed`
+    # （"无法核对存在性"）。所以按协议族去能力表里挑同名的外设组：
+    # `spi` → `SPI1`/`SPI2`…，`uart` → `USART1`…，取组里第一个没用过的脚。
+    #
+    # 这**仍然是"每链路 1 个引脚"的示意连接**（真实 SPI 要 SCK/MOSI/MISO/NSS
+    # 四根）。网表里标 `"level": "peripheral"`，`handoff` 会把它记成缺数据 ——
+    # 不许当成真实原理图。
+    used_pins: dict[str, set[str]] = {}
     nets: list[dict[str, Any]] = []
+    unresolved_links: list[dict[str, Any]] = []
     for index, link in enumerate(candidate.links):
         if link.get("unresolved"):
             continue
         ref_a = ref_of.get(str((link.get("a") or {}).get("unit") or ""))
         ref_b = ref_of.get(str((link.get("b") or {}).get("unit") or ""))
         if not ref_a or not ref_b:
+            unresolved_links.append({"link": link.get("id"),
+                                     "reason": "链路端点对不到元件"})
             continue
         if ref_a == ref_b:
             # 两端是同一颗料 —— 芯片内部连接，不是板间链路。
             # 第一版会造出一条 `U1 -- U1` 的自环网，V0 查不出来但物理上是假的。
             continue
         protocol = str(link.get("protocol") or "sig").upper()
-        nets.append({"net": f"{protocol}_{index + 1}",
-                     "pins": [{"ref": ref_a, "pin": ""},
-                              {"ref": ref_b, "pin": ""}]})
+        pin_a = _pick_pin(pin_of.get(ref_a) or {}, protocol,
+                          used_pins.setdefault(ref_a, set()))
+        pin_b = _pick_pin(pin_of.get(ref_b) or {}, protocol,
+                          used_pins.setdefault(ref_b, set()))
+        if not pin_a or not pin_b:
+            unresolved_links.append({
+                "link": link.get("id"), "protocol": protocol,
+                "reason": (f"能力表里 {ref_a}/{ref_b} 没有 {protocol} 组，"
+                           "接不到具体引脚")})
+            continue
+        nets.append({"net": f"{protocol}_{index + 1}", "level": "peripheral",
+                     "source": "derived",
+                     "pins": [{"ref": ref_a, "pin": pin_a},
+                              {"ref": ref_b, "pin": pin_b}]})
     design.nets = nets
+    design.meta = dict(getattr(design, "meta", None) or {})
+    if unresolved_links:
+        design.meta["unresolved_links"] = unresolved_links
     design.links_list = [dict(l) for l in candidate.links]
     return design
 

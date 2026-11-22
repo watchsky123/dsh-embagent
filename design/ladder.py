@@ -324,6 +324,31 @@ def level_v0(design: DesignModel, **_kw: Any) -> LevelResult:
     board_ids = {b.id for b in design.board_list()}
     checked = 0
 
+    # 0. **空网表 / 单引脚网 —— 这一条必须先查**
+    #
+    # 实测（P47 的真实验收）：一份 5 元件、0 条网表的设计，V0 一路 pass，
+    # 于是 check=ok、handoff=可打板。而同一份设计 `emit` 说「没有可布的对象」。
+    # 空网表不是"没有违规"，是**没有东西可判**——正是 AGENTS §0.1。
+    #
+    # 判据：有 ≥2 个元件却 0 条网表 → error；任何一条网少于 2 个引脚 → error
+    # （1 个引脚的"网"物理上不存在，通常是生成器丢了引脚名）。
+    if len(design.parts) >= 2 and not design.nets:
+        res.findings.append(_finding(
+            "symbol.empty_netlist", "",
+            f"{len(design.parts)} 个元件但 0 条网表 —— 这不是"
+            f"「没有违规」，是没有可判的连接（空输入不算通过）"))
+    for entry in design.nets:
+        pins = [p for p in (entry.get("pins") or []) if isinstance(p, dict)]
+        if len(pins) < 2:
+            # **warning 而不是 error**：单引脚网在**部分模型**里很常见
+            # （对面那一端在别的板/没建模的连接器上）。判 fail 会让
+            # 极性反接这类夹具在 V0 就被截断，V1 根本没机会跑
+            # （实测：check_ladder 的三条 V1 断言全红）。
+            res.findings.append(_finding(
+                "symbol.thin_net", str(entry.get("net")),
+                f"网 {entry.get('net')} 只有 {len(pins)} 个引脚 —— "
+                f"少于 2 个引脚的网在完整网表中不该出现", severity="warning"))
+
     # 1. 元件 ref 唯一
     seen: set[str] = set()
     for part in design.parts:
@@ -821,10 +846,17 @@ RUNNERS: dict[str, Callable[..., LevelResult]] = {
 
 def _finding(check: str, ref: str, message: str, *,
              measured: float | None = None,
-             limit: float | None = None) -> dict[str, Any]:
-    """与 `physical.py` 同格式的 finding（面板统一渲染）。"""
+             limit: float | None = None,
+             severity: str = "error",
+             priority: str = "") -> dict[str, Any]:
+    """与 `physical.py` 同格式的 finding（面板统一渲染）。
+
+    `severity="warning"` 会让该层结论变 `unknown` 而不是 `fail`
+    （`_finish` 的纪律：warning = 结论有保留，不是结论否定）。
+    """
     return {
-        "check": check, "ok": False, "severity": "error", "priority": "P0",
+        "check": check, "ok": False, "severity": severity,
+        "priority": priority or ("P0" if severity == "error" else "P2"),
         "refs": [ref], "message": message,
         "measured": measured, "limit": limit, "fix": {},
     }

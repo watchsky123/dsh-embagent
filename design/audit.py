@@ -151,11 +151,15 @@ def _stage_pcb(store: Any, design: Any) -> dict[str, Any]:
     if not isinstance(emit, dict):
         return _row("pcb", "not_ready", basis="emit.json 缺失",
                     note="没发射过：没有板子，就没有布线/铺铜/连通")
-    verify = (emit.get("verify_detail") or {}).get("totals") or {}
+    # **`verify_detail` 的真实形状是 `{boards: [...]}`，没有 `totals`。**
+    # 第一版读 `totals` → 永远 "连通 0/0"（把自己写成了"啥也没连"）。
+    # 这里按板累加：`expected`（设计里应有的网）与 `connected`（几何连上的）。
+    detail = emit.get("verify_detail") or {}
+    boards = [b for b in (detail.get("boards") or []) if isinstance(b, dict)]
+    nets = sum(len(b.get("expected") or []) for b in boards)
+    connected = sum(len(b.get("connected") or []) for b in boards)
     fab = emit.get("fabrication") or {}
     cur = (emit.get("drc") or {}).get("trustworthy_violations")
-    nets = int(verify.get("nets") or 0)
-    connected = int(verify.get("connected") or 0)
     findings: list[dict[str, Any]] = []
     if nets and connected < nets:
         findings.append({"check": "pcb.connectivity", "refs": [],
