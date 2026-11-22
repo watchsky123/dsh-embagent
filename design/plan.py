@@ -508,9 +508,165 @@ def _cmp(value: float, criterion: dict[str, Any]) -> bool:
 _KIND_SUFFIX = {"measure": "M", "procure": "P", "design": "D",
                 "code": "C", "test": "V"}
 
+#: **软件能力的分解**（P51）。每条能力拆成一条**写→测→验**的链，
+#: 而不是"测一个数 + 一条验收"。
+#:
+#: `artifact` 是产物路径（相对工程目录）：它让"写了没有"变成**可检查**的事实，
+#: 而不是靠人记。**空串表示这一步要靠仪器/台架**，本仓库给不出产物。
+SW_BREAKDOWN: dict[str, tuple[dict[str, str], ...]] = {
+    "S1": (
+        {"key": "spec", "kind": "design",
+         "title": "写失效判据表（角度/下降率/链路超时 + 迟滞 + 单位）",
+         "artifact": "fw/failsafe/failsafe.h",
+         "verify": "每条阈值有数值、单位、迟滞带，且能被 cfg 结构体覆盖"},
+        {"key": "impl", "kind": "code",
+         "title": "实现风控状态机（ARMED→FAILSAFE，幂等触发）",
+         "artifact": "fw/failsafe/failsafe.c",
+         "verify": "过 `fw-algo failsafe` 全部用例（含边界与不重复触发）"},
+        {"key": "inject", "kind": "test",
+         "title": "注入测试：角度/下降率/链路各打一次超限",
+         "artifact": "fw/failsafe/test_failsafe.c",
+         "verify": "三类超限各触发一次、已 FAILSAFE 不重复、负角度也抓"},
+        {"key": "threshold", "kind": "design",
+         "title": "阈值来源：从飞控参数集抽取并固化（拆解 ⑤）",
+         "artifact": "",
+         "verify": "每个阈值写清取自哪个参数名，取不到就标 unknown"},
+        {"key": "latency", "kind": "measure",
+         "title": "测失效响应延迟（超限 → 动作）",
+         "artifact": "",
+         "verify": "日志时间戳差值 ≤ 判据，记录采样周期"},
+    ),
+    "S2": (
+        {"key": "gains", "kind": "design",
+         "title": "写增益表（角度环/角速率环，含量纲与限幅）",
+         "artifact": "fw/pid/pid.h",
+         "verify": "每个增益有单位与取值范围，限幅/抗饱和策略写明"},
+        {"key": "cascade", "kind": "code",
+         "title": "实现串级 PID（限幅 + 抗积分饱和）",
+         "artifact": "fw/pid/pid.c",
+         "verify": "过阶跃用例：无持续超调、输出不越限"},
+        {"key": "step", "kind": "test",
+         "title": "阶跃响应测试（超调量/上升时间）",
+         "artifact": "fw/pid/test_pid.c",
+         "verify": "超调与上升时间有具体数值，且按判据给出 pass/fail"},
+        {"key": "margin", "kind": "measure",
+         "title": "测相位裕度（≥ 30°）",
+         "artifact": "",
+         "verify": "给出 Bode 图或等效频域数据；没有就 unknown"},
+    ),
+    "S3": (
+        {"key": "state", "kind": "design",
+         "title": "定义状态量与观测方程（姿态/速度/位置）",
+         "artifact": "",
+         "verify": "每个状态量有物理含义与单位，观测来源写明"},
+        {"key": "impl", "kind": "code",
+         "title": "实现 EKF 预测/更新（数值稳定）",
+         "artifact": "fw/ekf/ekf.c",
+         "verify": "过合成数据用例：已知真值时误差收敛"},
+        {"key": "converge", "kind": "test",
+         "title": "收敛测试（上电 5 s 内协方差收敛）",
+         "artifact": "fw/ekf/test_ekf.c",
+         "verify": "记录收敛步数/时间；不收敛要能报失败原因"},
+        {"key": "noise", "kind": "design",
+         "title": "Q/R 的来源与量级依据",
+         "artifact": "",
+         "verify": "每个噪声参数写清来自 datasheet/实测/经验，取不到就 unknown"},
+    ),
+    "S4": (
+        {"key": "iface", "kind": "design",
+         "title": "定义与飞控的接口（帧率/延迟/坐标系）",
+         "artifact": "",
+         "verify": "三项都有数值，坐标系与飞控一致"},
+        {"key": "algo", "kind": "code",
+         "title": "选定并接入算法本体（光流/避障）",
+         "artifact": "fw/vision/vision.c",
+         "verify": "**本体必须存在**：自研或注明开源来源与许可"},
+        {"key": "acc", "kind": "test",
+         "title": "精度测试（1 m 位移误差 ≤ 5%）",
+         "artifact": "fw/vision/test_vision.c",
+         "verify": "给出误差分布，不是单次最好值"},
+    ),
+    "S5": (
+        {"key": "fsm", "kind": "design",
+         "title": "写任务状态机与断点续飞策略",
+         "artifact": "fw/mission/mission.h",
+         "verify": "每个状态有进入/退出条件，断点恢复有定义"},
+        {"key": "impl", "kind": "code",
+         "title": "实现航点解析与状态迁移",
+         "artifact": "fw/mission/mission.c",
+         "verify": "过用例：到点、超时、中断后恢复"},
+        {"key": "wp", "kind": "test",
+         "title": "航点通过半径测试（≤ 2 m）",
+         "artifact": "fw/mission/test_mission.c",
+         "verify": "给出半径判定逻辑与实测值，缺实测就 unknown"},
+    ),
+    "S6": (
+        {"key": "frame", "kind": "design",
+         "title": "定义帧结构（帧头/长度/校验/字段表）",
+         "artifact": "fw/telemetry/telemetry.h",
+         "verify": "字段偏移/宽度/单位写全，校验算法写明"},
+        {"key": "impl", "kind": "code",
+         "title": "实现打包/发送（含校验）",
+         "artifact": "fw/telemetry/telemetry.c",
+         "verify": "过用例：篡改一字节必须被校验拒掉"},
+        {"key": "rate", "kind": "test",
+         "title": "20 Hz 压测（不丢帧/不乱序）",
+         "artifact": "fw/telemetry/test_telemetry.c",
+         "verify": "给出丢帧率与最坏间隔"},
+    ),
+}
+
+
+
+def _attach_evidence(store: Any, tasks: list[dict[str, Any]]) -> None:
+    """给带 `artifact` 的任务挂"这个文件在不在"。
+
+    **只报存在性，不据此判 done**：文件在 ≠ 实现对（可能是空壳）。
+    真正的判定要过 `fw-algo` 的用例（§0.1：存在不是通过）。
+    """
+    for task in tasks:
+        artifact = str(task.get("artifact") or "")
+        if not artifact:
+            continue
+        try:
+            present = store.path(artifact).is_file()
+        except Exception:  # noqa: BLE001 - 路径怪也不该炸计划
+            present = False
+        task["evidence"] = {"artifact": artifact, "present": present}
+
+
+def _sw_chain(cap: dict[str, Any], head: list[str]) -> list[dict[str, Any]]:
+    """软件能力 → **写→测→验 的链**（P51）。`head` 是链头要等的前置任务。
+
+    为什么软件要单独拆：硬件的"缺数据"靠采购/实测能闭合；软件的"缺"
+    是**还没写**。只给"测一个数 + 验收"两条任务，中间那一大段工作不出现，
+    任务表就会骗人（12 条任务看着像干完了）。
+    """
+    steps = SW_BREAKDOWN.get(cap["id"]) or ()
+    out: list[dict[str, Any]] = []
+    prev = list(head)
+    for step in steps:
+        tid = f"T-{cap['id']}-{step['key']}"
+        out.append({
+            "id": tid, "capability": cap["id"], "kind": step["kind"],
+            "verb": _TASK_KINDS.get(step["kind"], {"verb": "做"})["verb"],
+            "title": step["title"],
+            "verify": step["verify"],
+            "artifact": step["artifact"],
+            "depends_on": sorted(set(prev)),
+            "status": "open",
+            "why": "软件三层分解：写 → 测 → 验（这一层没有就不算做完）",
+        })
+        prev = [tid]
+    return out
+
 
 def _tasks_for(cap: dict[str, Any]) -> list[dict[str, Any]]:
-    """一个能力 → 一棵最小任务树（2 层）。**每条任务都必须能验收**。"""
+    """一个能力 → 一棵最小任务树。**每条任务都必须能验收**。
+
+    * 硬件能力：缺数据 → 采购/实测 + 一条验收（2 层）
+    * 软件能力（S*）：**写 → 测 → 验** 的链（`SW_BREAKDOWN`），验收挂在链尾
+    """
     if cap["status"] == "pass":
         return []
     tasks: list[dict[str, Any]] = []
@@ -550,6 +706,11 @@ def _tasks_for(cap: dict[str, Any]) -> list[dict[str, Any]]:
             "depends_on": [], "status": "open",
             "why": cap.get("reason") or "",
         })
+    # 软件能力：在（采购/实测任务）之后接上「写 → 测 → 验」的链
+    head = [t["id"] for t in tasks]
+    if cap.get("class") == "software":
+        tasks.extend(_sw_chain(cap, head))
+
     # 第二层：验收任务。**永远生成**——"做完了怎么证"不是可选项。
     kind = "test"
     tasks.append({
@@ -559,7 +720,9 @@ def _tasks_for(cap: dict[str, Any]) -> list[dict[str, Any]]:
                  f"{cap['criterion']['metric']} {cap['criterion']['op']} "
                  f"{cap['criterion']['value']} {cap['criterion']['unit']}",
         "verify": _TASK_KINDS[kind]["verify"],
-        "depends_on": [t["id"] for t in tasks] or [],
+        # 依赖**链尾**（软件链的最后一步），而不是所有前置 —— 否则验收会
+        # 和"写"同时可做，等于没排序。
+        "depends_on": ([tasks[-1]["id"]] if tasks else []),
         "status": "open",
         "why": "判据先行：没有这条就不算做完",
     })
@@ -644,6 +807,9 @@ def derive(store: Any, design: DesignModel, requirement: dict[str, Any],
         cap["tasks"] = [t["id"] for t in own]
         tasks.extend(own)
 
+    # 产物证据（只报存在性；不据此判 done）
+    _attach_evidence(store, tasks)
+
     # 图要**在任务生成之后**建：三层（任务/能力/模块）都要在节点里。
     graph = _graph(design, modules, capabilities, tasks)
 
@@ -669,6 +835,13 @@ def derive(store: Any, design: DesignModel, requirement: dict[str, Any],
         "modules": len(modules),
         "edges": graph["counts"]["edges"],
         "tasks": len(tasks),
+        "software_tasks": sum(1 for t in tasks
+                              if str(t.get("capability") or "").startswith("S")),
+        "hardware_tasks": sum(1 for t in tasks
+                              if str(t.get("capability") or "").startswith("H")),
+        "with_artifact": sum(1 for t in tasks if t.get("artifact")),
+        "artifact_present": sum(1 for t in tasks
+                                if (t.get("evidence") or {}).get("present")),
         "open_tasks": sum(1 for t in tasks if t["status"] == "open"),
     }
     return {
@@ -745,9 +918,13 @@ def describe() -> dict[str, Any]:
         "dir": PLAN_DIR,
         "index": INDEX,
         "capabilities": [t["id"] for t in CAPABILITY_TEMPLATES],
+        "software_breakdown": {k: [x["key"] for x in v]
+                               for k, v in SW_BREAKDOWN.items()},
         "task_kinds": sorted(_TASK_KINDS),
         "versioning": ("同需求不新建版本（按 requirement_hash）；新需求 → v(N+1)，"
                        "parent 指向上一版；任务状态按 id 继承，判据按当前需求重算"),
         "discipline": ("判据先写；缺证据=unknown（不是 pass）；"
-                       "每个能力都有一条验收任务（没有 verify 的任务不生成）"),
+                       "每个能力都有一条验收任务（没有 verify 的任务不生成）；"
+                       "软件能力走 **写→测→验** 的链（SW_BREAKDOWN），"
+                       "带 artifact 的任务只报产物存在性，不据此判 done"),
     }

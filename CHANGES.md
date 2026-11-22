@@ -3073,6 +3073,57 @@ check_p47 22/22    doctor 9 项（arm_gcc ok）    npm test 760
 ```
 
 
+## P51 — 软件任务分解：写 → 测 → 验（2026-11-22）
+
+> 用户第 3 项：现在 S1–S6 每项只有"测一个数 + 一条验收"，缺"**写**"那一层。
+
+### 改成什么
+
+`design/plan.py` 新增 `SW_BREAKDOWN`（6 个软件能力 × 3–5 步），每步带
+`kind` / `title` / **`artifact`（产物路径）** / `verify`，并链式依赖。
+
+```
+S1 风控   spec → impl → inject → threshold → latency → V
+S2 控制律  gains → cascade → step → margin → V
+S3 EKF     state → impl → converge → noise → V
+S4 视觉    iface → algo → acc → V
+S5 任务    fsm → impl → wp → V
+S6 遥测    frame → impl → rate → V
+```
+
+### 实测（复刻-示例）
+
+```
+任务 28 → 50      软件任务 12 → 34（5.7 条/能力）    硬件 16 条（2 条/能力）
+带 artifact 16 条  产物已存在 3 条（fw/failsafe 真的在）
+```
+
+### 四条硬判据（check_p51）
+
+| 判据 | 做法 |
+|---|---|
+| 第一层是「写」 | design/code，不是 measure |
+| 链式不是并列 | 剥掉能力级前置后，每条恰好依赖前一条 |
+| `-V` 依赖链尾 | 不是依赖全部前置 |
+| **产物存在 ≠ 通过** | 造空 `failsafe.h` → `present=True` 但 `status=open` |
+
+### 退化
+
+清空 `SW_BREAKDOWN` → S1 从 7 条掉回 2 条、`artifact` 字段消失
+（证明分解真的挂在那张表上，不是碰巧）。
+
+### 顺带抓到一个自己的错
+
+`check_p51` 的 2a 第一版写了 `all(... or True for ...)` —— **恒真子句**，
+正是 §4.1 警告的"永远绿的断言"。自己复读时抓到并改掉。
+
+### 验收
+
+```
+check_p51 14/14    npm test 760
+```
+
+
 ---
 
 ## 参考对照（历史阶段，摘要）

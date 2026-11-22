@@ -558,3 +558,39 @@ icacls <exe> /setintegritylevel Medium     # 报 Access is denied → 你缺 WRI
 
 **顺带**：这条也解释了一类"诡异"现象 —— 往本仓库里解压的 `.exe` 双击能跑但
 一写文件就失败；而 `D:\deeptool\w64devkit` 里的同名工具毫无问题（它没有标签）。
+
+## 14. 软件任务为什么要拆三层（P51）
+
+`plan` 第一版对**软件能力**（S1–S6）也只用"缺数据 → 一条任务 + 一条验收"，
+于是 `复刻-示例` 的软件任务只有 **12 条**（6 能力 × 2）。看着像把软件
+做完了，实际**"写"这一步根本没出现在任务表里**。
+
+拆法（`design/plan.py` 的 `SW_BREAKDOWN`）：
+
+```
+S1 风控   spec(写判据) → impl(写状态机) → inject(注入测试)
+        → threshold(阈值来源) → latency(测延迟) → V(验收)
+S2 控制律  gains → cascade → step → margin → V
+S3 EKF     state → impl → converge → noise → V
+S4 视觉    iface → algo → acc → V
+S5 任务    fsm → impl → wp → V
+S6 遥测    frame → impl → rate → V
+```
+
+实测：任务 **28 → 50**，软件 **12 → 34**（平均 5.7 条/能力），
+硬件仍是 16 条（2 条/能力）——**软件的"写"真的进了任务表**。
+
+四条硬纪律：
+
+1. **第一层必须是"写"**（`design`/`code`）。若第一层是"测"，说明分解退化了。
+2. **链式依赖**：剥掉能力级前置（S1 依赖 H2/H8 的验收）后，
+   每条恰好依赖前一条 —— 不是并列，否则"写→测"可以同时做。
+3. **能力级 `-V` 依赖链尾**（`T-S1-latency`），不是依赖全部前置。
+4. **`artifact` 只报存在性，不判 done**：实测造一个空 `failsafe.h`，
+   `present` 变 `True` 而 `status` 仍是 `open` —— 文件在 ≠ 实现对（§0.1）。
+
+验收：`check_p51` **14 条**（含 1 条退化：清空 `SW_BREAKDOWN` → S1 从 7 条掉回 2 条）。
+
+**踩过的一个小坑**：我在 `check_p51` 的 2a 第一版写了
+`all(... or True for ...)` —— 一个**恒真子句**，正是 §4.1 说的"永远绿的断言"。
+自己写完读一遍才抓到。写 `or True` 之前先问：这半句还会失败吗？
