@@ -100,6 +100,15 @@ export interface WorkbenchFace {
   deferred(project: string, action: string, name?: string, value?: string): Promise<DeferredPayload>
   evidence(project: string): Promise<EvidencePayload>
   exportBundle(project: string): Promise<ExportPayload>
+  /**
+   * 跑一次发射（P46）。**这是长任务**：8 段、几十秒到几分钟。
+   *
+   * `jobs` 可以只跑一段（如 `verify`）来"只重验"。返回的是 `emit.json`
+   * 的摘要（与 `snapshot.emit` 同形状），不是进度流。
+   */
+  emitRun(project: string, jobs?: string, route?: string): Promise<Record<string, unknown>>
+  /** 发射进度/最后一次结果（读 emit.json + 运行日志尾巴，不推进任何东西）。 */
+  emitProgress(project: string): Promise<Record<string, unknown>>
   trace(project: string, action?: string): Promise<Record<string, unknown>>
   velxioHealth(): Promise<Record<string, unknown>>
   /** 启动/停止 Velxio 后端（委托 Python 侧的 serve 子命令）。 */
@@ -189,6 +198,13 @@ export function createFace(
         name === undefined ? { project, action } : { project, action, name, value: value ?? '' }),
     evidence: (project) => call<EvidencePayload>(handle, 'evidence', { project }),
     exportBundle: (project) => call<ExportPayload>(handle, 'exportBundle', { project }),
+    emitRun: (project, jobs, route) => call<Record<string, unknown>>(handle, 'emitRun', {
+      project,
+      ...(jobs === undefined || jobs === '' ? {} : { jobs }),
+      ...(route === undefined || route === '' ? {} : { route }),
+    }),
+    emitProgress: (project) =>
+      call<Record<string, unknown>>(handle, 'emitProgress', { project }),
     trace: (project, action) =>
       call<Record<string, unknown>>(handle, 'trace',
         action === undefined ? { project } : { project, action }),

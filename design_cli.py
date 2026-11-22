@@ -175,6 +175,88 @@ def scene3d(design) -> dict[str, Any]:
     }
 
 
+def cmd_emit_status(args: list[str]) -> dict[str, Any]:
+    """``emit-status <id>`` —— 只读发射摘要（不跑判定、不碰立创）。
+
+    P46 的前端要**轮询**这个（比 `snapshot` 便宜得多：snapshot 会跑检查/
+    预算/核对，而这里只读 `emit.json`）。
+    """
+    if not args or args[0].startswith("-"):
+        return {"status": "failed", "findings": ["emit-status 需要 <id>"]}
+    store = _store(args[0])
+    if not store.exists():
+        return {"status": "failed", "findings": [f"工程 {args[0]!r} 不存在"]}
+    summary = emit_summary(store)
+    path = store.path("emit.json")
+    summary["mtime"] = (path.stat().st_mtime if path.is_file() else 0)
+    return summary
+
+
+def emit_summary(store) -> dict[str, Any]:
+    """`emit.json` → 首屏要的那几行（**只投影，不重判**）。
+
+    P46：发射是本项目最贵的一步（几十秒到几分钟，8 段），而此前 UI 上
+    **一点都看不到**。这里把"哪段成了、哪段没过、产物在哪"压成一份摘要。
+    """
+    payload = store.read("emit.json")
+    if not isinstance(payload, dict):
+        return {"status": "not_ready", "reason": "还没发射过（没有 emit.json）",
+                "jobs": [], "artifacts": [], "verify": {}, "fabrication": {}}
+    jobs = [{"name": str(name), "status": str((job or {}).get("status") or ""),
+             "note": str((job or {}).get("note") or "")[:200]}
+            for name, job in (payload.get("jobs") or {}).items()]
+    outputs = (payload.get("jobs") or {}).get("outputs") or {}
+    artifacts = [{"kind": str(a.get("kind") or ""), "name": str(a.get("name") or ""),
+                  "size": int(a.get("size") or 0)}
+                 for a in (outputs.get("artifacts") or []) if isinstance(a, dict)]
+    verify = payload.get("verify_detail") or {}
+    totals = verify.get("totals") or {}
+    return {
+        "status": str(payload.get("status") or "not_ready"),
+        "version": str(payload.get("version") or ""),
+        "project": dict(payload.get("project") or {}),
+        "jobs": jobs,
+        "bad_jobs": [j["name"] for j in jobs if j["status"] != "ok"],
+        "verify": {"nets": int(totals.get("nets") or 0),
+                   "connected": int(totals.get("connected") or 0),
+                   "split": int(totals.get("split") or 0)},
+        "fabrication": payload.get("fabrication") or {},
+        "channel": payload.get("channel") or {},
+        "pareto": payload.get("parity") or {},
+        "artifacts": artifacts,
+        "note": (f"{len(jobs)} 段，"
+                 + ("全 ok" if jobs and not [j for j in jobs if j["status"] != "ok"]
+                    else "未通过：" + "、".join(j["name"] for j in jobs
+                                              if j["status"] != "ok"))),
+    }
+
+
+def scaffold_summary(store) -> dict[str, Any]:
+    """`scaffold.json` + `open_items.md` → 半成品摘要（P46）。
+
+    **没有 open_items 也不代表"没问题"**：那是"还没跑过 scaffold"。
+    """
+    payload = store.read("scaffold.json")
+    if not isinstance(payload, dict):
+        return {"status": "not_ready", "reason": "还没跑过 scaffold（没有 scaffold.json）",
+                "stages": [], "open_items": [], "count": 0}
+    items = [{"what": str(row.get("what") or ""), "need": str(row.get("need") or "")}
+             for row in (payload.get("open_items") or []) if isinstance(row, dict)]
+    return {
+        "status": str(payload.get("status") or "not_ready"),
+        "route": str(payload.get("route") or ""),
+        "stages": [{"stage": str(r.get("stage") or ""),
+                    "status": str(r.get("status") or ""),
+                    "note": str(r.get("note") or "")[:200]}
+                   for r in (payload.get("stages") or []) if isinstance(r, dict)],
+        "open_items": items,
+        "count": len(items),
+        "has_markdown": store.path("open_items.md").is_file(),
+        "note": (f"{len(items)} 条待办（不阻塞，改完重跑就消失）" if items
+                 else "没有待办；但**没待办也可能只是没跑过**"),
+    }
+
+
 def snapshot(project_id: str, *, pitch_mm: float = 0.5) -> dict[str, Any]:
     """一次读取渲染 + 判定 + 预算 + 闸门所需的一切（一次往返）。"""
     from .design import budgets, crosscheck, discipline, physical
@@ -372,6 +454,23 @@ def snapshot(project_id: str, *, pitch_mm: float = 0.5) -> dict[str, Any]:
         out["firmware"] = {"status": "not_ready",
                            "reason": f"{type(exc).__name__}: {exc}",
                            "counts": {}, "rows": [], "checked": 0, "used_pins": 0}
+
+    # ---- 发射 / 半成品（P46）------------------------------------------
+    #
+    # 这两块此前在 UI 上**完全不可见**：8 段发射只回聊天里，`open_items.md`
+    # 只有人自己去翻文件。两者都是"只投影已有产物"，不重新判定。
+    try:
+        out["emit"] = emit_summary(store)
+    except Exception as exc:  # noqa: BLE001
+        out["emit"] = {"status": "not_ready",
+                       "reason": f"{type(exc).__name__}: {exc}",
+                       "jobs": [], "artifacts": []}
+    try:
+        out["scaffold"] = scaffold_summary(store)
+    except Exception as exc:  # noqa: BLE001
+        out["scaffold"] = {"status": "not_ready",
+                           "reason": f"{type(exc).__name__}: {exc}",
+                           "stages": [], "open_items": [], "count": 0}
 
     # **参数敏感度**（P3）：只有模型层的**分类与计数**进快照。
     #
@@ -1572,6 +1671,154 @@ def cmd_joints(args: list[str]) -> dict[str, Any]:
 
     status = "ok" if report["status"] == "ok" else "not_ready"
     return {"status": status, **report}
+
+
+def cmd_dfm(args: list[str]) -> dict[str, Any]:
+    """``dfm [<id>] [--live]`` —— 制造可行性：DRC 分级 + DFM 三态。
+
+    默认**只读**：拿 `<工程>/emit.json` 里的 `drc` / `fabrication` 重判一遍
+    （不重跑立创，所以是"对着旧证据再看一眼"）。`--live` 才去立创里真跑
+    DRC + DFM（要 lceda CLI，单次 30 秒上限）。
+
+    为什么重判也有用：`emit.json` 里存的是**原始证据**（逐板 DRC 明细 +
+    DFM 的结果或错误文本），判定口径（哪些类别可信、DFM 不完整算 unknown）
+    可以在这里独立复核，不必重跑整条发射。
+    """
+    from .design import dfm as dfm_module
+    from .design import lceda as lceda_mod
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **dfm_module.describe()}
+
+    store, design = _load(args[0])
+    payload = store.read("emit.json")
+    if not isinstance(payload, dict):
+        return {"status": "not_ready",
+                "findings": ["没有 emit.json（先跑 `emit` 才有制造证据）"]}
+
+    drc = payload.get("drc") or {}
+    boards = drc.get("boards") or []
+    dfm_rows = drc.get("dfm") or []
+    worst = next((r for r in dfm_rows if r.get("status") != "ok"), None) \
+        or (dfm_rows[0] if dfm_rows else None)
+    merged = dfm_module.merge(drc, worst)
+
+    if "--live" in args:
+        try:
+            session = lceda_mod.LcedaSession(project_path=str(store.dir))
+            session.open(headless=True)
+        except Exception as exc:  # noqa: BLE001
+            merged.setdefault("live", {})["error"] = f"{type(exc).__name__}: {exc}"
+        else:
+            try:
+                got = session.invoke(
+                    "const a = await (async () => { try { return await "
+                    "eda.pcb_Dfm.getDfmAvailability(); } catch (e) { return null; } })();"
+                    "let r = null, err = '';"
+                    "try { r = await eda.pcb_Dfm.checkDfm({}); }"
+                    "catch (e) { err = String((e && e.message) || e); }"
+                    "return {available: a, result: r, error: err};",
+                    require_ok=False, label="dfm")
+                merged["live"] = dfm_module.dfm_verdict(
+                    (got or {}).get("result"), error=str((got or {}).get("error") or ""),
+                    available=(got or {}).get("available"))
+            finally:
+                session.close()
+
+    merged["project"] = args[0]
+    merged["checked"] = {"drc_boards": len(boards), "dfm_boards": len(dfm_rows)}
+    return {"status": merged["status"], **merged}
+
+
+def cmd_audit(args: list[str]) -> dict[str, Any]:
+    """``audit [<id>] [--stages=intake,pcb]`` —— 六段审计（P47）。
+
+    **只投影已有产物**：需求→单元→选料→原理图→PCB→固件→机械→交接，
+    每段一行 `status/checked/basis/findings`。缺产物 = `not_ready`，不是 ok。
+    写 `audit.json` + `audit.md`。
+    """
+    from .design import audit as audit_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **audit_module.describe()}
+
+    store, design = _load(args[0])
+    stages: tuple[str, ...] = ()
+    for item in args[1:]:
+        if item.startswith("--stages="):
+            stages = tuple(x.strip() for x in item.split("=", 1)[1].split(",")
+                           if x.strip())
+    report = audit_module.audit(store, design, stages=stages)
+    store.write("audit.json", report)
+    (store.dir / "audit.md").write_text(audit_module.render_markdown(report),
+                                        encoding="utf-8")
+    return {"status": report["status"], "project_id": args[0], **report}
+
+
+def cmd_doctor(args: list[str]) -> dict[str, Any]:
+    """``doctor`` —— 环境探测：立创/Bridge/LCSC/MuJoCo/工具链（P47）。
+
+    **只探测，不安装、不修复、不联网**。required 全 ok 才是 ok。
+    """
+    from .design import doctor as doctor_module
+
+    if args and args[0].startswith("-"):
+        return {"status": "ok", **doctor_module.describe()}
+    return {"status": "ok", **doctor_module.run()}
+
+
+def cmd_examples(args: list[str]) -> dict[str, Any]:
+    """``examples [list]`` / ``examples copy <name> --to=<id> [--title=...]``
+
+    三个可抄的半成品样例（P47）。复制**不覆盖**已存在的工程。
+    """
+    from .design import examples as examples_module
+
+    if not args or args[0] == "list" or args[0].startswith("-"):
+        return {"status": "ok", **examples_module.list_examples()}
+    if args[0] != "copy":
+        return {"status": "failed",
+                "findings": ["用法：examples list | examples copy <name> --to=<id>"]}
+    name = args[1] if len(args) > 1 and not args[1].startswith("-") else ""
+    project_id, title = "", ""
+    for item in args[2:]:
+        if item.startswith("--to="):
+            project_id = item.split("=", 1)[1]
+        elif item.startswith("--title="):
+            title = item.split("=", 1)[1]
+    if not name or not project_id:
+        return {"status": "failed", "findings": ["copy 需要 <name> 与 --to=<id>"]}
+    store = _store(project_id)
+    result = examples_module.copy_example(name, store, title=title)
+    return {"status": result["status"], **result}
+
+
+def cmd_fixloop(args: list[str]) -> dict[str, Any]:
+    """``fixloop [<id>] [--rounds=3]`` —— **有界**自修循环（P47）。
+
+    `status` 只报"这一轮链有没有结论"；**不改设计**：没有注入 editor 时
+    只出计划（`stop=needs_editor`）。要真改，用 agent 循环（P22）或手改。
+    """
+    from .design import fixloop as fixloop_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **fixloop_module.describe()}
+
+    store, design = _load(args[0])
+    rounds = 3
+    stages: tuple[str, ...] = ()
+    for item in args[1:]:
+        if item.startswith("--rounds="):
+            try:
+                rounds = int(item.split("=", 1)[1])
+            except ValueError:
+                return {"status": "failed", "findings": ["--rounds 需要整数"]}
+        elif item.startswith("--stages="):
+            stages = tuple(x.strip() for x in item.split("=", 1)[1].split(",")
+                           if x.strip())
+    report = fixloop_module.run(store, max_rounds=rounds, stages=stages)
+    store.write("fixloop.json", report)
+    return {"status": report["status"], "project_id": args[0], **report}
 
 
 def cmd_mech(args: list[str]) -> dict[str, Any]:
@@ -3703,6 +3950,12 @@ COMMANDS = {
 "dims": cmd_dims,
     "scaffold": cmd_scaffold,
     "mech": cmd_mech,
+    "dfm": cmd_dfm,
+    "audit": cmd_audit,
+    "doctor": cmd_doctor,
+    "examples": cmd_examples,
+    "fixloop": cmd_fixloop,
+    "emit-status": cmd_emit_status,
     "units": cmd_units,
     "links": cmd_links,
     "ioc-links": cmd_ioc_links,

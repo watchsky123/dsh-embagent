@@ -37,6 +37,10 @@ export interface PanelProps {
   readonly onLock: (name: string, value: string) => void
   readonly onExport: () => void
   readonly onLimit: (currency: string, value: number) => void
+  /** 跑一次发射（P46，**长任务**）。不给就不渲染那个按钮。 */
+  readonly onEmitRun?: () => void
+  /** 只重验（8 段里只跑 verify）。 */
+  readonly onEmitReverify?: () => void
 }
 
 /**
@@ -988,6 +992,202 @@ export function ExportPanel(props: PanelProps): JSX.Element {
         {props.snapshot.project.artifacts['export.json'] === true
           ? '已导出过，产物在 project 目录的 fab/ 下'
           : '尚未导出'}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 发射面板（P46）：8 段状态 + 产物 + 最终连通性。
+ *
+ * ## 为什么这一屏必须存在
+ *
+ * 发射是本项目**最贵**的一步（2 板 24 件实测 185s；Bridge 通道 76s），而此前
+ * UI 上**完全看不到**：跑完只会"刷新一下"，人还得回聊天记录里读。这一屏只做
+ * 两件事：把 8 段如实画出来，以及给"只重验"一个按钮。
+ *
+ * **`verify` 那一段是权威**（铺铜之后的连通性）；`route` 段只报"布了多少段"。
+ */
+export function EmitPanel(props: PanelProps): JSX.Element {
+  const emit = props.snapshot.emit
+  const [copied, setCopied] = useState(false)
+  if (emit === undefined) {
+    return (
+      <div className="hwv-body">
+        <div className="hwv-row warn">
+          <Mark severity="warning" />
+          <span className="msg">这一版快照里没有发射摘要（后端没给 emit 字段）</span>
+        </div>
+      </div>
+    )
+  }
+  const jobs = emit.jobs ?? []
+  const artifacts = emit.artifacts ?? []
+  const verify = emit.verify
+  const fab = emit.fabrication ?? {}
+  const fabStatus = typeof fab.status === 'string' ? fab.status : ''
+  const total = artifacts.reduce((sum, a) => sum + a.size, 0)
+
+  const copyDir = async (): Promise<void> => {
+    // **不替人打开资源管理器**（那是宿主的动作，这里只给能粘的路径）。
+    const path = `artifacts/`
+    try {
+      await navigator.clipboard.writeText(path)
+      setCopied(true)
+    } catch {
+      setCopied(false)          // 复制失败**不假装成功**（P1 的同一条）
+    }
+  }
+
+  return (
+    <div className="hwv-body">
+      <div className={`hwv-row ${emit.status === 'ok' ? 'ok' : 'warn'}`}>
+        <Mark severity={emit.status === 'ok' ? 'ok' : 'warning'} />
+        <span className="msg">
+          {emit.status === 'not_ready'
+            ? (emit.reason ?? '还没发射过')
+            : `发射 ${emit.status} —— ${emit.note ?? ''}`}
+        </span>
+      </div>
+
+      <div className="hwv-inline hwv-block-tight">
+        <button className="hwv-btn primary" disabled={props.onEmitRun === undefined}
+                title="跑 8 段（几十秒到几分钟，中途不要重复点）"
+                onClick={() => { props.onEmitRun?.() }}>发射</button>
+        <button className="hwv-btn" disabled={props.onEmitReverify === undefined}
+                title="只跑 verify：铺铜之后的连通性，是能不能打板的最终结论"
+                onClick={() => { props.onEmitReverify?.() }}>只重验</button>
+        <button className="hwv-btn" disabled={artifacts.length === 0}
+                onClick={() => { void copyDir() }}>{copied ? '已复制' : '复制产物目录'}</button>
+        {verify !== undefined && (
+          <span className="hwv-dim">
+            连通 {verify.connected}/{verify.nets}
+            {verify.split > 0 ? `（断 ${verify.split}）` : ''}
+          </span>
+        )}
+      </div>
+
+      {jobs.length === 0
+        ? <div className="hwv-dim">没有分段记录（emit.json 里没有 jobs）</div>
+        : (
+          <div className="hwv-block-tight">
+            {jobs.map((job) => (
+              <div key={job.name}
+                   className={`hwv-row ${job.status === 'ok' ? 'ok' : job.status === 'failed' ? 'err' : 'warn'}`}>
+                <Mark severity={job.status === 'ok' ? 'ok'
+                  : job.status === 'failed' ? 'error' : 'warning'} />
+                <span className="msg">
+                  <strong>{job.name}</strong>
+                  <span className="hwv-dim"> · {job.status}</span>
+                  {job.note !== '' ? ` —— ${job.note}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+      {fabStatus !== '' && (
+        <div className={`hwv-row hwv-block-tight ${fabStatus === 'ok' ? 'ok' : 'warn'}`}>
+          <Mark severity={fabStatus === 'ok' ? 'ok' : 'warning'} />
+          <span className="msg">
+            制造结论：{fabStatus}
+            {Array.isArray(fab.reasons) && (fab.reasons as unknown[]).length > 0
+              ? ` —— ${(fab.reasons as string[]).join('；')}`
+              : '（DRC 分级 + DFM，见 hw_dfm）'}
+          </span>
+        </div>
+      )}
+
+      {artifacts.length > 0 && (
+        <div className="hwv-block-tight">
+          <div className="hwv-dim">产物 {artifacts.length} 个（{(total / 1024).toFixed(1)} KB）：</div>
+          {artifacts.map((a) => (
+            <div key={`${a.kind}:${a.name}`} className="hwv-row">
+              <span className="msg">
+                {a.kind} · <code>{a.name}</code>
+                <span className="hwv-dim"> · {a.size} B</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="hwv-dim hwv-block-tight">
+        产物在工程目录的 <code>artifacts/</code> 下。**`verify` 段才是"能不能打板"**；
+        `route` 段只报"布了多少段"（铺铜前判会误判，见 AGENTS §3.27）。
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 半成品面板（P46）：`scaffold` 的段状态 + `open_items` 待办。
+ *
+ * `open_items` **不是闸门**：工程已经是可用的半成品，这些是"我没把握的地方"。
+ * 所以这里**没有**"必须先清空才能导出"这类按钮 —— 那会把半成品变回未完成品。
+ */
+export function BriefPanel(props: PanelProps): JSX.Element {
+  const scaffold = props.snapshot.scaffold
+  if (scaffold === undefined) {
+    return (
+      <div className="hwv-body">
+        <div className="hwv-row warn">
+          <Mark severity="warning" />
+          <span className="msg">这一版快照里没有半成品摘要（后端没给 scaffold 字段）</span>
+        </div>
+      </div>
+    )
+  }
+  const stages = scaffold.stages ?? []
+  const items = scaffold.open_items ?? []
+  const empty = scaffold.status === 'not_ready'
+  return (
+    <div className="hwv-body">
+      <div className={`hwv-row ${empty ? 'warn' : 'ok'}`}>
+        <Mark severity={empty ? 'warning' : 'ok'} />
+        <span className="msg">
+          {empty ? (scaffold.reason ?? '还没跑过 scaffold')
+            : `半成品 ${scaffold.status}（route=${scaffold.route ?? '?'}）—— 待办 ${scaffold.count} 条`}
+        </span>
+      </div>
+
+      {stages.length > 0 && (
+        <div className="hwv-block-tight">
+          {stages.map((stage) => (
+            <div key={stage.stage}
+                 className={`hwv-row ${stage.status === 'ok' ? 'ok'
+                   : stage.status === 'failed' ? 'err' : 'warn'}`}>
+              <Mark severity={stage.status === 'ok' ? 'ok'
+                : stage.status === 'failed' ? 'error' : 'warning'} />
+              <span className="msg">
+                <strong>{stage.stage}</strong>
+                <span className="hwv-dim"> · {stage.status}</span>
+                {stage.note !== '' ? ` —— ${stage.note}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div className="hwv-block-tight">
+          <div className="hwv-dim">待办（改完重跑 scaffold 就会消失）：</div>
+          {items.map((item, index) => (
+            <div key={`${index}:${item.what}`} className="hwv-row">
+              <span className="msg">
+                {item.what}
+                {item.need !== '' ? <span className="hwv-dim"> · 需要：{item.need}</span> : null}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {items.length === 0 && !empty && (
+        <div className="hwv-dim hwv-block-tight">
+          没有待办。<span className="hwv-dim">但这**也可能只是没跑过 scaffold**。</span>
+        </div>
+      )}
+      <div className="hwv-dim hwv-block-tight">
+        半成品允许带待办：**它不阻塞导出**（AGENTS §3.40）。
       </div>
     </div>
   )

@@ -1896,6 +1896,73 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
+  // ---- 3f. hw_dfm -------------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_dfm',
+    description:
+      '**制造可行性**：把 DRC 与 DFM 合成一条结论。DRC 里 `clearance/netlist/'
+      + 'physical` 可信、`connection` **不可信**（不认 API 过孔，只提示）；'
+      + 'DFM 只在私有化构建可用，且**结果不完整时是抛 `INCOMPLETE_RESULT` 而不是'
+      + '返回失败列表** —— 那是 `unknown`，绝不能当通过。默认重判 `emit.json`，'
+      + '`live=true` 才去立创里真跑。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+      live: { type: 'boolean', description: '去立创里真跑 DRC+DFM（要 CLI 在位）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          status: { type: 'string' },
+          trustworthy: { type: 'number' },
+          connection: { type: 'number' },
+          dfmStatus: { type: 'string' },
+          dfmReason: { type: 'string' },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; status: string; trustworthy: number
+          connection: number; dfmStatus: string; dfmReason: string; summary: string
+        }
+        const head = `# ${v.project} 制造可行性：${v.status}`
+        const body = [
+          `可信违规 ${v.trustworthy}（clearance/netlist/physical + 几何）`,
+          `Connection ${v.connection}（只提示，不进结论）`,
+          `DFM ${v.dfmStatus}${v.dfmReason !== '' ? `：${v.dfmReason}` : ''}`,
+        ]
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown; live?: unknown }
+      const project = str(a.project)
+      const cliArgs: string[] = project === '' ? [] : [project]
+      if (a.live === true) cliArgs.push('--live')
+      const payload = await design('dfm', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '制造可行性判定失败')
+      }
+      const dfm = (payload.dfm ?? {}) as Record<string, unknown>
+      return {
+        project,
+        status: str(payload.status),
+        trustworthy: num(payload.trustworthy_violations),
+        connection: num(payload.connection_violations),
+        dfmStatus: str(dfm.status),
+        dfmReason: str(dfm.reason).slice(0, 120),
+        summary: str(payload.note),
+      }
+    },
+  })))
+
   // ---- 3e. hw_mech ------------------------------------------------------
   disposers.push(tools.register(defineTool({
     name: 'hw_mech',
@@ -2005,7 +2072,7 @@ export function registerTools(ctx: Context): Array<() => void> {
       },
       presentationMeta: (args) => {
         const project = str((args as { project?: unknown }).project)
-        return project === '' ? {} : viewHint(project, 'checks')
+        return project === '' ? {} : viewHint(project, 'emit')
       },
     },
     execute: async (args) => {
@@ -3073,7 +3140,7 @@ export function registerTools(ctx: Context): Array<() => void> {
         const project = str((args as { project?: unknown }).project).trim()
         // 没有 project 时不给视图提示（只出计划，没有画布可看）。
         // `viewHint` 返回 JsonValue，所以这里用空对象而不是 undefined。
-        return project === '' ? {} : viewHint(project, '2d')
+        return project === '' ? {} : viewHint(project, 'blocks')
       },
     },
     execute: async (args) => {
@@ -3906,7 +3973,183 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
-  // ---- 3p. hw_emit -------------------------------------------------------
+  // ---- 3g. hw_audit / hw_doctor / hw_examples / hw_fixloop（P47）--------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_audit',
+    description:
+      '**六段审计**：需求 → 单元与角色 → 选料 → 原理图/网表一致 → PCB（布线/铺铜/'
+      + '连通 + 制造结论）→ 固件 → 机械 → 交接。每段给 `status`/`checked`/`basis`，'
+      + '**缺产物是 `not_ready`，不是 ok**。写 `audit.json` + `audit.md`。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+      stages: { type: 'string', description: '只跑几段（逗号分隔，如 pcb,mechanical）' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          project: { type: 'string' }, status: { type: 'string' },
+          rows: { type: 'string' }, summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as { project: string; status: string; rows: string; summary: string }
+        return text(`# ${v.project} 审计：${v.status}`,
+          ...v.rows.split('\n').filter((x) => x !== ''), v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'verdict')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown; stages?: unknown }
+      const project = str(a.project)
+      const cliArgs: string[] = project === '' ? [] : [project]
+      const stages = str(a.stages)
+      if (stages !== '') cliArgs.push(`--stages=${stages}`)
+      const payload = await design('audit', ...cliArgs)
+      const rows = Array.isArray(payload.stages) ? payload.stages : []
+      return {
+        project,
+        status: str(payload.status),
+        rows: rows.map((raw) => {
+          const row = (raw ?? {}) as Record<string, unknown>
+          return `* ${str(row.stage)} → ${str(row.status)}：${str(row.note)}`
+        }).join('\n'),
+        summary: str(payload.note),
+      }
+    },
+  })))
+  disposers.push(tools.register(defineTool({
+    name: 'hw_doctor',
+    description:
+      '**环境探测**：立创可执行文件、Bridge 通道、LCSC 缓存、MuJoCo、'
+      + 'arduino-cli / gcc / ffmpeg。**只探测，不安装、不修复、不联网**；'
+      + '必需项（workspace/lceda）缺才是 `failed`，可选项缺是 `not_ready` 并写影响。',
+    parameters: {},
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          status: { type: 'string' }, rows: { type: 'string' }, summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as { status: string; rows: string; summary: string }
+        return text(`# 环境：${v.status}`,
+          ...v.rows.split('\n').filter((x) => x !== ''), v.summary)
+      },
+    },
+    execute: async () => {
+      const payload = await design('doctor')
+      const checks = Array.isArray(payload.checks) ? payload.checks : []
+      return {
+        status: str(payload.status),
+        rows: checks.map((raw) => {
+          const row = (raw ?? {}) as Record<string, unknown>
+          return `* ${str(row.name)} → ${str(row.status)}：${str(row.detail).slice(0, 100)}`
+        }).join('\n'),
+        summary: str(payload.note),
+      }
+    },
+  })))
+  disposers.push(tools.register(defineTool({
+    name: 'hw_examples',
+    description:
+      '三个**可抄的半成品样例**：blink（最小闭环）/ button（输入方向）/ '
+      + 'gimbal（铰链 + 舵机 + 机械域）。`action=copy` 时把样例写成一个新工程'
+      + '（**不覆盖**已存在的工程）。',
+    parameters: {
+      action: { type: 'string', description: 'list（默认）或 copy' },
+      name: { type: 'string', description: 'copy 时的样例名' },
+      to: { type: 'string', description: 'copy 时的目标工程 id' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: { status: { type: 'string' }, summary: { type: 'string' } },
+      },
+      render: (_args, value) => text((value as { summary: string }).summary),
+    },
+    execute: async (args) => {
+      const a = args as { action?: unknown; name?: unknown; to?: unknown }
+      const action = str(a.action)
+      const cliArgs: string[] = action === 'copy'
+        ? ['copy', str(a.name), `--to=${str(a.to)}`]
+        : ['list']
+      const payload = await design('examples', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '样例操作失败')
+      }
+      const list = Array.isArray(payload.examples) ? payload.examples : []
+      return {
+        status: str(payload.status),
+        summary: action === 'copy'
+          ? str(payload.note)
+          : list.map((raw) => `* ${str((raw as Record<string, unknown>).name)}`
+            + `：${str((raw as Record<string, unknown>).note)}`).join('\n'),
+      }
+    },
+  })))
+  disposers.push(tools.register(defineTool({
+    name: 'hw_fixloop',
+    description:
+      '**有界自修循环**：拿 audit + handoff 的可执行项，最多 N 轮（默认 3），'
+      + '连续 2 轮分数没降就停。**不改设计**：本工具没有编辑器，'
+      + '所以总是 `stop=needs_editor` 并给出计划（改设计是人/模型的决定）。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名' },
+      rounds: { type: 'number', description: '最多几轮（默认 3）' },
+      stages: { type: 'string', description: '只审这几段（逗号分隔）' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          project: { type: 'string' }, status: { type: 'string' },
+          stop: { type: 'string' }, rows: { type: 'string' }, summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; status: string; stop: string; rows: string; summary: string
+        }
+        return text(`# ${v.project} 自修循环：${v.status}（stop=${v.stop}）`,
+          ...v.rows.split('\n').filter((x) => x !== ''), v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'verdict')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown; rounds?: unknown; stages?: unknown }
+      const project = str(a.project)
+      const cliArgs: string[] = [project]
+      if (typeof a.rounds === 'number') cliArgs.push(`--rounds=${a.rounds}`)
+      const stages = str(a.stages)
+      if (stages !== '') cliArgs.push(`--stages=${stages}`)
+      const payload = await design('fixloop', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '自修循环失败')
+      }
+      const rounds = Array.isArray(payload.rounds) ? payload.rounds : []
+      return {
+        project,
+        status: str(payload.status),
+        stop: str(payload.stop),
+        rows: rounds.map((raw) => {
+          const row = (raw ?? {}) as Record<string, unknown>
+          return `* 第 ${str(row.round)} 轮：score=${str(row.score)}，`
+            + `可执行项 ${str(row.items)}，${str(row.did)}`
+        }).join('\n'),
+        summary: str(payload.note),
+      }
+    },
+  })))
+
+  // ---- 3p. hw_emit -------------------------------------------------------  // ---- 3p. hw_emit -------------------------------------------------------
   disposers.push(tools.register(defineTool({
     name: 'hw_emit',
     description:
@@ -3982,7 +4225,7 @@ export function registerTools(ctx: Context): Array<() => void> {
       },
       presentationMeta: (args) => {
         const project = str((args as { project?: unknown }).project)
-        return project === '' ? {} : viewHint(project, 'checks')
+        return project === '' ? {} : viewHint(project, 'emit')
       },
     },
     execute: async (args) => {

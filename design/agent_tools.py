@@ -360,6 +360,27 @@ TOOLS: list[ToolSpec] = [
              {"project": "string", "apply": "boolean"},
              ("project",), arg_style="eq",
              note="proposed/estimated 不可进机械与布局判据"),
+    ToolSpec("hw_audit", "judge", "audit",
+             "六段审计：需求→单元→选料→原理图→PCB→固件→机械→交接；"
+             "缺产物是 not_ready（不是 ok），每段带 checked 与 basis",
+             {"project": "string", "stages": "string"}, ("project",)),
+    ToolSpec("hw_doctor", "read", "doctor",
+             "环境探测：立创/Bridge/LCSC/MuJoCo/arduino-cli/gcc/ffmpeg；不装不修不联网",
+             {}),
+    ToolSpec("hw_examples", "read", "examples",
+             "三个可抄的半成品样例（blink/button/gimbal）：list 或 copy <name> --to=<id>",
+             {"action": "string", "name": "string", "to": "string"}),
+    ToolSpec("hw_fixloop", "judge", "fixloop",
+             "**有界**自修循环：最多 N 轮、连续 2 轮无改善即停；"
+             "不改设计（没 editor 时只出计划，stop=needs_editor）",
+             {"project": "string", "rounds": "number", "stages": "string"},
+             ("project",)),
+    ToolSpec("hw_dfm", "judge", "dfm",
+             "制造可行性：DRC 分级（clearance/netlist/physical 可信，connection 不可信）"
+             " + DFM 三态（不可用→not_ready、INCOMPLETE_RESULT→unknown）",
+             {"project": "string", "live": "boolean"}, ("project",),
+             arg_style="eq",
+             note="默认只重判 emit.json；--live 才去立创真跑"),
     ToolSpec("hw_mech", "judge", "mech",
              "四条机械判据：干涉 / 重心 / 舵机扭矩 / 关节行程；"
              "三态 pass/fail/**unknown**（缺质量或缺扭矩是 unknown，不是通过）",

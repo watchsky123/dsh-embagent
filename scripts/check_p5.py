@@ -372,10 +372,10 @@ def check_frontend() -> None:
     view = (PKG / "src" / "client" / "HwIdeView.tsx").read_text(encoding="utf-8")
     service = (PKG / "src" / "service.ts").read_text(encoding="utf-8")
 
+    delivery = _delivery_sections(store_src)
     check("5c. 前端：`req` 是 delivery 组分区，标签「需求」",
-          "'req'" in store_src and "req: '需求'" in store_src
-          and "delivery: ['export', 'firmware', 'req'" in store_src,
-          "分区 + 标签 + 位置都在")
+          "req" in delivery and "req: '需求'" in store_src,
+          f"delivery={delivery}")
 
     has_panel = "export function ReqPanel" in panels
     has_case = "case 'req':" in view
@@ -438,6 +438,24 @@ def _run(argv: list[str]) -> tuple[int, str]:
 
 
 # ---------------------------------------------------------------------------
+
+
+def _delivery_sections(store_src: str) -> list[str]:
+    """从 `SECTIONS.delivery = [...]` 里取分区名。
+
+    **不要按字面量钉死整条数组**：加一个分区就会让别的验收脚本红，
+    而"firmware 属于 delivery 组"这个意图没变（AGENTS §3.15 同源）。
+    """
+    anchor = "delivery: ["
+    i = store_src.find(anchor)
+    if i < 0:
+        return []
+    j = store_src.find("]", i)
+    if j < 0:
+        return []
+    raw = store_src[i + len(anchor):j]
+    return [part.strip().strip("'").strip('"')
+            for part in raw.split(",") if part.strip()]
 
 
 def main(argv: list[str] | None = None) -> int:

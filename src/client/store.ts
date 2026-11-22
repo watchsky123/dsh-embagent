@@ -42,6 +42,8 @@ export type SectionId =
   | 'deferred'
   | 'crosscheck'
   | 'blocks'
+  | 'emit'
+  | 'brief'
   | 'export'
   | 'evidence'
   | 'velxio'
@@ -55,7 +57,9 @@ const LAYOUTS = ['split', '2d', '3d'] as const
 /** 每个分组里有哪几个分区，顺序即分段控件的顺序。 */
 export const SECTIONS: Readonly<Record<PanelId, readonly SectionId[]>> = {
   health: ['verdict', 'params', 'checks', 'budget', 'deferred', 'crosscheck', 'blocks'],
-  delivery: ['export', 'firmware', 'req', 'evidence'],
+  // **顺序 = 人做事的顺序**：先出板（emit）→ 看半成品待办（brief）
+  // → 再打包（export）。把 emit 放最后等于让人最后才知道板子出没出来。
+  delivery: ['emit', 'brief', 'export', 'firmware', 'req', 'evidence'],
   velxio: ['velxio', 'sim'],
 }
 
@@ -65,7 +69,8 @@ export const GROUP_LABEL: Readonly<Record<PanelId, string>> = {
 
 export const SECTION_LABEL: Readonly<Record<SectionId, string>> = {
   verdict: '结论', params: '参数', checks: '判定', budget: '预算', deferred: '未决', crosscheck: '核对',
-  blocks: '积木', export: '制造', firmware: '固件', req: '需求', evidence: '证据/轨迹',
+  blocks: '积木', emit: '发射', brief: '半成品',
+  export: '制造', firmware: '固件', req: '需求', evidence: '证据/轨迹',
   velxio: '后端', sim: '仿真',
 }
 
@@ -722,6 +727,38 @@ export class HwStore {
    * 不走 `edit()`（它把 not_ready 也当失败并中止），而是逐项收集后给一条
    * 汇总。
    */
+  /**
+   * 发射（P46）。**长任务**：`busy` 会一直挂着，跑完刷新快照。
+   *
+   * `jobs` 传 `'verify'` 就是"只重验"——8 段里只有它下"能不能打板"的结论。
+   */
+  async emitRun(jobs = ''): Promise<void> {
+    const face = this.state.face
+    const project = this.state.project
+    if (face === null || project === '') return
+    this.set({ busy: jobs === 'verify' ? '只重验' : '发射（8 段，可能要几分钟）',
+               error: null, notice: null })
+    try {
+      const result = await face.emitRun(project, jobs)
+      const status = typeof result.status === 'string' ? result.status : 'not_ready'
+      const bad = Array.isArray(result.bad_jobs) ? result.bad_jobs : []
+      this.set({
+        busy: '',
+        notice: status === 'ok'
+          ? '发射完成，8 段全过'
+          : `发射 ${status}${bad.length > 0 ? `（未通过：${bad.join('、')}）` : ''}`,
+      })
+      await this.open(project)
+    } catch (error) {
+      this.set({ busy: '', error: message(error) })
+    }
+  }
+
+  /** 只重验：8 段里只跑 verify（权威的连通性判定，含铺铜）。 */
+  async emitReverify(): Promise<void> {
+    await this.emitRun('verify')
+  }
+
   async runHealth(): Promise<void> {
     const face = this.state.face
     const project = this.state.project

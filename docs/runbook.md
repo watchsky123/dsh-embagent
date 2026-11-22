@@ -175,7 +175,7 @@ io.open("run.cmd", "wb").write(s.encode("ascii"))
 ```bash
 cd <repo-root>                    # 必须在这里，不在 hw_velxio/
 
-npm test                                         # 755 项单测
+npm test                                         # 756 项单测
 python -m hw_velxio.scripts.check_m1             # M1 四条硬验收
 python -m hw_velxio.scripts.check_units_links    # P5
 python -m hw_velxio.scripts.check_generate       # P6
@@ -202,6 +202,9 @@ python -m hw_velxio.scripts.check_p41            # 四域 spec（21 条：来源
 python -m hw_velxio.scripts.check_p42            # 关节提案（12 条：有依据才提案/不编参数/应用后进 MJCF）
 python -m hw_velxio.scripts.check_p43            # 编排器（12 条：六段/不中止/确定性/发射隔离/退化）
 python -m hw_velxio.scripts.check_p44            # 机械判据（16 条：干涉/重心/扭矩/行程/并入 handoff/退化）
+python -m hw_velxio.scripts.check_p45            # 制造可行性（17 条：DFM 三态/DRC 分级/合成/命令/退化）
+check_p46            # 前端两分区（26 条：分区/面板/动作/RPC/快照/跳转/退化）
+check_p47            # 审计/环境/样例/有界自修（21 条：八段/缺产物 not_ready/必需项/样例/停法/退化）
 ```
 
 **立创侧诊断脚本**（不是验收，是「说不清就量一遍」用的）：

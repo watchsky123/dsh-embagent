@@ -266,10 +266,10 @@ def check_contract() -> None:
     panels = (PKG / "src" / "client" / "panels.tsx").read_text(encoding="utf-8")
     view = (PKG / "src" / "client" / "HwIdeView.tsx").read_text(encoding="utf-8")
 
+    delivery = _delivery_sections(store_src)
     check("7a. 前端：`firmware` 是 delivery 组分区，标签「固件」",
-          "'firmware'" in store_src and "firmware: '固件'" in store_src
-          and "delivery: ['export', 'firmware'" in store_src,
-          "分区 + 标签 + 位置都在")
+          "firmware" in delivery and "firmware: '固件'" in store_src,
+          f"delivery={delivery}")
 
     has_panel = "export function FirmwarePanel" in panels
     has_case = "case 'firmware':" in view
@@ -327,6 +327,24 @@ def check_degradation() -> None:
 
 
 # ---------------------------------------------------------------------------
+
+
+def _delivery_sections(store_src: str) -> list[str]:
+    """从 `SECTIONS.delivery = [...]` 里取分区名。
+
+    **不要按字面量钉死整条数组**：加一个分区就会让别的验收脚本红，
+    而"firmware 属于 delivery 组"这个意图没变（AGENTS §3.15 同源）。
+    """
+    anchor = "delivery: ["
+    i = store_src.find(anchor)
+    if i < 0:
+        return []
+    j = store_src.find("]", i)
+    if j < 0:
+        return []
+    raw = store_src[i + len(anchor):j]
+    return [part.strip().strip("'").strip('"')
+            for part in raw.split(",") if part.strip()]
 
 
 def main(argv: list[str] | None = None) -> int:

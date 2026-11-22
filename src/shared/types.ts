@@ -428,6 +428,72 @@ export interface SnapshotPayload {
    * `req.json` 只有人确认（apply confirm）后才有。
    */
   req?: ReqDraftPayload
+  /**
+   * 发射摘要（P46）。**只投影 `emit.json`**，不重新判定。
+   *
+   * 为什么要有它：8 段发射是本项目最贵的一步（几十秒到几分钟），
+   * 而此前 UI 上一点都看不到 —— 跑完只会"刷新一下"，人还得回聊天记录里读。
+   */
+  emit?: EmitSummary
+  /** 半成品摘要（P46）：`scaffold.json` 的段状态 + `open_items` 待办。 */
+  scaffold?: ScaffoldSummary
+}
+
+/** `emit.json` 的一段。`status` 是 ok / not_ready / failed。 */
+export interface EmitJobRow {
+  readonly name: string
+  readonly status: string
+  readonly note: string
+}
+
+/** 发射产物（Gerber/BOM/坐标/工程备份）。`size` 是字节。 */
+export interface EmitArtifact {
+  readonly kind: string
+  readonly name: string
+  readonly size: number
+}
+
+export interface EmitSummary {
+  readonly status: string
+  readonly reason?: string
+  readonly version?: string
+  readonly project?: Readonly<Record<string, unknown>>
+  readonly jobs: readonly EmitJobRow[]
+  /** 不 ok 的段名。空 = 全过。 */
+  readonly bad_jobs?: readonly string[]
+  /** 最终连通性（**铺铜之后**的判定，权威）。 */
+  readonly verify?: { readonly nets: number; readonly connected: number
+                      readonly split: number }
+  /** 制造结论（P45）：DRC 分级 + DFM。`status` 只在证据齐时才是 ok。 */
+  readonly fabrication?: Readonly<Record<string, unknown>>
+  /** 这次走的通道（cli / bridge）与是否降级。 */
+  readonly channel?: Readonly<Record<string, unknown>>
+  readonly artifacts?: readonly EmitArtifact[]
+  readonly note?: string
+}
+
+/** `scaffold.json` 的一段（requirement/design/pinmap/joints/firmware/mechanical）。 */
+export interface ScaffoldStageRow {
+  readonly stage: string
+  readonly status: string
+  readonly note: string
+}
+
+/** `open_items.md` 的一条：**不是闸门**，是"我没把握的地方"。 */
+export interface ScaffoldItem {
+  readonly what: string
+  readonly need: string
+}
+
+export interface ScaffoldSummary {
+  readonly status: string
+  readonly reason?: string
+  readonly route?: string
+  readonly stages: readonly ScaffoldStageRow[]
+  readonly open_items: readonly ScaffoldItem[]
+  readonly count: number
+  readonly has_markdown?: boolean
+  readonly note?: string
 }
 
 /** 需求草稿的当前状态。字段与 `generate.Requirement` 一一对应。 */

@@ -478,6 +478,21 @@ profile["physical_source"] in ("datasheet", "measured", "catalog", "estimated", 
 
 **判别**：验收侧出现一串看起来像枚举的字符串字面量 → 去源码找有没有同名常量。
 
+**升级版（P46 撞到的）**：把整条**数组/列表**按字面量钉死，比抄枚举更脆。
+`check_p4` / `check_p5` 原来写的是
+
+```python
+"delivery: ['export', 'firmware'" in store_src     # ← 前缀匹配
+```
+
+P46 在 delivery 组里加了 `emit`/`brief`，两条立刻红 —— 而"firmware 属于
+delivery 组"这个**意图根本没变**。修法：把数组**解出来**再判成员：
+
+```python
+delivery = _delivery_sections(store_src)     # 从 `delivery: [...]` 里切
+assert "firmware" in delivery
+```
+
 ---
 
 ### 3.16 「没人读」被报成「不敏感」= 最难发现的假绿
@@ -1042,6 +1057,74 @@ CONTINUE_ON_GAP = True   # check_p43 会把它关掉
 
 ---
 
+### 3.42 DFM 是**抛错**，不是"返回一个失败列表"（P45 实测 + API 原文）
+
+`pcb_Dfm.checkDfm` 的元数据写着：
+
+> 仅私有化构建可用
+> 结果可能不完整：未配置检查规则或存在检查失败项时，将以 `INCOMPLETE_RESULT`
+> 错误抛出，**不得视为检查通过**
+> ADD since EDA v4.1.93
+
+所以把它当"返回 `issues` 列表"的接口来接，会得到一个**空列表 + 异常**，
+然后很容易写成"没有 issues = 通过"。正确的三态：
+
+| 输入 | 结论 |
+|---|---|
+| `getDfmAvailability()` 说不可用 | `not_ready`（这里没这能力）|
+| 抛 `INCOMPLETE_RESULT` | **`unknown`**（跑了，结果不完整）|
+| 返回但带 `DFM_NOT_CONFIGURED` | `not_ready`（没配置 = 没查）|
+| `failedItems > 0`（防御分支：万一某版本改回返回）| `unknown` |
+| 正常返回 | `ok` |
+
+**本机实测（4.1.97，非私有化构建）**：`checkDfm` 抛的是
+`"DFM 仅在私有化构建可用"`，**不是** `INCOMPLETE_RESULT`。所以错误文本也要分档：
+
+| 错误文本 | 结论 |
+|---|---|
+| 含「私有化 / not available / 不可用」 | `not_ready`（这里没这能力）|
+| 含 `INCOMPLETE_RESULT` | `unknown`（有能力，结果不完整）|
+| 其它 | `unknown`（保守）|
+
+**判别**：一个接口"报错"时，你的代码把它当"没问题"了吗？
+
+---
+
+### 3.43 写新模块前先 `ls` / `git status` —— 我覆盖了一个同名旧文件
+
+P45 我要新建"制造可行性"模块，想当然地写了 `design/fabrication.py`。
+**那个文件早就存在**（制造包导出：BOM/坐标/DXF/README），被整份覆盖，
+`git status` 立刻显示 `M design/fabrication.py`（-194 行）。
+
+**恢复**：`git show HEAD:design/fabrication.py` 拿出来写回，新逻辑改放
+`design/dfm.py`。损失为零，但纯属运气——如果它当时是**未提交的新文件**，
+`git checkout` 就救不回来了（§8.3b 记过同一类事）。
+
+**约定**（三条，按顺序）：
+
+1. 新建模块前 `ls design/` 或 `git status --short` 看目标名在不在
+2. 用 `write` 覆盖任何已存在文件前，先 `read` 它（工具的提示里也这么说）
+3. 长文档/新模块先 `git add`，出事了才有得恢复
+
+**判别**：`write` 返回"Updated file"而不是"Created file" → 你刚覆盖了东西。
+
+---
+
+### 3.44 「必需项」写成一串行上的 `required=True/False` → 改表不生效（P47 实测）
+
+`doctor` 的 `REQUIRED = ("workspace", "lceda")` 是**表**，但第一版在
+`_check_bin(name)` 里写死 `required=False`、在 workspace/lceda 里写死 `True`。
+于是验收里把 `ffmpeg` 临时提为必需时**整体照样 ok** —— 表改了，行还挂旧值。
+
+又是 §1.1/§3.15 那个形状，只是这次落在**布尔标记**上：
+
+**约定**：`required` 只由那张表推导（`name in REQUIRED`），行里不写死；
+判"这项是不是必需"的地方**只读表**。
+
+**判别**：改常量表后，依赖它的结论没变 → 说明有人在别处抄了一份。
+
+---
+
 ## 4. 测试与验收的约定
 
 ### 4.1 每条硬判据都要有退化验证
@@ -1059,7 +1142,7 @@ python -m hw_velxio.scripts.check_m1            # M1 硬验收
 python -m hw_velxio.scripts.check_units_links   # P5
 python -m hw_velxio.scripts.check_generate      # P6
 python -m hw_velxio.scripts.check_m3            # M3
-npm test                       # 755 项单测（test_design + test_phases）
+npm test                       # 756 项单测（test_design + test_phases）
 ```
 
 或 `npm run verify` / `verify:m2` / `verify:m3`。
@@ -1150,6 +1233,8 @@ P8 第一版把 I2C1 的 SCL 和 SDA 各记一条"链路"，
 | MCU 表只有 7 个型号 | 开发板（arduino-nano 等）不是裸 MCU → `pinmap` 会 `not_ready` 并列出这 7 个 | 给 `.ioc` 或 `--mcu` |
 | 机械判据**已落地**（P44） | `mech`：干涉/重心/扭矩/行程；fail→blocking、unknown→missing_data。**质量默认用体积×密度估**（`basis` 会写明 estimated）| 填 `mass_g` 即精确 |
 | 机械判据不做运动包络 | 只算**静态**包围盒；摆臂扫过的空间没算（那要轨迹仿真 V7）| 需要时跑 `ladder --with-sim` |
+| DFM **已接入**（P45） | `emit` 的 pcb 段同一次调用里跑 DRC + DFM；`dfm` 命令可对着 `emit.json` 重判。DFM 不可用/不完整 → `not_ready`/`unknown`，**从不等于 ok** | 已修 |
+| DFM 在本机**大概率不可用** | API 注明"仅私有化构建可用"；`getDfmAvailability()` 说了才跑 | 私有化构建 |
 | Bridge 通道已验（**限短操作**） | 单次 invoke ✅；整条 8 段发射成功过一次（76s）；重复发射/叠层段撞 30s 上限 → 用 `--channel=cli` | 长任务走 cli |
 | `contact_sheet` 没跑过 | 本机没有 ffmpeg → 返回可执行命令行 | 装 ffmpeg 后粘那条命令 |
 | 校准默认用 V7 判 | V7 只判翻倒，不判具体场景（爬台阶…） | 传自己的 `Runner` |
@@ -1168,6 +1253,14 @@ P8 第一版把 I2C1 的 SCL 和 SDA 各记一条"链路"，
 | 画像里没接 `nextstep` | 断言失败只给 `on_fail` 文案 | 可接但非必须 |
 | 点板没有板级聚合 | P2 的另一半（单元/链路按 board 聚合）没做 | 按需 |
 | 徽章只算阻断 + 失败层 | 缺数据/默认值常驻，进徽章等于没信号 | 要看得进「判定」分区 |
+| 前端**已能看到发射与半成品**（P46） | 新增 `emit`（8 段状态 + 产物 + verify 计数 + 制造结论）与 `brief`（段状态 + `open_items`）两个分区；`emitRun`/`emitProgress` 两个 RPC | 已修 |
+| `emitRun` 是**同步长任务** | 一次 RPC 跑完 8 段（超时给 15 分钟）；**没有中间进度流**，`emitProgress` 只报"上一次结果" | 要真进度得把 emit 改成 job 模式 |
+| 产物目录只能**复制路径** | 不替人打开资源管理器（那是宿主动作） | 需要时加宿主 `openPath` |
+| **六段 `audit` 已落地**（P47） | `audit`：需求→单元→选料→原理图→PCB→固件→机械→交接；缺产物 = `not_ready`，每段带 `checked`/`basis`；写 `audit.json`/`audit.md` | 已修 |
+| **`doctor` 已落地**（P47） | 8 项探测（workspace/lceda/bridge/lcsc/mujoco/arduino-cli/gcc/ffmpeg）；只探测不安装不联网；必需项与可选项分开 | 已修 |
+| **`examples` 已落地**（P47） | 三个可抄的半成品：blink / button / gimbal；`copy` **不覆盖**已有工程 | 已修 |
+| **`fixloop` 是"有界"的**（P47） | 默认 3 轮、连续 2 轮无改善即停；**不改设计**（`stop=needs_editor` 只出计划）| 要真改走 agent 循环 |
+| `audit` 里 `release` 段**现场聚合 handoff** | 每次跑都重算交接单（几秒）；不读旧 `handoff.json` | 需要时改读缓存 |
 
 `示例-多板` 当前 `handoff` 结论：**不可打板**，
 12 阻断 / 6 缺数据 / 7 默认值 / 2 不会验 / 175 未接线。

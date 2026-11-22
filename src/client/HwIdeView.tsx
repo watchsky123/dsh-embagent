@@ -30,9 +30,9 @@ import { Assembly3D } from './Assembly3D.js'
 import { Circuit2D } from './Circuit2D.js'
 import { Inspector } from './Inspector.js'
 import {
-  BlocksPanel, BudgetPanel, ChecksPanel, CrosscheckPanel, DeferredPanel,
-  EvidencePanel, ExportPanel, ExportResult, FirmwarePanel, ParamsPanel,
-  ReqPanel, SimPanel, VelxioPanel,
+  BlocksPanel, BriefPanel, BudgetPanel, ChecksPanel, CrosscheckPanel,
+  DeferredPanel, EmitPanel, EvidencePanel, ExportPanel, ExportResult,
+  FirmwarePanel, ParamsPanel, ReqPanel, SimPanel, VelxioPanel,
   VerdictPanel,
 } from './panels.js'
 import type { AvrSimStatus, VelxioStatus } from './panels.js'
@@ -664,6 +664,9 @@ function PanelBody(props: {
     onExport: props.onExport,
     onLimit: (currency: string, value: number) => { void store.setBudgetLimit(currency, value) },
     onApplyReq: () => { void store.applyReqDraft() },
+    // P46：发射是长任务，`busy` 会一直挂着；`只重验` 只跑 verify 那一段。
+    onEmitRun: () => { void store.emitRun() },
+    onEmitReverify: () => { void store.emitReverify() },
   }
   // 按**分区**渲染（不是分组）：分组只是导航，分区才是内容。
   switch (props.state.panelSection) {
@@ -676,6 +679,8 @@ function PanelBody(props: {
     case 'deferred': return <DeferredPanel {...common} />
     case 'crosscheck': return <CrosscheckPanel {...common} />
     case 'evidence': return <EvidencePanel {...common} />
+    case 'emit': return <EmitPanel {...common} />
+    case 'brief': return <BriefPanel {...common} />
     case 'export': return <ExportPanel {...common} />
     case 'blocks':
       return (

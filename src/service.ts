@@ -335,6 +335,47 @@ export class HwVelxioGateway extends TypertRemoteService {
 
   // -- 制造交接 -----------------------------------------------------------
 
+  /**
+   * 跑一次发射（P46）。**长任务**：8 段、几十秒到几分钟，超时给 15 分钟。
+   *
+   * `jobs` 只跑指定段（`verify` = 只重验 —— 8 段里只有它下"能不能打板"的结论）。
+   * 返回的是**快照里的 `emit` 摘要**（不是进度流，也不是重新算的结论）。
+   */
+  @Remote('emitRun')
+  async emitRun(project: string, jobs?: string, route?: string): Promise<Record<string, unknown>> {
+    const args = ['emit', project]
+    if (jobs !== undefined && jobs !== '') args.push(`--jobs=${jobs}`)
+    if (route !== undefined && route !== '') args.push(`--route=${route}`)
+    const payload = await designLong(900_000, ...args)
+    const status = statusOf(payload)
+    if (status === 'failed') {
+      return fail<Record<string, unknown>>(findingsOf(payload).join('；') || '发射失败')
+    }
+    noteHint(project, 'emit')
+    const summary = await design('emit-status', project)
+    return {
+      ...summary,
+      status: status === 'ok' ? 'ok' : status,
+    }
+  }
+
+  /**
+   * 发射摘要（P46）。**不是进度流**：长任务是一次 RPC，没有中间态；
+   * 这里只报"上一次跑成什么样 + emit.json 的 mtime"。
+   *
+   * 之所以单独开一个 Remote 而不是复用 `snapshot`：snapshot 会跑检查/预算/
+   * 核对（秒级），而这个会被前端轮询。
+   */
+  @Remote('emitProgress')
+  async emitProgress(project: string): Promise<Record<string, unknown>> {
+    const summary = await design('emit-status', project)
+    return {
+      ...summary,
+      running: false,
+      pollNote: '不是进度流：只能报上一次的结果（emit 是同步长任务）',
+    }
+  }
+
   @Remote('exportBundle')
   async exportBundle(project: string): Promise<ExportPayload> {
     const payload = await design('export', project)

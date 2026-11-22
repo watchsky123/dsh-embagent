@@ -2613,6 +2613,189 @@ node scripts/check_tools.mjs            # 48 个工具
 ```
 
 
+## P45 — 制造可行性：DFM 接入 + DRC 分级（2026-11-22）
+
+> 计划见 [`docs/plan-v5.md`](docs/plan-v5.md) P45。核心发现来自 API 元数据本身：
+> **DFM 结果不完整时是抛 `INCOMPLETE_RESULT`，不是返回一个失败列表**。
+> 原文："不得视为检查通过"。
+
+### 新增
+
+| 位置 | 内容 |
+|---|---|
+| `design/dfm.py`（新） | `dfm_verdict()` 三态 + `merge()` 三路合成 + `TRUSTWORTHY_DRC` 表 |
+| `design/emit_lceda.py` | pcb 段同一次调用里跑 `getDfmAvailability()` + `checkDfm({})`，**不吞错**；`report.fabrication`（进 emit.json）|
+| `design_cli.py` | `dfm` 命令（默认重判 `emit.json`；`--live` 才去立创真跑）|
+| `design/agent_tools.py` / `src/tools.ts` | `hw_dfm`（工具数 48 → **49**）|
+| `scripts/check_p45.py` | **15 条**验收（含 1 条退化）|
+
+### 三态映射
+
+| 输入 | 结论 |
+|---|---|
+| `getDfmAvailability()` 不可用 | `not_ready` |
+| 抛 `INCOMPLETE_RESULT` | **`unknown`** |
+| `DFM_NOT_CONFIGURED` | `not_ready` |
+| `failedItems > 0`（防御分支）| `unknown` |
+| 正常返回 | `ok` |
+
+合成：可信违规（`clearance/netlist/physical` + 自建几何）> 0 → `failed`；
+DFM 非 ok → `not_ready`；否则 `ok`。**`connection` 只提示**（实测不认 API 过孔）。
+
+### 实测
+
+| 用例 | 结果 |
+|---|---|
+| DFM 不可用 | `not_ready`「仅在私有化构建可用」|
+| 抛 `INCOMPLETE_RESULT` | `unknown` + 原话 |
+| `DFM_NOT_CONFIGURED` | `not_ready`「没查 ≠ 通过」|
+| DRC `clearance=2` | 合成 `failed` |
+| 只 3 条 `connection` | 合成 **`ok`** + 「不认 API 过孔」说明 |
+| `dfm <id>`（无 emit.json）| `not_ready`「先跑 emit」|
+| `dfm <id>`（有 emit.json）| 重判 `failed`，`checked={drc_boards:1, dfm_boards:1}` |
+| 退化：清空 `TRUSTWORTHY_DRC` | 2b 变绿 |
+
+**真机发射一次（p45-probe，2 件 2 网）**：`project/layout/schematic/pcb` 全 ok，
+`emit.json` 里
+
+```
+fabrication.status = not_ready
+reasons = ["DFM unknown：DFM 调用失败：DFM 仅在私有化构建可用"]
+```
+
+也就是说**本机（4.1.97，非私有化构建）没有 DFM 能力** —— `checkDfm` 抛的是
+那句中文而不是 `INCOMPLETE_RESULT`。据此补了一条映射：错误文本含「私有化/
+不可用」→ `not_ready`（没这能力 ≠ 结果不完整），并把这条**真机文本**写进了
+`check_p45` 的 1g 用例。
+
+### 一个必须记下来的操作事故（§3.43）
+
+我新建"制造可行性"模块时，**直接覆盖了已存在的 `design/fabrication.py`**
+（制造包导出模块，-194 行）。靠 `git show HEAD:...` 完整恢复，逻辑改放
+`design/dfm.py`。教训：写新模块前先 `ls design/`；`write` 返回 "Updated"
+而不是 "Created" 就说明覆盖了东西。
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p45   # 15/15
+npm test                                # 756 通过
+node scripts/check_tools.mjs            # 49 个工具
+全套离线验收 23 个 check_*              # 全 exit=0
+```
+
+
+## P46 — 前端两个分区：`emit` 与 `brief`（2026-11-22）
+
+> 计划见 [`docs/plan-v5.md`](docs/plan-v5.md) P46。此前 P40–P45 做出来的东西
+> **界面上一点都看不到**：8 段发射跑完只回聊天记录，`open_items.md` 只有人
+> 自己去翻文件。
+
+### 后端（只投影，不重判）
+
+| 位置 | 内容 |
+|---|---|
+| `design_cli.py` | `snapshot` 增 `emit` / `scaffold` 两块；新增 `emit_summary()` / `scaffold_summary()` / `emit-status` 命令（**只读 emit.json**，比 snapshot 便宜得多，前端可轮询）|
+| `src/service.ts` | `@Remote('emitRun')`（**长任务，超时 15 分钟**）、`@Remote('emitProgress')` |
+| `src/client/rpc.ts` | 对应两个方法（接口 + 工厂）|
+
+### 前端
+
+| 位置 | 内容 |
+|---|---|
+| `src/shared/types.ts` | `EmitSummary` / `EmitJobRow` / `EmitArtifact` / `ScaffoldSummary` / `ScaffoldStageRow` / `ScaffoldItem`；`SnapshotPayload.emit?` / `.scaffold?` |
+| `src/client/store.ts` | 分区 `emit`（**排在 export 前**）/ `brief`；动作 `emitRun(jobs)` / `emitReverify()` |
+| `src/client/panels.tsx` | `EmitPanel`（8 段状态条 + 连通计数 + 制造结论 + 产物列表 + 三个按钮）、`BriefPanel`（段状态 + 待办表）|
+| `src/client/HwIdeView.tsx` | 两个 case + 把 `onEmitRun`/`onEmitReverify` 传进 `common` |
+| `src/tools.ts` | `hw_emit`/`hw_scaffold`/`hw_mech` 的跳转改到 `emit`；**修掉 `hw_roles` 的 `'2d'`**（不是分区，一直被 `isSectionId` 静默丢弃，§3.13）|
+
+### 实测
+
+| 用例 | 结果 |
+|---|---|
+| 没发射过 | `emit.status=not_ready` + 「还没发射过（没有 emit.json）」 |
+| 有 emit.json（2 段，1 段 not_ready）| 8 段列表 + `bad_jobs=['route']` + `verify.connected=4` + `fabrication.status` 一起带出 |
+| 有 scaffold.json | `count=1`，待办逐条（`need=核对 pinmap`）|
+| 前端接线 | 26 条断言全过（分区/标签/位置/面板导出/**真渲染**/动作/RPC/长超时/跳转）|
+| 退化：`emit_summary` 凭空返回 ok | 4a 变红 |
+
+### 顺带修掉两条**脆断言**（AGENTS §3.15 升级版）
+
+`check_p4` / `check_p5` 原来按**前缀字面量**钉死 `delivery: ['export', 'firmware'…]`，
+P46 往组里加两个分区就红了 —— 而"firmware 属于 delivery 组"的意图没变。
+改成**解出数组判成员**（`_delivery_sections()`）。
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p46   # 26/26
+npm test                                # 756 通过
+npm run check / build                   # tsc 干净
+node scripts/check_tools.mjs            # 49 个工具
+全套离线验收 24 个 check_*              # 全 exit=0（含 p4/p5 修复后）
+```
+
+**注意**：这是前端改动，**刷新页面**才看得到新分区（`dist/` 已重新构建）。
+
+
+## P47 — 六段 audit + doctor + examples + 有界自修（2026-11-22）
+
+> 计划见 [`docs/plan-v5.md`](docs/plan-v5.md) P47。这是 v5 的最后一段：
+> 前面六段把"能不能出板/做得对不对"补齐了，这一段补的是
+> **"现在到哪一步了"（audit）、"这台机器行不行"（doctor）、
+> "从哪开始抄"（examples）、"改一轮再判一轮"（fixloop）**。
+
+### 新增
+
+| 位置 | 内容 |
+|---|---|
+| `design/audit.py`（新） | 八段审计（顺序 = 人做事的顺序）+ `audit.md` 渲染 |
+| `design/doctor.py`（新） | 8 项环境探测；`REQUIRED` 是**唯一**必需项事实源 |
+| `design/examples.py`（新） | blink / button / gimbal 三个半成品样例 |
+| `design/fixloop.py`（新） | 有界自修循环（分数 = failed×100 + not_ready；连续 2 轮无改善即停）|
+| `design_cli.py` | `audit` / `doctor` / `examples` / `fixloop` 四个命令 |
+| `design/agent_tools.py` / `src/tools.ts` | `hw_audit` / `hw_doctor` / `hw_examples` / `hw_fixloop`（工具 **49 → 53**）|
+| `scripts/check_p47.py` | **21 条**验收（含 1 条退化）|
+
+### 实测（`e1-probe` = 抄的 blink 样例）
+
+```
+audit: not_ready  {total 8, ok 1, not_ready 7}
+  intake      not_ready  没有需求：后面所有段都只能算「猜」的一半
+  architecture not_ready 没跑过 units
+  parts       not_ready  1/3 有 lcsc（缺一颗就下不了单）
+  schematic   not_ready  没发射过
+  pcb         not_ready  没发射过
+  firmware    not_ready  既没有引脚表也没有固件矩阵
+  mechanical  not_ready  没跑过 mech
+  release     not_ready  阻断 0，但还有 2 条缺数据
+fixloop: stop=needs_editor，计划 2 项（不改设计）
+doctor : 必需项齐全（workspace + lceda 4.1.97）；可选缺 4（bridge/lcsc/arduino-cli/ffmpeg）
+```
+
+### 两处**判据收紧**（都是"部分当全部"）
+
+1. `parts` 原来"有几颗有 lcsc 就 ok" → 改成**全部**都要有（缺一颗就下不了单）
+2. `release` 原来阻断 0 就写「可打板」→ 现在有缺数据时写「阻断 0，但还有 N 条缺数据」
+
+### 一个真 bug：`REQUIRED` 表改了对结果没影响（§3.44）
+
+第一版把 `required=True/False` 写死在每一行上，于是验收里把 `ffmpeg` 提为必需时
+整体照样 `ok`。改成 `required` 只由 `REQUIRED` 推导后，那条断言才真能红。
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p47   # 21/21
+npm test                                # 756 通过
+npm run check / build                   # tsc 干净
+node scripts/check_tools.mjs            # 53 个工具
+全套离线验收 25 个 check_*              # 全 exit=0
+```
+
+**plan-v5（P40–P47）至此全部完成。**
+
+
 ---
 
 ## 参考对照（历史阶段，摘要）

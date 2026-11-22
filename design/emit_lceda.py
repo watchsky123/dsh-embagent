@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from . import lceda as lceda_mod
+from . import dfm as dfm_mod
 from . import power as power_mod
 from . import stackup_spec
 from .model import DesignModel
@@ -146,6 +147,8 @@ class EmitReport:
     layout_detail: dict[str, Any] = field(default_factory=dict)
     #: 这次用的是哪条通道（cli / bridge，以及是否从 bridge 降级）。
     channel: dict[str, Any] = field(default_factory=dict)
+    #: **制造可行性结论**（DRC 分级 + DFM + 自建几何）。P45。
+    fabrication: dict[str, Any] = field(default_factory=dict)
 
     def job(self, name: str) -> JobResult:
         result = self.jobs.get(name)
@@ -169,6 +172,8 @@ class EmitReport:
             payload["parity"] = dict(self.parity)
         if self.drc:
             payload["drc"] = dict(self.drc)
+        if self.fabrication:
+            payload["fabrication"] = dict(self.fabrication)
         if self.stackup:
             payload["stackup"] = dict(self.stackup)
         if self.notes:
@@ -1057,12 +1062,21 @@ const nets = await attempt('nets', () => eda.pcb_Net.getAllNetName());
 const netlist = await attempt('netlist', () => eda.pcb_Net.getNetlist('JLCEDA'));
 const drcPass = await attempt('drc', () => eda.pcb_Drc.check(true, false, false));
 const drcDetail = await attempt('drcDetail', () => eda.pcb_Drc.check(true, false, true));
+// **DFM 是另一类证据**：只在私有化构建可用；未配置规则或有失败项时
+// 它是**抛错**（`INCOMPLETE_RESULT`）而不是返回一个失败列表 —— API 文档原文
+// "不得视为检查通过"。所以这里**不吞错**，把错误文本带回去给人看。
+const dfmAvailable = await attempt('dfmAvailability',
+  () => eda.pcb_Dfm.getDfmAvailability());
+let dfmResult = null, dfmError = '';
+try { dfmResult = await eda.pcb_Dfm.checkDfm({}); }
+catch (e) { dfmError = String((e && e.message) || e); }
 const onBoard = ((await attempt('all', () => eda.pcb_PrimitiveComponent.getAllId())) || []);
 let componentCount = 0;
 try { componentCount = ((await eda.pcb_PrimitiveComponent.getAllPrimitiveId()) || []).length; }
 catch (e) { componentCount = Array.isArray(onBoard) ? onBoard.length : 0; }
 return {ok: true, saved: saved, nets: nets, netlist: netlist,
         drcPass: drcPass, drcDetail: drcDetail, componentCount: componentCount,
+        dfmAvailable: dfmAvailable, dfm: dfmResult, dfmError: dfmError,
         steps: steps};
 """
 
@@ -1107,6 +1121,7 @@ def _run_pcb(session: lceda_mod.LcedaSession, design: DesignModel,
     missing_total: list[str] = []
     outline_ready = 0
     drc_records: list[dict[str, Any]] = []
+    dfm_rows: list[dict[str, Any]] = []
     netlists: list[str] = []
     per_board: list[dict[str, Any]] = []
 
@@ -1261,6 +1276,12 @@ def _run_pcb(session: lceda_mod.LcedaSession, design: DesignModel,
         row["saved"] = done.get("saved")
         if done.get("netlist"):
             netlists.append(str(done.get("netlist")))
+        dfm_rows.append({
+            "board": live.get("name"),
+            **dfm_mod.dfm_verdict(done.get("dfm"),
+                                  error=str(done.get("dfmError") or ""),
+                                  available=done.get("dfmAvailable")),
+        })
         drc_records.append({
             "board": live.get("name"),
             "pass": bool(done.get("drcPass")),
@@ -1315,8 +1336,16 @@ def _run_pcb(session: lceda_mod.LcedaSession, design: DesignModel,
         "connection_violations": connection,
         "checked": len(drc_records) if comps_total else 0,
         "boards": drc_records,
+        "dfm": dfm_rows,
         "note": drc_note,
     }
+    # **制造结论 = DRC 可信类别 + DFM**。DFM 不可用或不完整时整条是
+    # `not_ready`（不是 ok）；`connection` 类只提示（实测它不认 API 过孔）。
+    worst_dfm = next((r for r in dfm_rows if r.get("status") != "ok"), None) \
+        or (dfm_rows[0] if dfm_rows else None)
+    report.fabrication = dfm_mod.merge(report.drc, worst_dfm)
+    if report.fabrication["status"] != "ok":
+        job.warnings.append(report.fabrication["note"])
     report.pcb_detail = {"boards": per_board, "move_batch": PCB_MOVE_BATCH}
     report.parity = parity_from_netlists(design, netlists,
                                          exclude_refs=_failed_refs(report))

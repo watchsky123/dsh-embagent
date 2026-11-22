@@ -70,9 +70,9 @@ mjcf   doctor   scaffold   joints-propose   dims   dfm
 | **P42** ✅ | 关节提案：几何/limits 推关节，落 `joints.proposed.json`（`source: proposed`） | P40 P41 | `joints-propose` | `check_p42` | M |
 | **P43** ✅ | 编排器：一句需求 → 半成品工程（design + pinmap + joints + fw + mjcf + `open_items.md`） | P40–P42 | `scaffold` | `check_p43` | M |
 | **P44** ✅ | 机械判据：干涉 / 重心 / 舵机扭矩 / 关节行程，并入 `handoff` | P41 P42 | `mech` | `check_p44` | M |
-| **P45** | 制造证据：`pcb_Dfm.check()` 接入 + `failedItems>0 → unknown` + 与 DRC 分级合并 | 无 | `dfm` | `check_p45` | S |
-| **P46** | 前端两个分区：`emit`（8 段状态 + 产物）/ `半成品`（open_items） | P43 | RPC `emitRun`/`emitProgress` | `check_p46` | M |
-| **P47** | 自修循环 + 六段 `audit` + `doctor` + `examples copy` | P43–P46 | `audit`、`doctor` | `check_p47` | L |
+| **P45** ✅ | 制造证据：`checkDfm` 接入（**它抛 `INCOMPLETE_RESULT`**）+ DRC 分级合并 | 无 | `dfm` | `check_p45` | S |
+| **P46** ✅ | 前端两个分区：`emit`（8 段状态 + 产物）/ `brief`（open_items） | P43 | RPC `emitRun`/`emitProgress` | `check_p46` | M |
+| **P47** ✅ | 自修循环 + 六段 `audit` + `doctor` + `examples copy` | P43–P46 | `audit`/`doctor`/`examples`/`fixloop` | `check_p47` | L |
 
 **顺序理由**：P40 最小且立刻能验（"MJCF 能被 MuJoCo 加载"是硬判据）；P41 是数据地基（P42/P43 都往它写的块里落）；P43 出来立刻可用（半成品）；P44/P45 是质量；P46 是可见性；P47 才是自动化上限。
 
