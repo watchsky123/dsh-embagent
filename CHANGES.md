@@ -2443,6 +2443,176 @@ node scripts/check_tools.mjs            # 45 个工具
 （与本段无关）；设 `PYTHONIOENCODING=utf-8` 后两者均 exit=0。
 
 
+## P42 — 关节提案（`joints-propose`）（2026-11-22）
+
+> 计划见 [`docs/plan-v5.md`](docs/plan-v5.md) P42。解决的是这个矛盾：
+> `joints` 对缺参数**一律报 error、不编默认值**（纪律），但没有任何机械关系的
+> 半成品**什么也验不了**。
+
+### 新增
+
+| 位置 | 内容 |
+|---|---|
+| `design/joint_propose.py`（新） | 四条提案规则 + `apply()` + `describe()` |
+| `design/model.py` | `JOINT_SOURCES` 增 `proposed`（沿用 P41 的信任层）；`Joint` 的 source 校验改读常量 |
+| `design_cli.py` | `joints-propose` 命令（`--apply` 才写进 design）|
+| `design/store.py` | `ARTIFACTS` 加 `joints.proposed.json` |
+| `design/nextstep.py` | 四个新 need：`hinge_deg` / `hinge_partner` / `gear_ratio` / `geometry` |
+| `design/agent_tools.py` / `src/tools.ts` | `hw_joints_propose`（工具数 45 → **46**）|
+| `scripts/check_p42.py` | **12 条**验收（含 1 条退化）|
+
+### 提案规则（都能复算）
+
+| kind | 依据 | 参数 |
+|---|---|---|
+| `stack` / `port` / `contact` | `joints.infer()` 的几何事实 | 无（照搬 evidence）|
+| `axle` | 轴类零件足迹中心落在另一件里 | `diameter_mm` = 轴件短边 |
+| `slide` | 轨与滑块足迹互相包含 | `range_mm` = ±(轨长 − 滑块长)/2 |
+| `hinge` | 执行器 + 同单元从动件 | `range_deg` = `mechanical.limits.hinge_deg`；**没给就不提** |
+| `gear` | 齿数不在模型里 | **一律 unresolved**（不编 ratio）|
+
+推不出的一律进 `unresolved`，每条带 `need`（已进 `nextstep.NEEDS`，有按钮）。
+
+### 顺带修掉一个真 bug（§3.37）
+
+`joints.validate` 的 `status` 原来只看 `checked`（查了几项），
+**不数 findings 里的 error** → `hinge` 缺 `range_deg` 时 `status` 仍是 `ok`，
+下游 `cmd_joints` 也就一路绿。改成三档：`not_ready`（没声明）/ `failed`（有 error）/ `ok`。
+
+### 实测
+
+| 用例 | 结果 |
+|---|---|
+| 叠放 + 舵机/摆臂 + limits | 3 条提案（stack 1 / axle 1 / hinge 1），每条有 evidence |
+| `axle` 轴径 | 15.0 mm（= 舵机短边，几何算的）|
+| 无 `hinge_deg` | **不提 hinge**，`unresolved` 里 `need=hinge_deg` |
+| 有齿轮件 | `gear` 零提案，`unresolved` 里 `need=gear_ratio` |
+| `joints` 老行为 | 缺 `range_deg` 仍 error，且现在 `status=failed`（原为 ok）|
+| `--apply` | 3 条进 `joints_list`（`source=proposed`）；`joints` 转 ok |
+| MJCF | `njnt=1`，MuJoCo 编译通过 → **提案真的进得了物理模型** |
+| 退化：缺 limits 时编 ±180 | 2a 变红 |
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p42   # 12/12
+check_p1                                # 25/25（四个新 need 已进表）
+npm test                                # 754 通过
+node scripts/check_tools.mjs            # 46 个工具
+全套离线验收 19 个 check_*              # 全 exit=0
+```
+
+
+## P43 — 编排器（`scaffold`）：一句需求 → 一份半成品（2026-11-22）
+
+> 计划见 [`docs/plan-v5.md`](docs/plan-v5.md) P43。把 P40–P42 的零件串成
+> **固定顺序**，并落实用户那条要求：**所有项目都是半成品，缺件不该让产出归零**。
+
+### 新增
+
+| 位置 | 内容 |
+|---|---|
+| `design/scaffold.py`（新） | 六段编排 + `open_items_markdown()` + `CONTINUE_ON_GAP` 开关 |
+| `design_cli.py` | `scaffold` 命令（`--route/--template/--target/--to/--mcu/--ioc/--spec`）|
+| `design/store.py` | `ARTIFACTS` 加 `scaffold.json` / `open_items.md` |
+| `src/tools.ts` | `hw_scaffold`（工具数 46 → **47**）|
+| `scripts/check_p43.py` | **12 条**验收（含 1 条退化）|
+
+### 六段（每段一行写进 `scaffold.json`）
+
+```
+requirement → design → pinmap → joints 提案 → firmware 骨架 → mechanical(MJCF)
+```
+
+* **选路必须显式**：`--route=synth|generate|roles`，不给就 `failed` 并说明
+  "三条路差别很大，不猜"
+* **缺 `.ioc`** → 走网表推引脚（`build_pinmap`），标 `source: proposed`
+* **缺关节参数** → 走 P42 提案，推不出的进 `open_items.md`
+* **本命令不碰立创**，除非 `--to pcb`；发射失败**不拖累**其它段
+
+### 实测
+
+| 用例 | 结果 |
+|---|---|
+| `synth` + `blink`（arduino 板）| 六段齐全；design ok；pinmap not_ready（列出 7 个已知 MCU，说明开发板不是裸 MCU）；**firmware 段仍在** |
+| 手搓 ATtiny85 设计 | pinmap **ok**（2 条，来源 netlist）；固件骨架 5 个文件（target=avr）；mechanical 如实 not_ready（静几何）|
+| 同输入跑两次 | `scaffold.json` **逐字节一致**（不带时间戳）|
+| `--to pcb` + 无 lceda | `pcb=not_ready`，`design` 仍 ok |
+| `open_items.md` | 917 字，表格式，写明"不阻塞" |
+| 退化：关 `CONTINUE_ON_GAP` | firmware 段消失 → 1b2 变红 |
+
+### 一条设计取舍（§3.39）
+
+`scaffold` 会写 design.json，而 agent 循环的不变式是"写入口只有一个 `hw_put`"。
+所以它**只做 CLI + DSH 工具，不进 `agent_tools.TOOLS`** —— 否则等于开了
+第二个绕过 `hw_put` 校验的写入口（`check_p22` 1b 会立刻红）。
+
+### 顺带修：AGENTS.md 超预算被**静默截断**
+
+AGENTS.md 长到 **67287 字节**，而 DSH 的注入预算 65536 → 尾部（§8.7 验收清单、
+§8.8 清理残留）**agent 看不到**，但它以为自己读全了。
+
+把整节 §8 搬到 [docs/runbook.md](docs/runbook.md)（内容一字未改，附了搬移原因），
+AGENTS.md 降到 **56530 字节**，§8 只留一段指针。
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p43   # 12/12
+npm test                                # 754 通过
+node scripts/check_tools.mjs            # 47 个工具
+全套离线验收 20 个 check_*              # 全 exit=0（含 p22/p23）
+```
+
+
+## P44 — 机械判据（`mech`）：干涉 / 重心 / 扭矩 / 行程（2026-11-22）
+
+> 计划见 [`docs/plan-v5.md`](docs/plan-v5.md) P44。补的是"机械域一条判据都没有"
+> 这个洞：`joints` 只查参数给没给，`mjcf` 只查能不能编译。
+
+### 新增
+
+| 位置 | 内容 |
+|---|---|
+| `design/mech_check.py`（新） | 四条判据 + 三态 + `basis` |
+| `design_cli.py` | `mech` 命令（写 `mech.json`）|
+| `design/handoff.py` | `_mechanical()`：fail→blocking、unknown→missing_data、pass 不报；`mech.json` 进 sources/checked |
+| `design/nextstep.py` | 七个新 need（`fix_interference`/`move_cog`/`provide_mass`/`provide_torque`/`give_joint_travel`/`give_support`/`mech_unknown`）|
+| `design/store.py` | `ARTIFACTS` 加 `mech.json` |
+| `design/agent_tools.py` / `src/tools.ts` | `hw_mech`（工具数 47 → **48**）|
+| `scripts/check_p44.py` | **16 条**验收（含 1 条退化）|
+
+### 四条判据
+
+| check | 依据 | 三态 |
+|---|---|---|
+| `interference` | 3D bbox 相交（**有 joint 的对跳过**：铰链/叠放的接触是有意的）| 重叠 > 0.1mm → fail |
+| `center_of_gravity` | 质量加权 xy 重心 vs **z 最低层**足迹包围盒 | 出框 → fail；没质量/没着地层 → unknown |
+| `servo_torque` | 从动件质量 × 力臂 vs 标称 × **0.5 安全系数** | 超出 → fail；缺标称 → unknown（**仍算出要多少**）|
+| `joint_range` | `limits.required_deg` vs 关节 `params` 行程 | 不够 → fail；没给需求 → unknown |
+
+### 实测
+
+| 用例 | 结果 |
+|---|---|
+| A1/A2 重叠 | `fail`，指到两个位号，`fix.need=fix_interference` |
+| 重心 (58.4, 12.9) vs 支撑盒 [10..14]² | `fail`「重心落在支撑面之外（会倾覆）」|
+| 舵机没写扭矩 | **`unknown`** + `required_kgcm=0.047`（缺的是标称值，不是需求值）|
+| 标称 1.2 kg·cm | `pass`（1.2×0.5=0.6 ≥ 0.05）|
+| 需求 180° / 关节 90° | `fail`「行程不够」 |
+| 交接单 | 3 条机械条目：1 blocking（重心）+ 2 missing_data（扭矩/行程）；pass 不出现 |
+| 退化：重心判据恒 pass | 2a 变红 |
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p44   # 16/16
+npm test                                # 755 通过
+node scripts/check_tools.mjs            # 48 个工具
+全套离线验收 22 个 check_*              # 全 exit=0
+```
+
+
 ---
 
 ## 参考对照（历史阶段，摘要）

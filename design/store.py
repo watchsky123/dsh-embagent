@@ -61,7 +61,11 @@ ARTIFACTS = (
     "req_draft.json",
     "req.json",
     "firmware_matrix.json",
+    "joints.proposed.json",
     "model.xml",
+    "scaffold.json",
+    "open_items.md",
+    "mech.json",
 )
 
 

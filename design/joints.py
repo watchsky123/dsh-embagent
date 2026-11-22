@@ -635,13 +635,19 @@ def validate(design: DesignModel, joints: list[Joint] | None = None) -> dict[str
                                 f"（P16 无法生成关节；不会替你编一个值）"),
                 })
 
+    errors = [f for f in findings if f.get("severity") == "error"]
+    # **`checked > 0` 不等于"没问题"**：`hinge` 缺 `range_deg` 会产生一条
+    # `severity=error` 的 finding（P16 生成不出关节），而第一版只看
+    # `checked`，于是 status 仍是 `ok` —— 缺参数被报成了通过（AGENTS §0.1）。
+    # 现在按"有没有 error"定档：没声明 → not_ready；有 error → failed。
     return {
-        "ok": not any(f.get("severity") == "error" for f in findings),
+        "ok": not errors,
         "checked": checked,
         "inferred_skipped": sum(1 for j in table
                                 if str(j.source) == "inferred"),
         "findings": findings,
-        "status": "ok" if checked else "not_ready",
+        "status": ("not_ready" if not checked
+                   else ("failed" if errors else "ok")),
         "reason": ("" if checked else
                    "没有声明任何机械关系：四项检查无从执行（不是通过）"),
     }

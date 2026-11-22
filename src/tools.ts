@@ -1896,6 +1896,227 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
+  // ---- 3e. hw_mech ------------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_mech',
+    description:
+      '四条**机械判据**：实体干涉（有 joint 的对不算）/ 重心是否落在支撑内 / '
+      + '舵机扭矩够不够 / 关节行程够不够。三态 `pass`/`fail`/`unknown`，'
+      + '缺质量或缺标称扭矩是 `unknown` —— **不是通过**。写 `mech.json`，'
+      + '`hw_handoff` 会把 fail 归入阻断、unknown 归入缺数据。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          status: { type: 'string' },
+          pass: { type: 'number' },
+          fail: { type: 'number' },
+          unknown: { type: 'number' },
+          rows: { type: 'string' },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; status: string; pass: number; fail: number
+          unknown: number; rows: string; summary: string
+        }
+        const head = `# ${v.project} 机械判据：${v.status}`
+          + `（pass ${v.pass} / fail ${v.fail} / unknown ${v.unknown}）`
+        const body = v.rows.split('\n').filter((x) => x !== '')
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const project = str((args as { project?: unknown }).project)
+      const payload = await design('mech', ...(project === '' ? [] : [project]))
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '机械判据失败')
+      }
+      const counts = (payload.counts ?? {}) as Record<string, unknown>
+      const rows = Array.isArray(payload.checks) ? payload.checks : []
+      return {
+        project,
+        status: str(payload.status),
+        pass: num(counts.pass),
+        fail: num(counts.fail),
+        unknown: num(counts.unknown),
+        rows: rows
+          .map((raw) => {
+            const row = (raw ?? {}) as Record<string, unknown>
+            return `* ${str(row.check)} → ${str(row.status)}：${str(row.message)}`
+          })
+          .join('\n'),
+        summary: str(payload.note),
+      }
+    },
+  })))
+
+  // ---- 3d. hw_scaffold --------------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_scaffold',
+    description:
+      '**编排器**：一句需求 → 一份半成品（design.json → 引脚表 → 关节提案 → '
+      + '固件骨架 → MJCF）。三条纪律：route 必须显式给（synth/generate/roles）；'
+      + '缺 `.ioc` 就走网表、缺关节参数就走提案，**不中止**；缺的东西进 '
+      + '`open_items.md`（人读清单，不是闸门）。`to="pcb"` 才会去碰立创，'
+      + '而且发射失败**不拖累**其它段。',
+    parameters: {
+      requirement: { type: 'string', description: '需求文件路径（req.json / .yaml）；route=synth 可省' },
+      project: { type: 'string', description: '工程目录名（不存在则新建）' },
+      route: { type: 'string', description: 'synth | generate | roles（必填，不猜）' },
+      template: { type: 'string', description: 'route=synth 的模板（blink/button/i2c-sensor…）' },
+      target: { type: 'string', description: '固件 target（arduino/platformio/esp-idf/stm32/avr）' },
+      to: { type: 'string', description: 'design | fw | mech | pcb | all（默认 design+fw+mech）' },
+      mcu: { type: 'string', description: '引脚表认不出 MCU 时的型号提示' },
+      ioc: { type: 'string', description: 'CubeMX .ioc（有就用它，没有走网表）' },
+      title: { type: 'string', description: '工程标题' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          status: { type: 'string' },
+          route: { type: 'string' },
+          stages: { type: 'string' },
+          openItems: { type: 'number' },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; status: string; route: string
+          stages: string; openItems: number; summary: string
+        }
+        const head = `# ${v.project} 半成品：${v.status}（route=${v.route}）`
+        const body = v.stages.split('\n').filter((x) => x !== '')
+        return text(head, ...body, `待办 ${v.openItems} 条`, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as {
+        requirement?: unknown; project?: unknown; route?: unknown
+        template?: unknown; target?: unknown; to?: unknown
+        mcu?: unknown; ioc?: unknown; title?: unknown
+      }
+      const project = str(a.project)
+      const cliArgs: string[] = []
+      const requirement = str(a.requirement)
+      if (requirement !== '') cliArgs.push(requirement)
+      cliArgs.push(`--project=${project}`)
+      cliArgs.push(`--route=${str(a.route)}`)
+      for (const [key, value] of [['template', a.template], ['target', a.target],
+                                  ['to', a.to], ['mcu', a.mcu], ['ioc', a.ioc],
+                                  ['title', a.title]] as const) {
+        const text = str(value)
+        if (text !== '') cliArgs.push(`--${key}=${text}`)
+      }
+      const payload = await design('scaffold', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '编排失败')
+      }
+      const stages = Array.isArray(payload.stages) ? payload.stages : []
+      return {
+        project,
+        status: str(payload.status),
+        route: str(payload.route),
+        stages: stages
+          .map((raw) => {
+            const row = (raw ?? {}) as Record<string, unknown>
+            const counts = (row.counts ?? {}) as Record<string, unknown>
+            const bits = Object.entries(counts).map(([k, n]) => `${k}=${str(n)}`).join(',')
+            return `* ${str(row.stage)} → ${str(row.status)}`
+              + (bits !== '' ? `（${bits}）` : '')
+              + (str(row.note) !== '' ? `：${str(row.note).slice(0, 80)}` : '')
+          })
+          .join('\n'),
+        openItems: (Array.isArray(payload.open_items) ? payload.open_items : []).length,
+        summary: str(payload.note),
+      }
+    },
+  })))
+
+  // ---- 3a2. hw_joints_propose -------------------------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_joints_propose',
+    description:
+      '机械关系的**提案**：几何（stack/axle/slide）能算的算出来，'
+      + '铰链行程取 `mechanical.limits.hinge_deg`；齿轮一律不提案（齿数不在模型里）。'
+      + '推不出的进 `unresolved` 并写 `need`，**不编参数**。'
+      + '默认只写 `joints.proposed.json`；`apply` 才进 design.json（source=proposed，'
+      + '能进物理模型但会在报告里被数出来）。',
+    parameters: {
+      project: { type: 'string', description: '工程目录名（省略则只返回说明）' },
+      apply: { type: 'boolean', description: '把提案写进 design.json 的 joints_list' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          project: { type: 'string' },
+          status: { type: 'string' },
+          proposals: { type: 'number' },
+          unresolved: { type: 'number' },
+          counts: { type: 'string' },
+          applied: { type: 'number' },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const v = value as {
+          project: string; status: string; proposals: number
+          unresolved: number; counts: string; applied: number; summary: string
+        }
+        const head = `# ${v.project} 关节提案：${v.status}`
+          + `（${v.proposals} 条提案 / ${v.unresolved} 条推不出）`
+        const body: string[] = []
+        if (v.counts !== '') body.push(`按 kind：${v.counts}`)
+        if (v.applied > 0) body.push(`已写入 design.json ${v.applied} 条（source=proposed）`)
+        return text(head, ...body, v.summary)
+      },
+      presentationMeta: (args) => {
+        const project = str((args as { project?: unknown }).project)
+        return project === '' ? {} : viewHint(project, 'checks')
+      },
+    },
+    execute: async (args) => {
+      const a = args as { project?: unknown; apply?: unknown }
+      const project = str(a.project)
+      const cliArgs: string[] = project === '' ? [] : [project]
+      if (a.apply === true) cliArgs.push('--apply')
+      const payload = await design('joints-propose', ...cliArgs)
+      if (payload.status === 'failed') {
+        throw new Error(findings(payload).join('；') || '关节提案失败')
+      }
+      const counts = (payload.counts ?? {}) as Record<string, unknown>
+      return {
+        project,
+        status: str(payload.status),
+        proposals: (Array.isArray(payload.proposals) ? payload.proposals : []).length,
+        unresolved: (Array.isArray(payload.unresolved) ? payload.unresolved : []).length,
+        counts: Object.entries(counts).map(([k, n]) => `${k} ${num(n)}`).join('、'),
+        applied: (Array.isArray(payload.applied) ? payload.applied : []).length,
+        summary: str(payload.note),
+      }
+    },
+  })))
+
   // ---- 3b. hw_mjcf ------------------------------------------------------
   disposers.push(tools.register(defineTool({
     name: 'hw_mjcf',

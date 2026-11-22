@@ -816,6 +816,41 @@ def _external(sim: dict | None, ladder: dict | None,
     return out
 
 
+def _mechanical(mech: dict | None) -> list[Item]:
+    """四条机械判据（P44）。
+
+    * `fail` → `blocking`：实体重叠、重心在支撑外、扭矩不够 —— 打板必炸
+    * `unknown` → `missing_data`：缺质量/缺扭矩/没给行程 —— **不是通过**
+
+    `pass` 不报（交接单只列待办）。`basis` 原样带出来，因为"重心是估算质量
+    算的"和"实测质量算的"可信度不同。
+    """
+    out: list[Item] = []
+    if not isinstance(mech, dict):
+        return out
+    for row in mech.get("checks") or []:
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("status") or "")
+        if status == "pass" or status == "":
+            continue
+        failed = status == "fail"
+        refs = [str(r) for r in (row.get("refs") or [])]
+        out.append(Item(
+            category="blocking" if failed else "missing_data",
+            title=f"机械·{row.get('check')}：{row.get('message')}",
+            status=status,
+            action=(("修设计：" if failed else "补数据：")
+                    + str(row.get("message") or "")),
+            risk=("几何/力学上直接不可用" if failed
+                  else "缺这一项就没法判，不能当成通过"),
+            basis=f"mech.json / {row.get('check')}"
+                  + (f"（{row.get('basis')}）" if row.get("basis") else ""),
+            fix=dict(row.get("fix") or {"need": "mech_unknown", "refs": refs}),
+        ))
+    return out
+
+
 def _orphan(design: DesignModel, justify: dict | None) -> list[Item]:
     """生成了但没接线：确认是故意的还是漏了。"""
     out: list[Item] = []
@@ -882,6 +917,9 @@ def build(store: Any) -> Handoff:
     physical_tests = [t for t in (design.physical_tests or [])
                       if isinstance(t, dict)]
     units_payload = store.read("units.json")
+    # P44 的产物：四条机械判据（干涉/重心/扭矩/行程）。缺了就少这一类，
+    # 不会假装查过 —— `sources` 里仍然是 missing。
+    mech_payload = store.read("mech.json")
 
     # coverify 有自己的产物 `coverify.json`。
     #
@@ -901,6 +939,7 @@ def build(store: Any) -> Handoff:
         + _external(sim_payload, ladder, emit_payload, physical_tests)
         + _assumed(coverify, ladder)
         + _unverifiable(ladder, checks)
+        + _mechanical(mech_payload)
         + _orphan(design, justify)
     )
     result.checked = {
@@ -915,6 +954,7 @@ def build(store: Any) -> Handoff:
         "units": int((units_payload or {}).get("total") or 0),
         "declared_links": int(((links_payload or {}).get("checked") or {})
                               .get("declared_links") or 0),
+        "mech": int(((mech_payload or {}).get("counts") or {}).get("total") or 0),
     }
     result.sources = {
         "design.json": _fingerprint(store.read("design.json")),
@@ -929,6 +969,7 @@ def build(store: Any) -> Handoff:
         "links.json": _fingerprint(links_payload),
         "sim.json": _fingerprint(sim_payload),
         "emit.json": _fingerprint(emit_payload),
+        "mech.json": _fingerprint(mech_payload),
     }
     return result
 

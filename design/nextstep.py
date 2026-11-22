@@ -110,6 +110,65 @@ NEEDS: dict[str, dict[str, str]] = {
         "field": "links_list",
         "label": "在 links_list 里补 {peripheral} 的对端（协议 / 电平 / 波特率）",
     },
+    # -- 机械域（P42 的提案 unresolved 会走到这里）-----------------------
+    #
+    # 为什么这几个必须进表：`check_p1` 的 1a 会扫源码里所有 `"need": "..."`
+    # 并比对这张表 —— 漏一个，那条 finding 就**悄悄变回纯文字**（没有了按钮），
+    # 不报错、不失败（AGENTS §3.14）。
+    "hinge_deg": {
+        "kind": "edit_field",
+        "field": "mechanical.limits.hinge_deg",
+        "label": "给 {refs} 的铰链写行程（mechanical.limits.hinge_deg = [lo, hi] 度）",
+    },
+    "hinge_partner": {
+        "kind": "edit_field",
+        "field": "unit",
+        "label": "把执行器与从动件标成同一个 unit（{refs}），或直接声明一条 hinge",
+    },
+    "gear_ratio": {
+        "kind": "edit_field",
+        "field": "joints_list",
+        "label": "给 {refs} 的齿轮补传动比（joints_list 里 params.ratio = 从动/主动）",
+    },
+    "geometry": {
+        "kind": "external",
+        "label": "几何推不出这条关系（{refs}）：补尺寸，或直接在 joints 里声明",
+        "by": "人（补尺寸/声明关系）",
+    },
+    # -- 机械判据（P44）：每条 fail/unknown 都要有可点的动作 -------------
+    "fix_interference": {
+        "kind": "move_part",
+        "label": "把 {refs} 分开（实体重叠，打板必炸）",
+    },
+    "move_cog": {
+        "kind": "move_part",
+        "label": "把重的东西往支撑面里挪（{refs}）",
+    },
+    "provide_mass": {
+        "kind": "edit_field",
+        "field": "mass_g",
+        "label": "给 {refs} 填质量（mass_g）—— 没有质量算不了重心和扭矩",
+    },
+    "provide_torque": {
+        "kind": "edit_field",
+        "field": "electrical.stall_torque_kgcm",
+        "label": "给 {refs} 填舵机标称扭矩（electrical.stall_torque_kgcm）",
+    },
+    "give_joint_travel": {
+        "kind": "edit_field",
+        "field": "mechanical.limits.required_deg",
+        "label": "声明需求行程（mechanical.limits.required_deg），或改关节 params 的行程",
+    },
+    "give_support": {
+        "kind": "external",
+        "label": "说清哪些零件着地（{refs}）：支撑面判不出就没法算重心",
+        "by": "人（标着地件/给支撑面）",
+    },
+    "mech_unknown": {
+        "kind": "external",
+        "label": "机械判据缺数据（{refs}）：见 action 里缺什么",
+        "by": "人（补数据）",
+    },
     # -- 命令类：有确切命令 ---------------------------------------------
     "rerun_ladder": {
         "kind": "run_command",

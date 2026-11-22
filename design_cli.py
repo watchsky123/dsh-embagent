@@ -1574,6 +1574,185 @@ def cmd_joints(args: list[str]) -> dict[str, Any]:
     return {"status": status, **report}
 
 
+def cmd_mech(args: list[str]) -> dict[str, Any]:
+    """``mech [<id>]`` —— 四条机械判据：干涉 / 重心 / 舵机扭矩 / 关节行程。
+
+    **P44 补的是"机械一条判据都没有"这个洞**：`joints` 只查参数给没给，
+    `mjcf` 只查能不能编译；"两块板插在一起""重心在支撑外""9g 舵机推 300g"
+    这三类必炸的问题此前只能看图。
+
+    三态：`pass`（算了且在范围内）/ `fail`（超了）/ `unknown`（**没法算**，
+    不是通过）。写 `mech.json`，由 `handoff` 归入 blocking / missing_data。
+    """
+    from .design import mech_check as mech_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **mech_module.describe()}
+
+    store, design = _load(args[0])
+    report = mech_module.report(design)
+    store.write("mech.json", report)
+    return {"status": report["status"], "project_id": args[0], **report}
+
+
+def cmd_scaffold(args: list[str]) -> dict[str, Any]:
+    """``scaffold [<req-file>] --project=<id> --route=synth|generate|roles
+    [--template=X] [--spec '<json>'] [--target=arduino|...] [--drivers=A,B]
+    [--ioc=PATH] [--ref=U1] [--to=design|fw|mech|pcb|all] [--title=...]``
+
+    **一句需求 → 一份半成品**（P43）。把 P40–P42 的零件串成一条固定链：
+
+    ```
+    req → 选路(synth/generate/roles) → design.json
+        → pinmap（.ioc 优先，没有就按网表推）
+        → joints 提案（有依据的算，没依据的进 open_items）
+        → fw 骨架 → MJCF → [可选] 立创发射
+    ```
+
+    三条纪律：
+
+    * **选路必须显式给** —— 三条路出来的东西差别很大，猜错比不做更糟
+    * **缺件不中止** —— 缺 `.ioc` 走网表、缺关节参数走提案；它们进
+      `open_items.md`（人读清单，**不是闸门**）
+    * **本命令不碰立创**，除非 `--to pcb|all`；发射失败也**不拖累**其它段
+    """
+    from .design import scaffold as scaffold_module
+
+    if not args or args[0].startswith("-") and "--project=" not in " ".join(args):
+        if not args:
+            return {"status": "ok", **scaffold_module.describe()}
+
+    project_id = ""
+    req_path = ""
+    route = ""
+    template = ""
+    spec: dict[str, Any] = {}
+    title = ""
+    target = ""
+    drivers: list[str] = []
+    ioc = ""
+    ref = "U1"
+    mcu = ""
+    to: list[str] = []
+    stages: list[str] = []
+    for index, item in enumerate(args):
+        if item.startswith("--project="):
+            project_id = item.split("=", 1)[1]
+        elif item.startswith("--route="):
+            route = item.split("=", 1)[1]
+        elif item.startswith("--template="):
+            template = item.split("=", 1)[1]
+        elif item.startswith("--title="):
+            title = item.split("=", 1)[1]
+        elif item.startswith("--target="):
+            target = item.split("=", 1)[1]
+        elif item.startswith("--drivers="):
+            drivers = [x.strip() for x in item.split("=", 1)[1].split(",") if x.strip()]
+        elif item.startswith("--ioc="):
+            ioc = item.split("=", 1)[1]
+        elif item.startswith("--ref="):
+            ref = item.split("=", 1)[1]
+        elif item.startswith("--mcu="):
+            mcu = item.split("=", 1)[1]
+        elif item.startswith("--to="):
+            to = [x.strip() for x in item.split("=", 1)[1].split(",") if x.strip()]
+        elif item.startswith("--stages="):
+            stages = [x.strip() for x in item.split("=", 1)[1].split(",") if x.strip()]
+        elif item.startswith("--spec="):
+            try:
+                spec = json.loads(item.split("=", 1)[1])
+            except ValueError as exc:
+                return {"status": "failed", "findings": [f"--spec 需要 JSON：{exc}"]}
+        elif not item.startswith("-") and index == 0:
+            req_path = item
+
+    if not project_id:
+        return {"status": "failed", "findings": ["需要 --project=<id>"]}
+    if route and route not in scaffold_module.ROUTES:
+        return {"status": "failed",
+                "findings": [f"未知 route：{route!r}（可用 {', '.join(scaffold_module.ROUTES)}）"]}
+
+    store = _store(project_id)
+    requirement: Any = req_path if req_path else None
+    if not req_path and store.exists():
+        # 工程已存在且已有 req.json → 直接用它；否则要求显式给
+        candidate = store.path("req.json")
+        if candidate.is_file():
+            requirement = str(candidate)
+
+    payload = scaffold_module.build(
+        project_id=project_id, store=store, requirement=requirement,
+        route=route, template=template, spec=spec, title=title,
+        target=target, drivers=drivers, ioc=ioc, ref=ref, mcu=mcu,
+        stages=tuple(stages))
+    store.write("scaffold.json", payload)
+    (store.dir / "open_items.md").write_text(
+        scaffold_module.open_items_markdown(project_id, payload), encoding="utf-8")
+
+    # -- 可选：立创发射（**失败不拖累前面的段**）------------------------
+    if any(t in ("pcb", "all") for t in to):
+        try:
+            emitted = cmd_emit([project_id, "--jobs=all"])
+            payload["stages"].append(_emit_stage_row(emitted))
+        except Exception as exc:  # noqa: BLE001 - 发射挂掉要让前面的段保住
+            payload["stages"].append({
+                "stage": "pcb", "status": "not_ready",
+                "note": f"{type(exc).__name__}: {exc}",
+            })
+        store.write("scaffold.json", payload)
+
+    return {"status": payload["status"], "project": project_id,
+            "route": payload.get("route"), "stages": payload["stages"],
+            "open_items": payload["open_items"], "note": payload["note"],
+            "artifacts": {"scaffold": store.path("scaffold.json").is_file(),
+                          "open_items": store.path("open_items.md").is_file()}}
+
+
+def _emit_stage_row(report: dict[str, Any]) -> dict[str, Any]:
+    """把 `emit` 的结果折成 scaffold 的一行（不复制它的判定）。"""
+    jobs = report.get("jobs") or {}
+    bad = [name for name, job in jobs.items()
+           if str((job or {}).get("status")) != "ok"]
+    return {
+        "stage": "pcb",
+        "status": "ok" if jobs and not bad else "not_ready",
+        "counts": {name: str((job or {}).get("status")) for name, job in jobs.items()},
+        "note": ("发射 8 段全 ok" if jobs and not bad
+                 else ("没跑起来" if not jobs
+                       else "未通过：" + "、".join(bad))),
+    }
+
+
+def cmd_joints_propose(args: list[str]) -> dict[str, Any]:
+    """``joints-propose [<id>] [--apply]`` —— 机械关系的**提案**（P42）。
+
+    默认只写 `joints.proposed.json`（**不动** `joints.json`，也不动
+    `design.json`）。`--apply` 才把提案写进 `design.joints_list`，`source`
+    保持 `proposed` —— 能进物理模型，但报告里会数出来"其中几条是提案"。
+
+    为什么要有这一层：`joints` 对 hinge/axle/slide 缺参数一律报 error（纪律，
+    不编默认值）。但"没有任何机械关系的半成品"什么也验不了。所以中间插一层
+    提案：**有依据的算出来，没依据的写清要补什么**。
+    """
+    from .design import joint_propose as propose_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **propose_module.describe()}
+
+    store, design = _load(args[0])
+    report = propose_module.propose(design)
+    store.write("joints.proposed.json", report)
+
+    applied: list[str] = []
+    if "--apply" in args:
+        applied = propose_module.apply(design, report["proposals"])
+        if applied:
+            store.save(design)
+    report["applied"] = applied
+    report["proposal_file"] = "joints.proposed.json"
+    return {"status": report["status"], **report}
+
+
 def cmd_dims(args: list[str]) -> dict[str, Any]:
     """``dims [<id>] [--apply]`` —— 每颗元件的 L/W/H 从哪来、能不能当精确值。
 
@@ -3519,8 +3698,11 @@ COMMANDS = {
     "coverify": cmd_coverify,
     "sim": cmd_sim,
     "joints": cmd_joints,
+    "joints-propose": cmd_joints_propose,
     "mjcf": cmd_mjcf,
-    "dims": cmd_dims,
+"dims": cmd_dims,
+    "scaffold": cmd_scaffold,
+    "mech": cmd_mech,
     "units": cmd_units,
     "links": cmd_links,
     "ioc-links": cmd_ioc_links,

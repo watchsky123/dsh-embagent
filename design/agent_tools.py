@@ -360,6 +360,16 @@ TOOLS: list[ToolSpec] = [
              {"project": "string", "apply": "boolean"},
              ("project",), arg_style="eq",
              note="proposed/estimated 不可进机械与布局判据"),
+    ToolSpec("hw_mech", "judge", "mech",
+             "四条机械判据：干涉 / 重心 / 舵机扭矩 / 关节行程；"
+             "三态 pass/fail/**unknown**（缺质量或缺扭矩是 unknown，不是通过）",
+             {"project": "string"}, ("project",)),
+    ToolSpec("hw_joints_propose", "judge", "joints-propose",
+             "机械关系提案：几何 stack/axle/slide + 执行器 hinge（行程取自 limits）"
+             "；推不出的进 unresolved 并写 need，**不编参数**",
+             {"project": "string", "apply": "boolean"},
+             ("project",), arg_style="eq",
+             note="默认只写 joints.proposed.json；--apply 才进 design（source=proposed）"),
     ToolSpec("hw_mjcf", "judge", "mjcf",
              "机械模型（MJCF）：构建 + 用 MuJoCo 真的加载一次；--build 落 model.xml",
              {"project": "string", "build": "boolean", "free": "boolean",

@@ -67,9 +67,9 @@ mjcf   doctor   scaffold   joints-propose   dims   dfm
 |---|---|---|---|---|---|
 | **P40** ✅ | 机械链打通：能从 `joints.json` 出 MJCF 并被 MuJoCo 加载 | 无 | `mjcf` | `check_p40` | S |
 | **P41** ✅ | spec 扩成四域：`firmware` / `mechanical` / `power_nets` / `lcsc` 主键 / `proposed` 分级 | 无 | `dims` | `check_p41` | M |
-| **P42** | 关节提案：从 LCSC 3D 尺寸 + roles 推关节，落 `mechanical.joints`（`source: proposed`） | P40 P41 | `joints-propose` | `check_p42` | M |
-| **P43** | 编排器：一句需求 → 半成品工程（design + pinmap + joints + fw + mjcf + `open_items.md`） | P40–P42 | `scaffold` | `check_p43` | M |
-| **P44** | 机械判据：干涉 / 重心 / 舵机扭矩 / 关节可达，并入 `handoff` | P41 P42 | （无新命令，扩 `handoff`） | `check_p44` | M |
+| **P42** ✅ | 关节提案：几何/limits 推关节，落 `joints.proposed.json`（`source: proposed`） | P40 P41 | `joints-propose` | `check_p42` | M |
+| **P43** ✅ | 编排器：一句需求 → 半成品工程（design + pinmap + joints + fw + mjcf + `open_items.md`） | P40–P42 | `scaffold` | `check_p43` | M |
+| **P44** ✅ | 机械判据：干涉 / 重心 / 舵机扭矩 / 关节行程，并入 `handoff` | P41 P42 | `mech` | `check_p44` | M |
 | **P45** | 制造证据：`pcb_Dfm.check()` 接入 + `failedItems>0 → unknown` + 与 DRC 分级合并 | 无 | `dfm` | `check_p45` | S |
 | **P46** | 前端两个分区：`emit`（8 段状态 + 产物）/ `半成品`（open_items） | P43 | RPC `emitRun`/`emitProgress` | `check_p46` | M |
 | **P47** | 自修循环 + 六段 `audit` + `doctor` + `examples copy` | P43–P46 | `audit`、`doctor` | `check_p47` | L |

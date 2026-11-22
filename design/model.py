@@ -716,6 +716,20 @@ JOINT_KINDS = (
 #: 能从现有数据推断的 kind。**推断结果 `source="inferred"`，不参与硬处理。**
 JOINT_INFERABLE = frozenset({"stack", "port", "contact"})
 
+#: 关节的来源。**顺序无关，语义有关**：
+#:
+#: * `declared` —— 人写的，进硬判定
+#: * `inferred` —— 拓扑/几何推的，**不进物理模型**（`mjcf.build` 跳过）
+#: * `imported` —— 导入器带的，视同 declared
+#: * `proposed` —— P42：**有几何依据、但没人核对的数值**。它能进物理模型
+#:   （否则"半成品"验不了），区别在于报告里会被数出来，并且
+#:   `dims`/`handoff` 一律当"不可当精确值"。
+#:
+#: 为什么 `proposed` 和 `inferred` 要分开：`inferred` 是"看起来像"，**没有数值**；
+#: `proposed` 是"算出了一个具体数（轴径/行程），只是没人签字"。前者进仿真
+#: 等于用猜的结构；后者进仿真至少有 evidence 可复算。
+JOINT_SOURCES = ("declared", "inferred", "imported", "proposed")
+
 
 @dataclass
 class Joint:
@@ -732,6 +746,7 @@ class Joint:
     `declared` —— 人写的，参与硬判定（P16 生成 MJCF 关节、P18 进阶梯）
     `inferred` —— 推断的，**只提示不判定**（AGENTS §1.2）
     `imported` —— 导入器带进来的，视同 declared 但要标注来源
+    `proposed` —— P42 的提案：有几何依据的数值，能进物理模型但**没人核对**
 
     ## `dof` 与 `params` 的分工
 
@@ -763,10 +778,10 @@ class Joint:
                 f"joint {self.a}-{self.b}: 未知 kind {self.kind!r}"
                 f"（可用：{', '.join(JOINT_KINDS)}）")
         self.source = str(self.source or "declared").strip()
-        if self.source not in ("declared", "inferred", "imported"):
+        if self.source not in JOINT_SOURCES:
             raise DesignError(
-                f"joint {self.a}-{self.b}: source 必须是"
-                f" declared/inferred/imported，收到 {self.source!r}")
+                f"joint {self.a}-{self.b}: source 必须是 "
+                f"{'/'.join(JOINT_SOURCES)}，收到 {self.source!r}")
         self.dof = [str(x) for x in (self.dof or [])]
         self.params = dict(self.params or {})
 
