@@ -1086,3 +1086,102 @@ H743：41 条 CubeMX 生成的 AF 证据全部与表一致
 * 表给**功能与编号**，不给电气/时序、也不给"某个 AF 只在特定批次可用"
 * 来源是厂商数据（`catalog`），不是 datasheet PDF；要更硬就手工录并标 `datasheet`
 * F405 等没有 AF 表的型号：`.ioc` 功能一律 `unknown`，**不猜**
+
+## 21. 立创侧扩产：封装几何 / 制造包 / 原理图 DRC / 拼板（P58–P59）
+
+### 21.1 封装真几何（`lceda-geom`）
+
+`LIB_Footprint.getGeometry(footprintUuid, libraryUuid)` 一次给出：本体包围盒、
+焊盘包围盒、**每个焊盘**（位置/尺寸/层/bbox，单位 mil）。
+
+实测（C8734 = STM32F103C8T6）：
+
+```
+pads 48   pitch 0.5 mm   最小焊盘间隙 0.23 mm（= 0.5 − 0.27）
+title_size 7×7×1.4（3D 模型 L/W/H，本体）   full 10×10.05（焊盘最外沿）
+bodyBBox 8.09×8.58（含丝印/引脚，**不是本体**）
+```
+
+**本体 ≠ 焊盘外包**：写 `size_mm` 只认 `title_size_mm`；`full_mm` 留给间距
+判据。拿 `full` 当本体会把 LQFP48 记成 10×10、把 0603 记成 2.9×1.5。
+
+写回纪律：只覆盖空 / `estimated` / `proposed` / `catalog`；`datasheet` /
+`measured` **一个字节不动**（实测 `复刻-示例` 28 颗全是 datasheet，
+`--apply` 结果 applied=0 / skipped=27 —— 这是对的）。
+
+**两个实测坑**：
+
+1. **同一个 LCSC 往往对应多个位号**（一堆 100nF）。第一版 `by_lcsc` 只留一个
+   → "查了 28 个只记了 16 个"，其余**静默丢**。修法：按 LCSC 查一次，再展开到
+   所有位号；`missing` 必须为 0。
+2. **`footprintUuid` 会在"空/有"之间跳**：库 worker 异步装载，同一编号连查三次
+   会看到 `has: false → false → true`。修法：`no_footprint` /
+   `geometry_unavailable` **重试一轮**（第二轮缓存已暖）。
+
+### 21.2 制造包扩产（`lceda-fab`）
+
+`emit` 原来只导 3 样（Gerber/BOM/坐标）。实测可用的还有 5 样：
+
+| kind | 调用 | 实测 | 头 |
+|---|---|---|---|
+| `step` | `get3DFile(name,'step')` | 14.1 MB | `ISO-10303-21` |
+| `dxf` | `getDxfFile(name)` | 1.18 MB | `0\nSECTION` |
+| `pdf` | `getPdfFile(name)` | 452 KB | `%PDF` |
+| `netlist` | `getNetlistFile(name)` | 36.7 KB | JSON（`.enet`）|
+| `testpoint` | `getTestPointFile(name)` | 8.3 KB | `PK`（zip）|
+| `ipc2581` | `getIpc2581CFile(name)` | **2 B（`{}`）** | **不可用** |
+
+**两个硬限制**：
+
+1. **单次 `invoke` 返回上限 8 MB**（`RESULT_TOO_LARGE`）。STEP 的 base64 是
+   18.8 MB → 先 `get3DFile` 把 base64 存进 `globalThis`，再 4 MB/块取 5 次。
+   取回长度必须等于声明长度。
+2. `saveFileToFileSystem` 默认被拒（外部交互权限）→ 一律"取字节 → Python 落盘"。
+
+**判据**：头字节不对 = `failed`；≤4 字节 = `not_ready`（不产出假文件）；
+文件落 `artifacts/fab/`，清单写 `fab.json`。
+
+### 21.3 原理图 DRC（`lceda-sch-drc`）
+
+`SCH_Drc.check(strict,false,true)` 返回**分组树**（顶层长度 = 类别数，不是
+错误数），每条 `type ∈ {fatalError,error,warn}`。
+
+**不要用布尔模式**：文档原话 —— strict 下 `warn` 与 `error` 一样会让返回值
+`false`，而原理图里刻意保留的悬空脚（`CHECKFLOATPIN`）就是 warn。所以本模块
+用详细模式、自己按 `type` 过滤：`error` 才判 `failed`，`warn` 单列不挡门。
+
+实测 `复刻-示例`：3 页 / 0 error / 0 fatal / **31 warn**；`audit` 的
+schematic 段现在会带上 `sch_drc.counts`（没跑就写 "missing"，不假判）。
+
+### 21.4 拼板（`lceda-panel`）—— 只到容器
+
+`DMT_Panel.createPanel()` 可用（返回 uuid，`modifyPanelName` 改名成功，
+`getPanelInfo` 能读回 `itemType: Panel`）。但：
+
+```
+doc api --class-name PNL_ManufactureData → null
+doc api --class-name PNL_Drc            → null
+doc api --class-name PNL_Import         → null
+PNL_Document 方法列表                    → 只有 save()
+```
+
+**没有把板子放进面板的 API**，也没有面板阵列/DRC/制造文件。所以
+`lceda-panel` 建容器后状态是 **`not_ready`**，带 `blocked_by` 与 `api_evidence`；
+`panel_done=false`。**建了容器 ≠ 拼板完成。**
+
+### 21.5 四个通用坑
+
+1. **`dmt_Team.getAllTeamsInfo()` 在会话刚开时可能抛**（`reading 'uuid' of null`）
+   —— 用户态异步装载。必须 try/catch + 轮询 ~5 秒；工程级 API 全依赖它。
+2. **每次 `invoke` 30 秒**：STEP 生成实测 29.9 秒（踩线）。更大的板会超时，
+   这时如实 `not_ready`，不要重试到天荒地老。
+3. **`getGeometry` 不含 `model3DBBox`**（接口文档里有，这个版本不返回）——
+   高度只能用 3D 标题的 `H`。
+4. **工程必须在立创里存在**：`lceda-fab/sch-drc/panel` 都从 `emit.json`
+   拿 `projectUuid`/`pcbUuid`，没有就是 `not_ready`（先 emit）。
+
+### 21.6 边界
+
+* 几何是**封装源数据**（catalog），不是 datasheet；写回不冒充 datasheet
+* 制造文件是**立创的导出**，不是我们画的；头字节对了只说明"是那种文件"
+* 拼板不可调 —— 这一条是**结论**，不是没写完；要做只能人工在面板编辑器里拼

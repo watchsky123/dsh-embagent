@@ -137,13 +137,29 @@ def _stage_schematic(store: Any, design: Any) -> dict[str, Any]:
     findings = [{"check": "parity", "refs": [],
                  "message": f"网表与设计不一致：{(parity.get('missing') or [])[:4]}"}] \
         if str(parity.get("status")) == "not_ready" else []
-    status = "ok" if str(parity.get("status")) == "ok" and not bad else "not_ready"
-    return _row("schematic", status,
-                checked={"borads_saved": len(saved), "pin_nets_bad": bad},
-                basis="emit.json / parity + schematic_detail",
-                findings=findings,
-                note=(f"parity={parity.get('status')}，"
-                      f"{bad} 个引脚的网络对不上"))
+    # P59：原理图 DRC（`lceda-sch-drc` 才有）。**没有就不假装查过** ——
+    # 只在 note 里写"没跑"，不把整段判成 not_ready（那会让没装客户端的工程
+    # 从 ok 掉下去，等于用环境能力改判设计）。
+    sch_drc = store.read("sch_drc.json")
+    drc_counts = (sch_drc or {}).get("counts") if isinstance(sch_drc, dict) else None
+    if isinstance(drc_counts, dict) and drc_counts.get("checked"):
+        if int(drc_counts.get("fatalError") or 0) + int(drc_counts.get("error") or 0):
+            findings.append({"check": "schematic.drc", "refs": [],
+                             "message": (f"原理图 DRC {drc_counts.get('error')} 个 error / "
+                                         f"{drc_counts.get('fatalError')} 个 fatal "
+                                         f"（{drc_counts.get('checked')} 页）")})
+    status = ("failed" if isinstance(drc_counts, dict)
+              and int(drc_counts.get("fatalError") or 0) + int(drc_counts.get("error") or 0) > 0
+              else "ok" if str(parity.get("status")) == "ok" and not bad else "not_ready")
+    checked = {"borads_saved": len(saved), "pin_nets_bad": bad,
+               "sch_drc": (dict(drc_counts) if isinstance(drc_counts, dict) else "missing")}
+    note = (f"parity={parity.get('status')}，{bad} 个引脚的网络对不上；"
+            + (f"原理图 DRC {drc_counts.get('checked')} 页（error "
+               f"{drc_counts.get('error')} / warn {drc_counts.get('warn')}）"
+               if isinstance(drc_counts, dict) else "原理图 DRC 没跑（lceda-sch-drc）"))
+    return _row("schematic", status, checked=checked,
+                basis="emit.json / parity + schematic_detail + sch_drc.json",
+                findings=findings, note=note)
 
 
 def _stage_pcb(store: Any, design: Any) -> dict[str, Any]:

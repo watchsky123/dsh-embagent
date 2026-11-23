@@ -2431,6 +2431,204 @@ def cmd_dims(args: list[str]) -> dict[str, Any]:
     return {"status": report["status"], **report}
 
 
+def cmd_lceda_panel(args: list[str]) -> dict[str, Any]:
+    """``lceda-panel <id> [--name=...]`` —— 拼板容器（P61）。
+
+    能做到的：建面板、命名、列出。**做不到的**：把板子放进面板、面板 DRC、
+    面板制造文件 —— 这一版 `doc api` 里 `PNL_ManufactureData/PNL_Drc/PNL_Import`
+    返回 null，`PNL_Document` 只有 save()。所以总状态是 `not_ready`，
+    并带 `blocked_by` + 证据，不假装拼板完成。
+    """
+    from .design import lceda as lceda_module
+    from .design import lceda_panel as panel_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **panel_module.describe()}
+    store, design = _load(args[0])
+    record = store.read("emit.json")
+    project = (record or {}).get("project") or {}
+    if not project.get("uuid"):
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": "没有 emit.json / 里面没有工程 uuid —— 先跑 emit"}
+    name = ""
+    for item in args[1:]:
+        if item.startswith("--name="):
+            name = item.split("=", 1)[1]
+    session = None
+    try:
+        session = lceda_module.LcedaSession().open("", headless=True)
+        payload = panel_module.create(store.dir, session=session,
+                                      ctx={"projectUuid": str(project["uuid"])},
+                                      name=name)
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": f"立创会话起不来：{type(exc).__name__}: {exc}"}
+    finally:
+        if session is not None and session.session_id:
+            try:
+                session.close(destroy=True)
+            except Exception:  # noqa: BLE001
+                pass
+    store.write(panel_module.FILE, payload)
+    return {"status": payload["status"], "project_id": args[0], **payload}
+
+
+def cmd_lceda_sch(args: list[str]) -> dict[str, Any]:
+    """``lceda-sch-drc <id> [--limit=1]`` —— 原理图 DRC（P60）。
+
+    从 `emit.json` 拿工程 uuid，逐页 `SCH_Drc.check(true,false,true)`，
+    按 `type`（fatalError/error/warn）自己过滤 —— **不用布尔模式**
+    （立创在 strict 下把 warn 也算 false，刻意悬空脚会误判）。
+
+    `warn` 不影响 gate；`fatalError`/`error` 才判 `failed`；一页都没查成是
+    `not_ready`，不是通过。
+    """
+    from .design import lceda as lceda_module
+    from .design import lceda_sch as sch_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **sch_module.describe()}
+    store, design = _load(args[0])
+    record = store.read("emit.json")
+    project = (record or {}).get("project") or {}
+    if not project.get("uuid"):
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": "没有 emit.json / 里面没有工程 uuid —— 先跑 emit"}
+    limit = 0
+    for item in args[1:]:
+        if item.startswith("--limit="):
+            try:
+                limit = int(item.split("=", 1)[1])
+            except ValueError:
+                limit = 0
+    session = None
+    try:
+        session = lceda_module.LcedaSession().open("", headless=True)
+        payload = sch_module.run(store.dir, session=session,
+                                 ctx={"projectUuid": str(project["uuid"])},
+                                 limit_pages=limit)
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": f"立创会话起不来：{type(exc).__name__}: {exc}"}
+    finally:
+        if session is not None and session.session_id:
+            try:
+                session.close(destroy=True)
+            except Exception:  # noqa: BLE001
+                pass
+    store.write(sch_module.FILE, payload)
+    return {"status": payload["status"], "project_id": args[0],
+            "project": {"uuid": project.get("uuid"), "name": project.get("name")},
+            **payload}
+
+
+def cmd_lceda_fab(args: list[str]) -> dict[str, Any]:
+    """``lceda-fab <id> [--kinds=step,dxf,pdf,netlist,testpoint]`` —— 制造包扩产（P59）。
+
+    从 `emit.json` 拿工程 uuid 与 PCB uuid，打开工程后调 `pcb_ManufactureData`
+    的导出接口，把 STEP/DXF/PDF/网表/测试点写进 `artifacts/fab/`，并验头字节。
+
+    `invoke` 返回上限 8 MB —— STEP（实测 14 MB）走 4 MB 分块；
+    `ipc2581` 在这一版只返回 2 字节 `{}`，所以**不产出假文件**（not_ready）。
+    """
+    from .design import lceda as lceda_module
+    from .design import lceda_fab as fab_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **fab_module.describe()}
+    store, design = _load(args[0])
+    record = store.read("emit.json")
+    if not isinstance(record, dict) or not (record.get("project") or {}).get("uuid"):
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": "没有 emit.json / 里面没有工程 uuid —— 先跑 emit"}
+    project = record.get("project") or {}
+    boards = project.get("boards") or []
+    pcb_uuid = ""
+    for board in boards:
+        if isinstance(board, dict) and board.get("pcbUuid"):
+            pcb_uuid = str(board["pcbUuid"])
+            break
+    if not pcb_uuid:
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": "emit.json 里没有 pcbUuid"}
+    kinds: list[str] = []
+    for item in args[1:]:
+        if item.startswith("--kinds="):
+            kinds = [part.strip() for part in item.split("=", 1)[1].split(",") if part.strip()]
+    session = None
+    try:
+        session = lceda_module.LcedaSession().open("", headless=True)
+        payload = fab_module.export(store.dir, kinds=kinds or None, session=session,
+                                    ctx={"projectUuid": str(project["uuid"]),
+                                         "pcbUuid": pcb_uuid,
+                                         "settleMs": 900})
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": f"立创会话起不来：{type(exc).__name__}: {exc}"}
+    finally:
+        if session is not None and session.session_id:
+            try:
+                session.close(destroy=True)
+            except Exception:  # noqa: BLE001
+                pass
+    store.write(fab_module.FILE, payload)
+    return {"status": payload["status"], "project_id": args[0],
+            "project": {"uuid": project.get("uuid"), "name": project.get("name")},
+            **payload}
+
+
+def cmd_lceda_geom(args: list[str]) -> dict[str, Any]:
+    """``lceda-geom <id> [--apply] [--limit=N]`` —— 封装真几何（P58）。
+
+    从立创编辑器取 `LIB_Footprint.getGeometry`：本体/焊盘包围盒 + 每个焊盘
+    （mil→mm），写 `geom.json`。`--apply` 把尺寸写回 `design.json`，**只覆盖
+    低信任来源**（空/estimated/proposed/catalog）——`datasheet`/`measured`
+    一个字都不动。
+
+    需要桌面客户端 `lceda-pro`；没装/起不来 → `not_ready`（不是 failed）。
+    """
+    from .design import lceda as lceda_module
+    from .design import lceda_geom as geom_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **geom_module.describe()}
+
+    store, design = _load(args[0])
+    limit = 0
+    for item in args[1:]:
+        if item.startswith("--limit="):
+            try:
+                limit = int(item.split("=", 1)[1])
+            except ValueError:
+                limit = 0
+    session = None
+    try:
+        session = lceda_module.LcedaSession().open("", headless=True)
+        payload = geom_module.fetch(design, session=session, limit=limit)
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": f"立创会话起不来：{type(exc).__name__}: {exc}"}
+    finally:
+        if session is not None and session.session_id:
+            try:
+                session.close(destroy=True)
+            except Exception:  # noqa: BLE001
+                pass
+    store.write(geom_module.FILE, payload)
+    applied = None
+    if "--apply" in args and payload.get("status") == "ok":
+        result = geom_module.apply(design, payload)
+        if result["applied"]:
+            problems = design.validate()
+            if problems:
+                return {"status": "failed", "project_id": args[0],
+                        "reason": "写回后设计校验不过", "problems": problems[:8]}
+            store.save(design)
+        applied = result
+    return {"status": payload["status"], "project_id": args[0], **payload,
+            "applied": applied}
+
+
 def cmd_mjcf(args: list[str]) -> dict[str, Any]:
     """``mjcf [<id>] [--build] [--free] [--weld] [--no-floor] [--out=PATH]``
     —— 机械模型（MJCF）。
@@ -4340,7 +4538,11 @@ COMMANDS = {
     "joints": cmd_joints,
     "joints-propose": cmd_joints_propose,
     "mjcf": cmd_mjcf,
-"dims": cmd_dims,
+    "lceda-panel": cmd_lceda_panel,
+    "lceda-sch-drc": cmd_lceda_sch,
+    "lceda-fab": cmd_lceda_fab,
+    "lceda-geom": cmd_lceda_geom,
+    "dims": cmd_dims,
     "scaffold": cmd_scaffold,
     "mech": cmd_mech,
     "dfm": cmd_dfm,

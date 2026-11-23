@@ -3518,6 +3518,57 @@ npm test / npm run check / build / check_tools
 * 只建了 4 个型号（F103C8/C6、F401RC、H743II）；表外型号功能一律 `unknown`
 * F1 没有 AF 编号（用 AFIO 重映射），**不要**为了"统一"给它编 AF7
 
+## P58–P59 — 立创侧扩产：封装几何 / 制造包 / 原理图 DRC / 拼板（2026-11-23）
+
+> 用户点的第 10 件事：把「立创里有很多东西」真正接进链路（高耗时但要好效果）。
+
+### 新增
+
+| 文件 | 内容 |
+|---|---|
+| `design/lceda_geom.py` | `LIB_Footprint.getGeometry` → 本体/焊盘包围盒 + 焊盘统计（pitch/最小间隙）|
+| `design/lceda_fab.py` | `pcb_ManufactureData` 5 种导出（STEP/DXF/PDF/网表/测试点），8 MB 上限分块 |
+| `design/lceda_sch.py` | 逐页 `SCH_Drc.check(true,false,true)`，按 type 过滤 |
+| `design/lceda_panel.py` | `DMT_Panel.createPanel` + 明确的拼板边界（`PNL_*` 未暴露）|
+| `scripts/check_p58.py` | 13 项（几何自洽/mil 换算/写回纪律/退化）|
+| `scripts/check_p59.py` | 12 项（5 种制造文件/假文件防护/DRC gate/拼板 not_ready）|
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design_cli.py` | 新增 `lceda-geom` / `lceda-fab` / `lceda-sch-drc` / `lceda-panel` 四个命令 |
+| `design/store.py` | `ARTIFACTS` 加 `geom.json` / `fab.json` / `sch_drc.json` / `panel.json` |
+| `design/audit.py` | schematic 段接入 `sch_drc.json`（有 error → failed；没跑 → note 里写 missing）|
+| `docs/runbook.md` | 新增 §21 |
+| `AGENTS.md` | 指针表加 §21；压缩 §17–§20 保持 65 KB 内 |
+
+### 实测（`复刻-示例`，4.1.97.04b092ac）
+
+```
+lceda-geom：28 个位号 / 19 个 LCSC → 27 拿到几何，1 个 no_footprint 写明原因
+  U1(C8734)：48 焊盘、pitch 0.5、最小间隙 0.23、title 7×7×1.4、full 10×10.05
+lceda-fab：5/5 落盘（STEP 14.1 MB / DXF 1.18 MB / PDF 452 KB / 网表 36.7 KB / 测试点 8.3 KB）
+  STEP 走 4 MB 分块（单次返回上限 8 MB）；ipc2581 只回 2 字节 {} → not_ready
+lceda-sch-drc：3 页，0 error / 0 fatal / 31 warn
+lceda-panel：容器建出 + 改名成功；但 PNL_ManufactureData/Drc/Import 的 doc api 全是 null
+  → 状态 not_ready + blocked_by（拼板要在面板编辑器里手工做）
+```
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p58   # 13 项
+python -m hw_velxio.scripts.check_p59   # 12 项（约 80 秒，真调用）
+```
+
+### 诚实边界
+
+* 几何是封装源数据（catalog），写回**不冒充 datasheet**（datasheet 一颗不动）
+* 制造文件只是"立创导出的那种文件"，头字节对 ≠ 内容对
+* 拼板**不可调**：这一版没有放板/阵列/面板 DRC/面板制造文件
+* 所有命令都需要 `emit.json`（工程 uuid）与桌面客户端；缺任何一样都是 `not_ready`
+
 ---
 
 ## 后续

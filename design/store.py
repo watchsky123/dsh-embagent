@@ -72,6 +72,10 @@ ARTIFACTS = (
     "interface.md",
     "params.json",
     "params.md",
+    "geom.json",
+    "fab.json",
+    "sch_drc.json",
+    "panel.json",
 )
 
 
