@@ -1,0 +1,127 @@
+{
+ "id": "motor_esc",
+ "title": "电调接口（XT60 电池 + PWM 座）",
+ "family": "actuator",
+ "params": {
+  "cells": 4
+ },
+ "parts": [
+  {
+   "key": "j_bat",
+   "kind": "xt60",
+   "label": "XT60",
+   "ref_prefix": "J",
+   "pins": [
+    "P",
+    "N"
+   ],
+   "size_mm": {
+    "w": 16.0,
+    "h": 8.0,
+    "d": 10.0
+   },
+   "role": "connector",
+   "lcsc": "C98732"
+  },
+  {
+   "key": "j_sig",
+   "kind": "header_3p",
+   "label": "电调信号座",
+   "ref_prefix": "J",
+   "pins": [
+    "PWM",
+    "5V",
+    "GND"
+   ],
+   "size_mm": {
+    "w": 7.62,
+    "h": 2.54,
+    "d": 8.5
+   },
+   "role": "connector",
+   "lcsc": "C33344"
+  },
+  {
+   "key": "c_bat",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling",
+   "lcsc": "C14663"
+  }
+ ],
+ "nets": [
+  {
+   "net": "VBAT",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "j_bat",
+     "pin": "P"
+    },
+    {
+     "key": "c_bat",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "j_bat",
+     "pin": "N"
+    },
+    {
+     "key": "j_sig",
+     "pin": "GND"
+    },
+    {
+     "key": "c_bat",
+     "pin": "2"
+    }
+   ]
+  },
+  {
+   "net": "5V",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "j_sig",
+     "pin": "5V"
+    }
+   ],
+   "port": true
+  },
+  {
+   "net": "PWM",
+   "global": false,
+   "class": "signal",
+   "pins": [
+    {
+     "key": "j_sig",
+     "pin": "PWM"
+    }
+   ],
+   "port": true
+  }
+ ],
+ "rules": [
+  "电池座按峰值电流选（XT60 60A）",
+  "电调信号与动力线分开走"
+ ],
+ "verified_by": []
+}

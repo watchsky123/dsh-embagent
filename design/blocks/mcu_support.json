@@ -83,7 +83,8 @@
     "h": 4.5,
     "d": 4.0
    },
-   "role": "clock"
+   "role": "clock",
+   "lcsc": "C21263"
   },
   {
    "key": "c_osc1",
@@ -99,7 +100,8 @@
     "h": 0.8,
     "d": 0.8
    },
-   "role": "clock"
+   "role": "clock",
+   "lcsc": "C38523"
   },
   {
    "key": "c_osc2",
@@ -115,7 +117,8 @@
     "h": 0.8,
     "d": 0.8
    },
-   "role": "clock"
+   "role": "clock",
+   "lcsc": "C38523"
   },
   {
    "key": "r_nrst",
@@ -131,7 +134,8 @@
     "h": 0.8,
     "d": 0.45
    },
-   "role": "reset"
+   "role": "reset",
+   "lcsc": "C25804"
   },
   {
    "key": "c_nrst",
@@ -147,7 +151,8 @@
     "h": 0.8,
     "d": 0.8
    },
-   "role": "reset"
+   "role": "reset",
+   "lcsc": "C14663"
   },
   {
    "key": "r_boot0",
@@ -163,7 +168,8 @@
     "h": 0.8,
     "d": 0.45
    },
-   "role": "boot"
+   "role": "boot",
+   "lcsc": "C25804"
   },
   {
    "key": "j_swd",
@@ -181,7 +187,8 @@
     "h": 2.54,
     "d": 8.5
    },
-   "role": "debug"
+   "role": "debug",
+   "lcsc": "C9135"
   },
   {
    "key": "c_de1",
@@ -197,7 +204,8 @@
     "h": 0.8,
     "d": 0.8
    },
-   "role": "decoupling"
+   "role": "decoupling",
+   "lcsc": "C14663"
   },
   {
    "key": "c_de2",
@@ -213,7 +221,8 @@
     "h": 0.8,
     "d": 0.8
    },
-   "role": "decoupling"
+   "role": "decoupling",
+   "lcsc": "C14663"
   }
  ],
  "nets": [

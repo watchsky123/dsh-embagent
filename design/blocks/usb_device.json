@@ -23,7 +23,8 @@
     "h": 5.5,
     "d": 3.0
    },
-   "role": "connector"
+   "role": "connector",
+   "lcsc": "C393940"
   },
   {
    "key": "r_dp",
@@ -39,7 +40,8 @@
     "h": 0.8,
     "d": 0.45
    },
-   "role": "series"
+   "role": "series",
+   "lcsc": "C23345"
   },
   {
    "key": "r_dm",
@@ -55,7 +57,8 @@
     "h": 0.8,
     "d": 0.45
    },
-   "role": "series"
+   "role": "series",
+   "lcsc": "C23345"
   },
   {
    "key": "d_esd",
@@ -75,7 +78,8 @@
     "h": 1.6,
     "d": 1.1
    },
-   "role": "protection"
+   "role": "protection",
+   "lcsc": "C7519"
   },
   {
    "key": "c_vbus",
@@ -91,7 +95,8 @@
     "h": 0.8,
     "d": 0.8
    },
-   "role": "decoupling"
+   "role": "decoupling",
+   "lcsc": "C106858"
   }
  ],
  "nets": [

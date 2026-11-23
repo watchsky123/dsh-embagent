@@ -1,0 +1,94 @@
+{
+ "id": "servo_out",
+ "title": "舵机输出座（3P，舵机外接）",
+ "family": "actuator",
+ "params": {
+  "channels": 1
+ },
+ "parts": [
+  {
+   "key": "j_servo",
+   "kind": "header_3p",
+   "label": "舵机座",
+   "ref_prefix": "J",
+   "pins": [
+    "PWM",
+    "VCC",
+    "GND"
+   ],
+   "size_mm": {
+    "w": 7.62,
+    "h": 2.54,
+    "d": 8.5
+   },
+   "role": "connector",
+   "lcsc": "C33344"
+  },
+  {
+   "key": "c_byp",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling",
+   "lcsc": "C14663"
+  }
+ ],
+ "nets": [
+  {
+   "net": "5V_SERVO",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "j_servo",
+     "pin": "VCC"
+    },
+    {
+     "key": "c_byp",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "j_servo",
+     "pin": "GND"
+    },
+    {
+     "key": "c_byp",
+     "pin": "2"
+    }
+   ]
+  },
+  {
+   "net": "PWM",
+   "global": false,
+   "class": "signal",
+   "pins": [
+    {
+     "key": "j_servo",
+     "pin": "PWM"
+    }
+   ],
+   "port": true
+  }
+ ],
+ "rules": [
+  "舵机电源与逻辑 5V 分开（堵转电流大）",
+  "PWM 走线远离电源"
+ ],
+ "verified_by": []
+}

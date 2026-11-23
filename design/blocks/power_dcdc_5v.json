@@ -12,7 +12,7 @@
   {
    "key": "module",
    "kind": "dcdc_module_5v",
-   "label": "MP1584 模块 5V",
+   "label": "K7805-500",
    "ref_prefix": "U",
    "pins": [
     "VIN",
@@ -20,11 +20,12 @@
     "VOUT"
    ],
    "size_mm": {
-    "w": 22.0,
-    "h": 17.0,
-    "d": 4.0
+    "w": 11.5,
+    "h": 8.5,
+    "d": 10.5
    },
-   "role": "regulator"
+   "role": "regulator",
+   "lcsc": "C234060"
   },
   {
    "key": "cin",
@@ -36,11 +37,12 @@
     "2"
    ],
    "size_mm": {
-    "w": 5.0,
-    "h": 5.4,
-    "d": 5.4
+    "w": 2.0,
+    "h": 1.25,
+    "d": 1.0
    },
-   "role": "bulk"
+   "role": "bulk",
+   "lcsc": "C970684"
   },
   {
    "key": "cout",
@@ -52,11 +54,12 @@
     "2"
    ],
    "size_mm": {
-    "w": 5.0,
-    "h": 5.4,
-    "d": 5.4
+    "w": 2.0,
+    "h": 1.25,
+    "d": 1.0
    },
-   "role": "bulk"
+   "role": "bulk",
+   "lcsc": "C970684"
   },
   {
    "key": "ctv",
@@ -72,7 +75,8 @@
     "h": 3.6,
     "d": 2.3
    },
-   "role": "protection"
+   "role": "protection",
+   "lcsc": "C10211"
   }
  ],
  "nets": [

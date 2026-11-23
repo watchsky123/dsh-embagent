@@ -25,7 +25,8 @@
     "h": 3.9,
     "d": 1.75
    },
-   "role": "transceiver"
+   "role": "transceiver",
+   "lcsc": "C6952"
   },
   {
    "key": "r_term",
@@ -37,11 +38,12 @@
     "2"
    ],
    "size_mm": {
-    "w": 3.2,
-    "h": 1.6,
-    "d": 0.55
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.45
    },
-   "role": "termination"
+   "role": "termination",
+   "lcsc": "C22787"
   },
   {
    "key": "c_vcc",
@@ -57,7 +59,8 @@
     "h": 0.8,
     "d": 0.8
    },
-   "role": "decoupling"
+   "role": "decoupling",
+   "lcsc": "C14663"
   }
  ],
  "nets": [

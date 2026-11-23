@@ -1,0 +1,142 @@
+{
+ "id": "camera_usb",
+ "title": "USB 摄像头座（4P + ESD）",
+ "family": "camera",
+ "params": {
+  "interface": "usb2"
+ },
+ "parts": [
+  {
+   "key": "j_cam",
+   "kind": "header_4p",
+   "label": "USB 摄像头座",
+   "ref_prefix": "J",
+   "pins": [
+    "VBUS",
+    "D-",
+    "D+",
+    "GND"
+   ],
+   "size_mm": {
+    "w": 10.16,
+    "h": 2.54,
+    "d": 8.5
+   },
+   "role": "connector",
+   "lcsc": "C9135"
+  },
+  {
+   "key": "d_esd",
+   "kind": "esd_array",
+   "label": "USBLC6-2SC6",
+   "ref_prefix": "D",
+   "pins": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6"
+   ],
+   "size_mm": {
+    "w": 2.9,
+    "h": 1.6,
+    "d": 1.1
+   },
+   "role": "protection",
+   "lcsc": "C7519"
+  },
+  {
+   "key": "c_vbus",
+   "kind": "capacitor",
+   "label": "1uF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling",
+   "lcsc": "C106858"
+  }
+ ],
+ "nets": [
+  {
+   "net": "5V",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "j_cam",
+     "pin": "VBUS"
+    },
+    {
+     "key": "d_esd",
+     "pin": "5"
+    },
+    {
+     "key": "c_vbus",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "j_cam",
+     "pin": "GND"
+    },
+    {
+     "key": "d_esd",
+     "pin": "2"
+    },
+    {
+     "key": "c_vbus",
+     "pin": "2"
+    }
+   ]
+  },
+  {
+   "net": "USB_DP",
+   "global": false,
+   "class": "usb",
+   "pins": [
+    {
+     "key": "j_cam",
+     "pin": "D+"
+    },
+    {
+     "key": "d_esd",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "USB_DM",
+   "global": false,
+   "class": "usb",
+   "pins": [
+    {
+     "key": "j_cam",
+     "pin": "D-"
+    },
+    {
+     "key": "d_esd",
+     "pin": "6"
+    }
+   ]
+  }
+ ],
+ "rules": [
+  "D+/D- 差分 90Ω，ESD 地回路要短",
+  "5V 供电按摄像头峰值留 500 mA"
+ ],
+ "verified_by": []
+}

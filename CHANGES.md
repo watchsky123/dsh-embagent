@@ -3812,6 +3812,38 @@ V2 剩余 fail：space.connector_edge（J2 距板边 10.9 mm）—— 独立的�
 * 行式排布不是最优布局；只保证不重叠、在板内
 * 板框自动扩是**内容驱动**的，不是需求尺寸；需求若给了板框，不会缩回去
 
+## P66 — 连接器贴边 / 块内 LCSC / 6 个新角色（2026-11-23）
+
+> 上一轮实验暴露的三件事，一次做完。
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design/blocks.py` | 连接器排布：底边一行 → 左边一列（每颗距边 ≤1 mm）；其余按尺寸排 |
+| `design/blocks/*.json` | 6 个原有块补 `lcsc`；新增 5 个块（radio_nrf24 / sensor_i2c / camera_usb / servo_out / motor_esc）覆盖 6 个角色 |
+| `design/assemble_blocks.py` | `ROLE_BLOCKS` 加 radio/sensor/camera/gimbal_pan/gimbal_tilt/motor |
+| `scripts/check_p66.py` | 7 项（新增）|
+| `docs/runbook.md` | 新增 §28 |
+| `docs/roadmap.md` | 现状表补一行 |
+| `AGENTS.md` | 指针扩到 §21–§28 |
+
+### 实测（示例一体-全链-v3）
+
+```
+装配：43 件 / 35 网 / 11 块；9 角色 uncovered=0；板框 60×66
+V2：无 error（连接器贴边修好）
+约束：14 pass / 1 fail（预算 130.9W > 60W）
+LCSC：43/43 件有编号；23 个唯一编号全部能在立创解析
+```
+
+### 诚实边界
+
+* 11 个块仍全是 unverified
+* **端到端 emit 未验证**：v3 跑 emit 超 10 分钟无输出，已取消，无 `emit.json`
+* 封装关联异步（同一编号 `footprintUuid` 会跳），"能解析"≠"一定能装"
+* uart/i2c/spi 仍计 uncovered 接口（总线不需要器件块）
+
 ---
 
 ## 后续

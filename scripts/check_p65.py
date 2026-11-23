@@ -82,14 +82,14 @@ def part_layout() -> None:
 
     # 板框不够时 assemble 自动扩，扩完必须过 validate
     req = Req(id="p65", title="t",
-              roles=["mcu", "power_in", "radio"],
+              roles=["mcu", "power_in", "radio", "sensor", "camera", "motor"],
               interfaces=[{"a": "mcu", "b": "radio", "protocol": "can"}],
               constraints={"io_voltage_v": 3.3}, numbers={}, notes="")
     result = assemble_module.assemble(req, board_size=(60.0, 40.0))
     counts = result.get("counts") or {}
     design = result.get("design")
     check("A2. 放不下时**板框按内容扩**，扩完过 validate",
-          result.get("status") == "partial"
+          result.get("status") in ("ok", "partial")
           and counts.get("board_auto_sized") is True
           and counts.get("board_mm", {}).get("h", 0) > 40
           and not design.validate(),

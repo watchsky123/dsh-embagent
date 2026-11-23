@@ -1,0 +1,155 @@
+{
+ "id": "sensor_i2c",
+ "title": "I2C 传感器座（4P + 上拉）",
+ "family": "sensor",
+ "params": {
+  "bus": "i2c"
+ },
+ "parts": [
+  {
+   "key": "j_sensor",
+   "kind": "header_4p",
+   "label": "I2C 传感器座",
+   "ref_prefix": "J",
+   "pins": [
+    "VCC",
+    "GND",
+    "SCL",
+    "SDA"
+   ],
+   "size_mm": {
+    "w": 10.16,
+    "h": 2.54,
+    "d": 8.5
+   },
+   "role": "connector",
+   "lcsc": "C9135"
+  },
+  {
+   "key": "r_scl",
+   "kind": "resistor",
+   "label": "4k7",
+   "ref_prefix": "R",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.45
+   },
+   "role": "pullup",
+   "lcsc": "C23162"
+  },
+  {
+   "key": "r_sda",
+   "kind": "resistor",
+   "label": "4k7",
+   "ref_prefix": "R",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.45
+   },
+   "role": "pullup",
+   "lcsc": "C23162"
+  },
+  {
+   "key": "c_byp",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling",
+   "lcsc": "C14663"
+  }
+ ],
+ "nets": [
+  {
+   "net": "3V3",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "j_sensor",
+     "pin": "VCC"
+    },
+    {
+     "key": "r_scl",
+     "pin": "2"
+    },
+    {
+     "key": "r_sda",
+     "pin": "2"
+    },
+    {
+     "key": "c_byp",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "j_sensor",
+     "pin": "GND"
+    },
+    {
+     "key": "c_byp",
+     "pin": "2"
+    }
+   ]
+  },
+  {
+   "net": "I2C_SCL",
+   "global": false,
+   "class": "i2c",
+   "pins": [
+    {
+     "key": "j_sensor",
+     "pin": "SCL"
+    },
+    {
+     "key": "r_scl",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "I2C_SDA",
+   "global": false,
+   "class": "i2c",
+   "pins": [
+    {
+     "key": "j_sensor",
+     "pin": "SDA"
+    },
+    {
+     "key": "r_sda",
+     "pin": "1"
+    }
+   ]
+  }
+ ],
+ "rules": [
+  "上拉 4.7k（100 kHz）；400 kHz 时按总线电容重算",
+  "传感器座靠近 MCU"
+ ],
+ "verified_by": []
+}

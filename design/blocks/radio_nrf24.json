@@ -1,0 +1,184 @@
+{
+ "id": "radio_nrf24",
+ "title": "nRF24L01 模块座（2×4 2.54，模块插板）",
+ "family": "radio",
+ "params": {
+  "band": "2.4G"
+ },
+ "parts": [
+  {
+   "key": "j_radio",
+   "kind": "header_2x4",
+   "label": "nRF24 模块座",
+   "ref_prefix": "J",
+   "pins": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8"
+   ],
+   "size_mm": {
+    "w": 10.16,
+    "h": 5.08,
+    "d": 8.5
+   },
+   "role": "connector",
+   "lcsc": "C55829516"
+  },
+  {
+   "key": "c_vcc",
+   "kind": "capacitor",
+   "label": "10uF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 2.0,
+    "h": 1.25,
+    "d": 1.0
+   },
+   "role": "bulk",
+   "lcsc": "C89831"
+  },
+  {
+   "key": "c_byp",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling",
+   "lcsc": "C14663"
+  }
+ ],
+ "nets": [
+  {
+   "net": "3V3",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "j_radio",
+     "pin": "2"
+    },
+    {
+     "key": "c_vcc",
+     "pin": "1"
+    },
+    {
+     "key": "c_byp",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "j_radio",
+     "pin": "1"
+    },
+    {
+     "key": "c_vcc",
+     "pin": "2"
+    },
+    {
+     "key": "c_byp",
+     "pin": "2"
+    }
+   ]
+  },
+  {
+   "net": "SPI_CE",
+   "global": false,
+   "class": "spi",
+   "pins": [
+    {
+     "key": "j_radio",
+     "pin": "3"
+    }
+   ],
+   "port": true
+  },
+  {
+   "net": "SPI_CSN",
+   "global": false,
+   "class": "spi",
+   "pins": [
+    {
+     "key": "j_radio",
+     "pin": "4"
+    }
+   ],
+   "port": true
+  },
+  {
+   "net": "SPI_SCK",
+   "global": false,
+   "class": "spi",
+   "pins": [
+    {
+     "key": "j_radio",
+     "pin": "5"
+    }
+   ],
+   "port": true
+  },
+  {
+   "net": "SPI_MOSI",
+   "global": false,
+   "class": "spi",
+   "pins": [
+    {
+     "key": "j_radio",
+     "pin": "6"
+    }
+   ],
+   "port": true
+  },
+  {
+   "net": "SPI_MISO",
+   "global": false,
+   "class": "spi",
+   "pins": [
+    {
+     "key": "j_radio",
+     "pin": "7"
+    }
+   ],
+   "port": true
+  },
+  {
+   "net": "SPI_IRQ",
+   "global": false,
+   "class": "spi",
+   "pins": [
+    {
+     "key": "j_radio",
+     "pin": "8"
+    }
+   ],
+   "port": true
+  }
+ ],
+ "rules": [
+  "模块峰值电流 ~100 mA（发射时），去耦 ≥10µF",
+  "SPI 线长 >10 cm 时串 22Ω"
+ ],
+ "verified_by": []
+}

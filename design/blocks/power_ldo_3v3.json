@@ -36,11 +36,12 @@
     "2"
    ],
    "size_mm": {
-    "w": 3.2,
-    "h": 1.6,
-    "d": 1.6
+    "w": 2.0,
+    "h": 1.25,
+    "d": 1.0
    },
-   "role": "decoupling"
+   "role": "decoupling",
+   "lcsc": "C15850"
   },
   {
    "key": "cout",
@@ -52,11 +53,12 @@
     "2"
    ],
    "size_mm": {
-    "w": 3.2,
-    "h": 1.6,
-    "d": 1.6
+    "w": 2.0,
+    "h": 1.25,
+    "d": 1.0
    },
-   "role": "decoupling"
+   "role": "decoupling",
+   "lcsc": "C76637"
   },
   {
    "key": "cbyp",
@@ -72,7 +74,8 @@
     "h": 0.8,
     "d": 0.8
    },
-   "role": "decoupling"
+   "role": "decoupling",
+   "lcsc": "C14663"
   }
  ],
  "nets": [

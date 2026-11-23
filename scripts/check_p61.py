@@ -70,16 +70,18 @@ def part_library() -> None:
     bad = {block_id: blocks_module.validate(block)
            for block_id, block in library.items()
            if blocks_module.validate(block)}
-    check("1a. 6 个块都在、结构全过（≥2 零件、≥2 网）",
-          len(library) == 6 and not bad
+    core = {"power_ldo_3v3", "power_dcdc_5v", "mcu_support",
+            "usb_device", "can_transceiver", "decoupling_bank"}
+    check("1a. 原有 6 个块都在、结构全过（≥2 零件、≥2 网）",
+          core <= set(library) and not bad
           and all(len(block.get("parts") or []) >= 2
                   and len(block.get("nets") or []) >= 2 for block in library.values()),
-          f"blocks={sorted(library)} bad={bad}")
+          f"blocks={len(library)} bad={bad}")
 
     rows = [{"block": block_id, "verified": bool(block.get("verified_by") or [])}
             for block_id, block in library.items()]
     verified = [row for row in rows if row["verified"]]
-    check("1b. **没有块被标成已验证**（verified_by 全空 → unverified=6）",
+    check("1b. **没有块被标成已验证**（verified_by 全空）",
           len(verified) == 0, f"verified={len(verified)} / {len(rows)}")
 
 
@@ -176,8 +178,8 @@ def part_cli() -> None:
             "compose", "p61-cli",
             "--plan=PWR1:power_ldo_3v3,MCU1:mcu_support,USB1:usb_device",
             "--write"])
-        check("1k. CLI：list=6 / validate 全过 / compose --write 落到 design.json",
-              listed["counts"]["blocks"] == 6 and valid["status"] == "ok"
+        check("1k. CLI：list≥6 / validate 全过 / compose --write 落到 design.json",
+              listed["counts"]["blocks"] >= 6 and valid["status"] == "ok"
               and composed["status"] == "ok"
               and len(store.load().parts) == 19,
               f"list={listed['counts']} compose={composed.get('counts')}")

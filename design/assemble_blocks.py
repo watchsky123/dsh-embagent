@@ -45,6 +45,13 @@ ROLE_BLOCKS: dict[str, list[tuple[str, str]]] = {
     "mcu": [("MCU1", "mcu_support")],
     "power_in": [("PWR_DCDC", "power_dcdc_5v"), ("PWR_LDO", "power_ldo_3v3")],
     "servo_power": [("PWR_LDO", "power_ldo_3v3")],
+    # P66：6 个新角色 → 板侧接口块（模块/舵机/电调是外接件，板上是座子）
+    "radio": [("RADIO1", "radio_nrf24")],
+    "sensor": [("SENS1", "sensor_i2c")],
+    "camera": [("CAM1", "camera_usb")],
+    "gimbal_pan": [("PAN1", "servo_out")],
+    "gimbal_tilt": [("TILT1", "servo_out")],
+    "motor": [("MOTOR1", "motor_esc")],
 }
 
 #: 接口协议 → 块实例（需要独立器件的才映射；纯总线不占块）。

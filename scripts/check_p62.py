@@ -142,12 +142,12 @@ def part_assemble() -> None:
     result = assemble_module.assemble(req)
     counts = result.get("counts") or {}
     uncovered = {(row.get("role") or row.get("protocol")) for row in result.get("uncovered") or []}
-    check("A4-1. 装配：23 件 / 17 网 / 4 块（mcu + dcdc + ldo + usb）",
-          result["status"] == "partial" and counts.get("parts") == 23
-          and counts.get("nets") == 17 and counts.get("blocks") == 4,
+    check("A4-1. 装配：27 件 / 19 网 / 5 块（mcu + dcdc + ldo + sensor + usb）",
+          result["status"] == "partial" and counts.get("parts") == 27
+          and counts.get("nets") == 19 and counts.get("blocks") == 5,
           str(counts))
-    check("A4-2. **块外角色不造占位件**：sensor 与 i2c 进 uncovered",
-          {"sensor", "i2c"} <= uncovered,
+    check("A4-2. **块外角色不造占位件**：i2c 接口进 uncovered（sensor 已有块）",
+          "i2c" in uncovered,
           str(result.get("uncovered")))
     design = result["design"]
     check("A4-3. 装配结果过 validate()，V0 阶梯 pass",
@@ -156,8 +156,8 @@ def part_assemble() -> None:
 
     no_usb = _req(interfaces=[{"a": "mcu", "b": "sensor", "protocol": "i2c"}])
     smaller = assemble_module.assemble(no_usb)
-    check("A4-4. **件数随块增长**：去掉 usb 接口 → 18 件（少 5 件 usb 块）",
-          (smaller.get("counts") or {}).get("parts") == 18,
+    check("A4-4. **件数随块增长**：去掉 usb 接口 → 22 件（mcu+dcdc+ldo+sensor）",
+          (smaller.get("counts") or {}).get("parts") == 22,
           str((smaller.get("counts") or {}).get("parts")))
 
     legacy_req = _req(roles=["mcu", "sensor"],
@@ -209,14 +209,16 @@ def part_assemble_cli() -> None:
 def part_constraints() -> None:
     result = assemble_module.assemble(_req())
     design = result["design"]
-    spec = result["spec"]
-    payload = constraints_module.derive(design, spec=spec, req=_req())
+    # 用没有对应网表的接口（uart）验 unknown；i2c 现在有 sensor 块
+    uart_req = _req(interfaces=[{"a": "mcu", "b": "radio", "protocol": "uart"}])
+    spec = spec_module.build(uart_req)
+    payload = constraints_module.derive(design, spec=spec, req=uart_req)
     counts = payload.get("counts") or {}
     check("A5-1. 约束账本：规则 ≥ 网表数，求值覆盖去耦/预算/接口",
           counts.get("rules", 0) >= len(design.nets)
           and counts.get("evaluated", 0) >= 5 and payload["status"] == "ok",
           str(counts))
-    check("A5-2. 接口未知：i2c 契约在 spec 里、网表里没有 → **unknown 不是 pass**",
+    check("A5-2. 接口未知：uart 契约在 spec 里、网表里没有 → **unknown 不是 pass**",
           any(row["id"].startswith("iface.") and row["status"] == "unknown"
               for row in payload["results"]),
           str([row["id"] for row in payload["results"] if row["status"] == "unknown"]))

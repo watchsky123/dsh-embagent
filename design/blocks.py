@@ -50,15 +50,62 @@ _ORGIN_MM = 5.0
 _GAP_MM = 2.0
 
 
+def _pack_parts(parts: list[Any], max_x_mm: float,
+                max_y_mm: float) -> tuple[list[tuple[float, float]], bool]:
+    """**连接器贴底边**，其余按尺寸行式排。返回 `(位置列表, fits)`。
+
+    `space.connector_edge` 要求连接器（`role == "connector"`）距板边 ≤3 mm。
+    先在最下面一行排连接器（y=1 mm），其余从它的行高之下开始排。
+    """
+    connector = [part for part in parts
+                 if str(getattr(part, "role", "")).lower() == "connector"]
+    others = [part for part in parts if part not in connector]
+    positions: dict[str, tuple[float, float]] = {}
+    fits = True
+    # 连接器分两段摆：**底边一行**（x 走完）→ **左边一列**（y 往下）。
+    # 每颗都贴着边（底边 1 mm / 左边 1 mm），否则 `space.connector_edge` 会拦。
+    limit_x = max_x_mm if max_x_mm > 0 else 1e9
+    x, y, row_h = 1.0, 1.0, 0.0
+    column: list[Any] = []
+    for part in connector:
+        width = float(part.size_mm.get("w") or 0)
+        height = float(part.size_mm.get("h") or 0)
+        if x + width > limit_x - 1.0:
+            column.append(part)
+            continue
+        positions[part.ref] = (x, y)
+        x += width + _GAP_MM
+        row_h = max(row_h, height)
+    column_y = 1.0 + row_h + _GAP_MM
+    for part in column:
+        height = float(part.size_mm.get("h") or 0)
+        positions[part.ref] = (1.0, column_y)
+        column_y += height + _GAP_MM
+    start_y = max(y + row_h, column_y) + _GAP_MM
+    sizes = [(float(part.size_mm.get("w") or 0), float(part.size_mm.get("h") or 0))
+             for part in others]
+    rest, rest_fits = _pack(sizes, max_x_mm, max_y_mm, start_y=start_y)
+    for part, position in zip(others, rest):
+        positions[part.ref] = position
+    limit_y = max_y_mm if max_y_mm > 0 else 1e9
+    for part, (px, py) in positions.items():
+        height = float(next(p for p in parts if p.ref == part).size_mm.get("h") or 0)
+        if py + height > limit_y + 0.01:
+            fits = False
+    return [positions[part.ref] for part in parts], fits and rest_fits
+
+
 def _pack(sizes: list[tuple[float, float]], max_x_mm: float,
-          max_y_mm: float) -> tuple[list[tuple[float, float]], bool]:
+          max_y_mm: float, *, start_y: float | None = None
+          ) -> tuple[list[tuple[float, float]], bool]:
     """行式排布：`(w,h)` 列表 → `(x,y)` 左下角。返回 `(positions, fits)`。
 
     行内按 `_GAP_MM` 间隔，行高取该行最高件；到板宽折行。
     `fits=False` 表示按板高放不下（调用方要如实报出来，不能假装放好了）。
     """
     positions: list[tuple[float, float]] = []
-    x = y = _ORGIN_MM
+    x = _ORGIN_MM
+    y = _ORGIN_MM if start_y is None else float(start_y)
     row_h = 0.0
     fits = True
     limit_x = max_x_mm if max_x_mm > 0 else 1e9
@@ -268,10 +315,9 @@ def compose(plan: list[dict[str, str]], *, board_id: str = "",
                        "layout_fits": bool(got.get("layout_fits", True)),
                        "verified": bool(got["verified_by"])})
     # **全局重排**：`instantiate` 是按块各自从原点排的，组合后会整块叠在一起
-    # （实测 U1×U2 7×7 完全重合）。这里按**所有零件**统一排一次。
-    sizes = [(float(part.size_mm.get("w") or 0), float(part.size_mm.get("h") or 0))
-             for part in parts]
-    positions, fits = _pack(sizes, max_x_mm, max_y_mm)
+    # （实测 U1×U2 7×7 完全重合）。这里按**所有零件**统一排一次；
+    # 连接器先贴底边（`space.connector_edge` 要求 ≤3 mm）。
+    positions, fits = _pack_parts(parts, max_x_mm, max_y_mm)
     for part, (x, y) in zip(parts, positions):
         part.placement.x_mm = x
         part.placement.y_mm = y
