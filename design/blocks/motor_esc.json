@@ -21,7 +21,11 @@
     "d": 10.0
    },
    "role": "connector",
-   "lcsc": "C98732"
+   "lcsc": "C98732",
+   "pin_map": {
+    "P": "1",
+    "N": "2"
+   }
   },
   {
    "key": "j_sig",
@@ -39,7 +43,12 @@
     "d": 8.5
    },
    "role": "connector",
-   "lcsc": "C33344"
+   "lcsc": "C9135",
+   "pin_map": {
+    "PWM": "1",
+    "5V": "2",
+    "GND": "3"
+   }
   },
   {
    "key": "c_bat",

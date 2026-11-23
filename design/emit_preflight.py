@@ -24,13 +24,27 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Callable
 
-__all__ = ["FILE", "check", "describe"]
+__all__ = ["FILE", "PINS_FILE", "load_pin_table", "check", "describe"]
 
 FILE = "preflight.json"
 
 Lookup = Callable[[list[str]], list[dict[str, Any]]]
+
+#: 符号引脚名表（LCSC → 引脚名）。**实测建表**：真实工程的 PCB 网表 `pinInfoMap`。
+PINS_FILE = Path(__file__).with_name("symbol_pins.json")
+
+
+def load_pin_table() -> dict[str, list[str]]:
+    """读 `symbol_pins.json`。没有表 → 空（预检记 unverified，不假装知道）。"""
+    try:
+        payload = json.loads(PINS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    table = payload.get("pins") if isinstance(payload, dict) else None
+    return {str(k): [str(x) for x in v] for k, v in (table or {}).items()}
 
 
 def _eda_lookup(codes: list[str], *, attempts: int = 3) -> list[dict[str, Any]]:
@@ -65,7 +79,8 @@ return out;
 
 
 def check(design: Any, *, lookup: Lookup | None = None,
-          strict_footprint: bool = False) -> dict[str, Any]:
+          strict_footprint: bool = False,
+          pin_table: dict[str, list[str]] | None = None) -> dict[str, Any]:
     """按元件逐条判：有编号 / 能解析 / 有封装。**不写盘**。"""
     rows: list[dict[str, Any]] = []
     missing_code = [part.ref for part in design.parts if not str(part.lcsc or "")]
@@ -103,7 +118,26 @@ def check(design: Any, *, lookup: Lookup | None = None,
         elif not entry["footprint"]:
             no_footprint.append(entry)
 
-    if missing_code:
+    # -- 第三层：**引脚名**是否真在符号里（实测表） ----------------
+    table = pin_table if pin_table is not None else load_pin_table()
+    pin_missing: list[dict[str, Any]] = []
+    unverified_pins: list[str] = []
+    for part in design.parts:
+        code = str(part.lcsc or "")
+        names = table.get(code)
+        if not names:
+            unverified_pins.append(part.ref)
+            continue
+        missing = sorted({str(pin) for pin in part.pins} - set(names))
+        if missing:
+            pin_missing.append({"ref": part.ref, "lcsc": code,
+                                "missing": missing,
+                                "symbol_pins": len(names)})
+    if pin_missing:
+        status = "not_ready"
+        reason = (f"{len(pin_missing)} 件有引脚在符号里不存在"
+                  f"（例：{pin_missing[0]['ref']}.{pin_missing[0]['missing'][0]}）")
+    elif missing_code:
         status = "not_ready"
         reason = f"{len(missing_code)} 件没有 lcsc/mpn（emit 会报 no_symbol）"
     elif unresolved:
@@ -124,13 +158,18 @@ def check(design: Any, *, lookup: Lookup | None = None,
                    "codes": len(codes), "checked": len(rows),
                    "unresolved": len(unresolved),
                    "no_footprint": len(no_footprint),
-                   "missing_code": len(missing_code)},
+                   "missing_code": len(missing_code),
+                   "pin_missing": len(pin_missing),
+                   "unverified_pins": len(unverified_pins)},
         "missing_code": missing_code,
         "unresolved": unresolved,
         "no_footprint": no_footprint,
+        "pin_missing": pin_missing,
+        "unverified_pins": unverified_pins,
         "parts": rows,
         "strict_footprint": bool(strict_footprint),
-        "basis": "lib_Device.getByLcscIds（逐编号；3 轮等缓存）",
+        "basis": ("lib_Device.getByLcscIds（逐编号；3 轮等缓存）+ "
+                  "symbol_pins.json（真实 PCB 网表建的引脚名表）"),
         "note": ("解析不到 = 硬拦；无封装关联默认只 warning —— "
                  "`footprintUuid` 会先空后有（P58 实测）"),
     }

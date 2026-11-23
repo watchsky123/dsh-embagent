@@ -22,7 +22,12 @@
     "d": 8.5
    },
    "role": "connector",
-   "lcsc": "C33344"
+   "lcsc": "C9135",
+   "pin_map": {
+    "PWM": "1",
+    "VCC": "2",
+    "GND": "3"
+   }
   },
   {
    "key": "c_byp",

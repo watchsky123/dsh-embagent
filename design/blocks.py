@@ -224,6 +224,11 @@ def instantiate(block: dict[str, Any], instance: str, *,
     counters: dict[str, int] = {}
     parts: list[Part] = []
     specs = [spec for spec in (block.get("parts") or []) if isinstance(spec, dict)]
+    # 逻辑脚名 → 符号真实引脚名（数字焊盘）。没写 pin_map 的块保持原样。
+    pin_maps: dict[str, dict[str, str]] = {
+        str(spec.get("key")): {str(k): str(v) for k, v in
+                               (spec.get("pin_map") or {}).items()}
+        for spec in specs}
     sizes = [(float((spec.get("size_mm") or {}).get("w") or 0),
               float((spec.get("size_mm") or {}).get("h") or 0)) for spec in specs]
     positions, fits = _pack(sizes, max_x_mm, max_y_mm)
@@ -243,7 +248,8 @@ def instantiate(block: dict[str, Any], instance: str, *,
                      "d": float(size.get("d") or 0)},
             physical_source="catalog",
             lcsc=str(spec.get("lcsc") or "") or None,
-            pins=[str(pin) for pin in spec.get("pins") or []],
+            pins=[(pin_maps.get(str(spec.get("key"))) or {}).get(str(pin), str(pin))
+                  for pin in spec.get("pins") or []],
             notes=[f"block={block.get('id')} instance={instance} key={spec['key']}"],
             unit=f"block:{instance}",
             placement=Placement(x_mm=positions[index][0], y_mm=positions[index][1],
@@ -261,7 +267,9 @@ def instantiate(block: dict[str, Any], instance: str, *,
             "block": f"{block.get('id')}#{instance}",
             "level": "block",
             "source": "catalog",
-            "pins": [{"ref": key_ref[str(pin["key"])], "pin": str(pin.get("pin") or "")}
+            "pins": [{"ref": key_ref[str(pin["key"])],
+                      "pin": (pin_maps.get(str(pin["key"])) or {}).get(
+                          str(pin.get("pin") or ""), str(pin.get("pin") or ""))}
                      for pin in spec.get("pins") or []],
         })
     return {"block": block.get("id"), "instance": instance,

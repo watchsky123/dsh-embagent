@@ -25,7 +25,12 @@
     "d": 10.5
    },
    "role": "regulator",
-   "lcsc": "C234060"
+   "lcsc": "C234060",
+   "pin_map": {
+    "VIN": "1",
+    "GND": "2",
+    "VOUT": "3"
+   }
   },
   {
    "key": "cin",

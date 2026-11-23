@@ -23,7 +23,13 @@
     "d": 8.5
    },
    "role": "connector",
-   "lcsc": "C9135"
+   "lcsc": "C9135",
+   "pin_map": {
+    "VCC": "1",
+    "GND": "2",
+    "SCL": "3",
+    "SDA": "4"
+   }
   },
   {
    "key": "r_scl",

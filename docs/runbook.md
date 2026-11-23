@@ -1583,3 +1583,52 @@ v3 实测：43 件 / 23 编号 / 全部可解析；2 条暂无封装（C89811 �
 * `footprintUuid` 会跳（同一编号 3 次查询结果可能不同）——strict 模式会误拦，
   只在缓存稳定时用
 * 无封装 warning 不挡 emit，但装到 PCB 时仍可能缺焊盘
+
+## 30. P68：块引脚用符号名 + 预检查引脚存在性
+
+### 30.1 27 个 `wire:pin_not_found` 的根因
+
+块里连接器/模块的引脚写的是**逻辑名**（`VCC/GND/PWM/P/N`），而 EDA 符号用
+**数字焊盘**（`1/2/3`）。电阻电容恰好写的是 `1/2`，所以只有 8 个连接器/模块
+的 27 个脚失败。
+
+**修法**：块零件加 `pin_map`（逻辑名 → 焊盘号），`instantiate` 同时映射
+`Part.pins` 与网表引脚。块 JSON 仍可读（逻辑名），设计里是焊盘号。
+
+实测（示例一体-新2，同一份需求）：
+
+```
+schematic：101 → 130 个引脚接线；unresolved 27 → 0
+```
+
+### 30.2 引脚名表：`design/symbol_pins.json`
+
+**不是手编**：打开真实工程 `hwv-design-9` 的 PCB 文档，读
+`pcb_Net.getNetlist('JLCEDA').components[].pinInfoMap` 的键，把
+`位号 → lcsc` 对回去，得到 23 个编号的焊盘名表。
+
+**为什么不用原理图网表**：`sch_Netlist.getNetlist()` 读回来是**陈旧的**
+（手册 R2），刚写完常常是空串。
+
+### 30.3 预检第三层：引脚存在性
+
+`emit_preflight.check()` 现在三层：
+
+1. 有 lcsc（硬拦）
+2. `getByLcscIds` 能解析（硬拦）
+3. **设计引脚 ⊆ 符号引脚名**（硬拦，查 `symbol_pins.json`）
+   * 编号不在表里 → `unverified_pins`（warning，不假装知道）
+   * `--strict-footprint` 仍只影响第 2.5 层（封装关联）
+
+实测：新2 预检 `pin_missing=0 / unverified_pins=0`；`check_p68` 用合成夹具
+证明"引脚不在表里 → not_ready"。
+
+### 30.4 仍未闭环：PCB 导入 0 个元件
+
+新2 的 emit：project ok / schematic ok（43 器件、130 引线）/ **pcb 报 ok
+但 `components_on_pcb=0`**，parity `checked=0`。隔 2 分钟重开工程仍是 0，
+所以不是"读到得早"——`importChanges` 这次没导入任何器件。
+
+同一份代码此前（v3）导入过 43 件；差别是这次只跑三段、schematic 的保存
+提交可能还没完成就调了 import。下一步：import 后**轮询到元件数 > 0**，
+或按器件数放大 settle，失败就 `not_ready`（现在它错误地报了 ok）。

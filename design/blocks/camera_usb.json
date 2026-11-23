@@ -23,7 +23,13 @@
     "d": 8.5
    },
    "role": "connector",
-   "lcsc": "C9135"
+   "lcsc": "C9135",
+   "pin_map": {
+    "VBUS": "1",
+    "D-": "2",
+    "D+": "3",
+    "GND": "4"
+   }
   },
   {
    "key": "d_esd",

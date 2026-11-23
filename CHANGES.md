@@ -3873,6 +3873,35 @@ check_p67：预检不过时 emit 调用次数 = 0
 `emit` 认 `--jobs=project`，不认 `--jobs project`；空格形式被忽略 → 跑全部
 8 段。10 分钟不是卡住，是正常耗时。AGENTS §3.12 已记过同一形状。
 
+## P68 — 块引脚用符号名 + 预检引脚存在性（2026-11-23）
+
+> 27 个 `wire:pin_not_found` 的根因：逻辑名 vs 数字焊盘。
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design/blocks.py` | 新增 `pin_map` 支持：Part.pins 与网表引脚同时映射 |
+| `design/blocks/*.json` | 5 个连接器/模块加 `pin_map`；servo/motor 的 3P 改 C9135；LDO 加 tab 脚、CAN 加 S 脚 |
+| `design/symbol_pins.json` | **实测表**：真实 PCB 网表 `pinInfoMap` → 23 个编号的焊盘名 |
+| `design/emit_preflight.py` | 第三层：设计引脚 ⊆ 符号引脚名；新增 `pin_missing`/`unverified_pins` |
+| `scripts/check_p68.py` | 8 项（新增）|
+| `docs/runbook.md` | 新增 §30 |
+| `AGENTS.md` | 指针扩到 §21–§30 |
+
+### 实测
+
+```
+示例一体-新2：schematic 130 引脚（+29）、unresolved 27 → 0
+预检：pin_missing 0 / unverified_pins 0（43/43 件、22 编号）
+```
+
+### 仍未闭环
+
+同一次 emit：pcb 报 ok 但 `components_on_pcb=0`、parity `checked=0`；
+隔 2 分钟重开仍 0 → `importChanges` 这次没导入。报告里已写成待办：
+import 后轮询元件数，失败就 `not_ready`（现在会误报 ok）。
+
 ---
 
 ## 后续
