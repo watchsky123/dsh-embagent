@@ -1632,3 +1632,43 @@ schematic：101 → 130 个引脚接线；unresolved 27 → 0
 同一份代码此前（v3）导入过 43 件；差别是这次只跑三段、schematic 的保存
 提交可能还没完成就调了 import。下一步：import 后**轮询到元件数 > 0**，
 或按器件数放大 settle，失败就 `not_ready`（现在它错误地报了 ok）。
+
+## 31. P69：PCB 导入「没导全」不许报 ok
+
+### 31.1 症状与根因
+
+示例一体-新2：schematic 43 器件 / 130 引线，`pcb` 段报 **ok** 但
+`components_on_pcb=0`、parity `checked=0`。空板被当成了通过（AGENTS §0.1）。
+
+`importChanges` 返回 true 只代表"调用成功"；图元是**陆续落地**的。
+旧代码等 20 秒（40×500ms）就继续，43 件的板偶发"只到一半"甚至 0 件，
+而收尾无条件 `job.status = "ok"` 把结果盖住。
+
+### 31.2 修法（两条）
+
+1. **轮询按件数放大**：`_poll_tries(need) = 40 + min(40, need)`
+   （20 秒起，43 件 → 40 秒）
+2. **硬判据**：`_import_verdict(on_board, need)`
+   * `0/N` → `not_ready`（"importChanges 返回 true 但 0 个元件"）
+   * `x/N` → `not_ready`（"只有 x/N，导入没导全"）
+   * `N/N` → `ok`
+   * 收尾再核一次 `comps_total < expected_total`，并**保留更具体的那条 note**
+     （哪一板 x/N 比总数更有用）
+
+`counts` 里新增 `expected_on_pcb`，报告能直接看出"期望 vs 实际"。
+
+### 31.3 实测
+
+```
+_poll_tries(3)=43、_poll_tries(43)=80
+_import_verdict: 0/43 → not_ready；20/43 → not_ready；43/43 → ok
+fake session：导入 0 件 → pcb not_ready（note「0/2」）
+              导入一半 → not_ready（「1/2」）
+              全导入   → 不因"导入不足"报错
+```
+
+### 31.4 仍未做的事
+
+**没有根因**为什么那次 import 导入了 0 件（可能是保存提交的竞态，也可能
+是文档激活问题）。这两条修的是"不许把没导入当成 ok"，不是"保证一定导入"。
+要定位还需在失败现场抓 `docPoll.docType` / `steps`。

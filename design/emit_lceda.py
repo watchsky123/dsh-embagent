@@ -1097,6 +1097,28 @@ def _pcb_payload(design: DesignModel, parts: list[Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _poll_tries(need: int) -> int:
+    """导入轮询次数：**按件数放大**（20 秒起，最多 40 秒）。
+
+    importChanges 的图元是陆续落地的（实测 12 个里偶尔有一个 >8 秒）；
+    43 件板固定等 20 秒会偶发"只到 30 件"就停。
+    """
+    return 40 + min(40, max(0, int(need)))
+
+
+def _import_verdict(on_board: int, need: int) -> dict[str, Any]:
+    """导入后件数够不够。**不够就不是 ok**（空板/半板不能当网表证据）。"""
+    if need <= 0:
+        return {"status": "ok", "note": ""}
+    if int(on_board) <= 0:
+        return {"status": "not_ready",
+                "note": f"importChanges 返回 true，但 PCB 上 **0/{need}** 个元件"}
+    if int(on_board) < int(need):
+        return {"status": "not_ready",
+                "note": f"PCB 上只有 {on_board}/{need} 个元件（导入没导全）"}
+    return {"status": "ok", "note": ""}
+
+
 def _run_pcb(session: lceda_mod.LcedaSession, design: DesignModel,
              report: EmitReport) -> None:
     """逐板：板框 + 导入 + **分批**摆放 + 收尾（保存/网表/DRC）。
@@ -1117,6 +1139,7 @@ def _run_pcb(session: lceda_mod.LcedaSession, design: DesignModel,
     total_boards = len(design_boards)
 
     comps_total = 0
+    expected_total = 0
     moved_total = 0
     missing_total: list[str] = []
     outline_ready = 0
@@ -1187,7 +1210,15 @@ def _run_pcb(session: lceda_mod.LcedaSession, design: DesignModel,
         parts = _parts_for_board(design, board.id or "", total_boards)
         payload = _pcb_payload(design, parts)
         ctx = _board_context(design, live, report)
-        ctx["expected"] = [p.ref for p in parts if p.ref in set(report.placed_refs)]
+        placed = [p.ref for p in parts if p.ref in set(report.placed_refs)]
+        ctx["expected"] = placed
+        # 期望落地件数：原理图这一板实际装上的；没有记录就按设计件数
+        # （宁可报 not_ready，也不把"没导入"当 ok —— AGENTS §0.1）。
+        placed_count = next((int(r.get("placed") or 0) for r in sch_rows
+                             if r.get("board") == live.get("name")), 0)
+        need = placed_count or len(placed) or len(parts)
+        expected_total += int(need)
+        ctx["pollTries"] = _poll_tries(need)
         # Bridge 通道的 `/execute` 有 **30 秒硬上限**：importChanges + 20 秒轮询
         # 会撞上限（实测直接 HTTP 500）。这里在 bridge 下降轮询预算到 8 秒，
         # 真没落地就靠下面的"补导一次"兜底。
@@ -1236,6 +1267,13 @@ def _run_pcb(session: lceda_mod.LcedaSession, design: DesignModel,
                 job.warnings.append(f"{live.get('name')}：补导失败 {exc}")
         row["componentsOnPcb"] = len(on_board)
         row["componentsFirstRead"] = int(value.get("componentCount") or 0)
+        verdict = _import_verdict(len(on_board), need)
+        if verdict["status"] != "ok":
+            row["status"] = "not_ready"
+            row["expected"] = int(need)
+            job.status = "not_ready"
+            job.note = f"{live.get('name')}：{verdict['note']}"
+            continue
         # **用补导之后的并集**：第一版用第一次读到的快照，补导成功后仍报 23/24
         # （而 missing_on_pcb 是 0，两处自相矛盾）。
         comps_total += len(on_board)
@@ -1299,6 +1337,7 @@ def _run_pcb(session: lceda_mod.LcedaSession, design: DesignModel,
         "boards_processed": len(per_board),
         "outline_ready": outline_ready,
         "components_on_pcb": comps_total,
+        "expected_on_pcb": expected_total,
         "moved": moved_total,
         "missing_on_pcb": len(missing_total),
         "move_batches": sum(int(b.get("batches") or 0) for b in per_board),
@@ -1372,6 +1411,18 @@ def _run_pcb(session: lceda_mod.LcedaSession, design: DesignModel,
     if moved_total == 0 and comps_total:
         job.status = "failed"
         job.note = "一个元件都没摆进板内（位号对不上或 modify 全失败）"
+        return
+    if expected_total and comps_total < expected_total:
+        job.status = "not_ready"
+        # **不要覆盖更具体的那条 note**（"哪一板 x/N"比总数更有用）
+        if not job.note:
+            job.note = (f"PCB 上只有 {comps_total}/{expected_total} 个元件"
+                        "（导入没导全）—— 网表不能当证据，不能报 ok")
+        job.counts["expected_on_pcb"] = expected_total
+        return
+    if any(str(row.get("status")) == "not_ready" for row in per_board):
+        job.status = "not_ready"
+        job.counts["expected_on_pcb"] = expected_total
         return
     job.status = "ok"
     job.note = (f"{comps_total} 个元件在 PCB 上，{moved_total} 个按设计坐标摆放；"

@@ -3902,6 +3902,32 @@ check_p67：预检不过时 emit 调用次数 = 0
 隔 2 分钟重开仍 0 → `importChanges` 这次没导入。报告里已写成待办：
 import 后轮询元件数，失败就 `not_ready`（现在会误报 ok）。
 
+## P69 — PCB 导入完整性（2026-11-23）
+
+> 症状：pcb 报 ok 但 `components_on_pcb=0`、parity `checked=0`（空板假绿）。
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design/emit_lceda.py` | `_poll_tries(need)=40+min(40,need)`；`_import_verdict` 三态；收尾再核 `comps_total < expected_total`；`counts.expected_on_pcb` |
+| `scripts/check_p69.py` | 9 项（新增，含 fake session 行为测试）|
+| `docs/runbook.md` | 新增 §31 |
+| `docs/roadmap.md` | 现状表补一行 |
+| `AGENTS.md` | 指针扩到 §21–§31 |
+
+### 实测
+
+```
+_poll_tries: 3→43、43→80（20s→40s）
+_import_verdict: 0/43 与 20/43 → not_ready；43/43 → ok
+fake session：0 件/一半 → pcb not_ready；全导入 → 不误报
+```
+
+### 边界
+
+**没有根因**"那次为什么导入 0 件"。本轮修的是**判据**：没导入就不是 ok。
+
 ---
 
 ## 后续

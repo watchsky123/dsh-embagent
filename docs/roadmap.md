@@ -61,6 +61,7 @@ L5 验证    → ladder/electrical/mech/fw/emit/audit/handoff；不达标回 L2/
 | 块库扩产（P66） | ✅ | 11 块 / 6 新角色 / 43 件装配；48 个块零件全有 LCSC（23 编号可解析）|
 | 发射预检（P67） | ✅ | 23 编号可解析；预检不过不建工程；`--jobs=project` 16–18s |
 | 引脚契约（P68） | ✅ | 块 `pin_map`；符号引脚表实测；预检三层（编号/器件/引脚）|
+| 导入完整性（P69） | ✅ | 轮询按件数放大；0/半件 → `not_ready`；`expected_on_pcb` |
 
 **上一轮（P60 / A1+A2）新增**：`spec`（块/契约/版本）、`bus`（总线级网表，
 引脚按 AF 表挑，凑不出就退回并标 `bus_partial`）。
