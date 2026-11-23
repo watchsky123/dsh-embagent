@@ -1536,3 +1536,50 @@ LCSC：43/43；23 个编号全部可解析
 * **端到端 emit 未验证**：对 v3 跑 emit 超过 10 分钟无输出，被取消，
   没有落 `emit.json` —— 这是"没验"，不是"通过"
 * `uart`/`i2c`/`spi` 仍计为 uncovered 接口（总线不需要专属器件块）
+
+## 29. P67：emit 分段定位 + 发射前预检
+
+### 29.1 那次“10 分钟无输出”的真因：**参数被静默忽略**
+
+`emit` 的 flag 是 `--key=value` 风格；我传的是空格：
+
+```
+emit <id> --jobs project,schematic,pcb --route none     # ← 不生效
+emit <id> --jobs=project --route=none                   # ← 正确
+```
+
+`cmd_emit` 只匹配 `--jobs=`，空格形式被忽略 → **跑了全部 8 段**（43 件），
+10 分钟是正常的。这就是 AGENTS §3.12 的老坑，换到 emit 上又踩一次。
+
+**判别**：报告里 `commands` 是不是你给的那几段。传 1 段却看到 8 段 → 参数没生效。
+
+**实测**：
+
+| 命令 | 耗时 | 结果 |
+|---|---|---|
+| `--jobs=project`（r3demo，4 件）| **69.8 s**（含 8 段全跑，反证）| project ok |
+| `--jobs=project`（v3，43 件）| **16.4 s** | project ok，`v3-3` |
+| `--jobs=project` + 预检（v3）| **17.7 s** | project ok，`v3-4` |
+
+### 29.2 发射前预检
+
+`emit-preflight <id> [--strict-footprint]`，或 `emit` 默认先跑（`--no-preflight` 关）：
+
+| 判据 | 不过 |
+|---|---|
+| 每件有 `lcsc`/`mpn` | `not_ready` 硬拦 |
+| `lcsc` 能 `getByLcscIds` 解析 | `not_ready` 硬拦（否则装不上符号）|
+| 解析出的器件有封装关联 | 默认 **warning**（`footprintUuid` 异步会跳）；`--strict-footprint` 才拦 |
+| 问不到系统库 | `not_ready` + **明说“没验”**（不是通过）|
+
+预检不过时 `cmd_emit` **直接返回、不建工程**（`check_p67` B1：emit 调用次数 = 0）。
+
+v3 实测：43 件 / 23 编号 / 全部可解析；2 条暂无封装（C89811 类电容、C22787），
+按 warning 放行。
+
+### 29.3 边界
+
+* 预检**不证明能装**：它只问系统库；符号/封装的引脚数、极性、坐标都没验
+* `footprintUuid` 会跳（同一编号 3 次查询结果可能不同）——strict 模式会误拦，
+  只在缓存稳定时用
+* 无封装 warning 不挡 emit，但装到 PCB 时仍可能缺焊盘

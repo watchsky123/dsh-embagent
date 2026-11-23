@@ -79,6 +79,7 @@ ARTIFACTS = (
     "graph.json",
     "pin_assign.json",
     "diff.json",
+    "preflight.json",
     "baseline.json",
     "maturity.json",
     "ADR/index.json",

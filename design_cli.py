@@ -3218,6 +3218,23 @@ def cmd_lceda(args: list[str]) -> dict[str, Any]:
             "findings": [f"未知动作 {action!r}；可用 status / probe / sessions / close"]}
 
 
+def cmd_emit_preflight(args: list[str]) -> dict[str, Any]:
+    """``emit-preflight <id> [--strict-footprint]`` —— 发射前预检（P67）。
+
+    只问系统库：每个 `lcsc` 能不能解析成器件、有没有封装关联。**不开工程**。
+    解析不到 → `not_ready`（硬拦）；没 lceda → `not_ready` 且说明"没验"。
+    """
+    from .design import emit_preflight
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **emit_preflight.describe()}
+    store, design = _load(args[0])
+    payload = emit_preflight.check(
+        design, strict_footprint="--strict-footprint" in args[1:])
+    store.write(emit_preflight.FILE, payload)
+    return {"project_id": args[0], **payload}
+
+
 def cmd_emit(args: list[str]) -> dict[str, Any]:
     """``emit <id> [--jobs a,b] [--route native|ours|none] [--reuse]
     [--save-dir DIR] [--max-parts N] [--name NAME]`` —— 发射到立创EDA。
@@ -3231,6 +3248,17 @@ def cmd_emit(args: list[str]) -> dict[str, Any]:
         return {"status": "ok", **emit_lceda.describe()}
 
     store, design = _load(args[0])
+    preflight = "--no-preflight" not in args[1:]
+    strict = "--strict-footprint" in args[1:]
+    if preflight:
+        from .design import emit_preflight
+
+        prep = emit_preflight.check(design, strict_footprint=strict)
+        store.write(emit_preflight.FILE, prep)
+        if prep["status"] != "ok":
+            return {"status": "not_ready", "project_id": args[0],
+                    "reason": f"预检未过，未发射：{prep['reason']}",
+                    "preflight": prep}
     jobs = list(emit_lceda.JOBS)
     route = "native"
     reuse = False
@@ -3268,6 +3296,9 @@ def cmd_emit(args: list[str]) -> dict[str, Any]:
                              channel=channel)
     payload = report.to_dict()
     payload["project_id"] = args[0]
+    if preflight:
+        payload["preflight"] = {key: prep.get(key) for key in
+                                ("status", "counts", "reason", "strict_footprint")}
     store.write("emit.json", payload)
     return payload
 
@@ -5087,6 +5118,7 @@ COMMANDS = {
     "serve": cmd_serve,
     "lceda": cmd_lceda,
     "emit": cmd_emit,
+    "emit-preflight": cmd_emit_preflight,
     "readback": cmd_readback,
     "parts-search": cmd_parts_search,
     "parts-enrich": cmd_parts_enrich,

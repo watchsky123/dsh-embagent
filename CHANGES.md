@@ -3844,6 +3844,35 @@ LCSC：43/43 件有编号；23 个唯一编号全部能在立创解析
 * 封装关联异步（同一编号 `footprintUuid` 会跳），"能解析"≠"一定能装"
 * uart/i2c/spi 仍计 uncovered 接口（总线不需要器件块）
 
+## P67 — emit 分段定位 + 发射前预检（2026-11-23）
+
+> 上一轮“10 分钟无输出”的根因不是工程创建，是**参数被静默忽略**。
+
+### 新增/修改
+
+| 文件 | 改动 |
+|---|---|
+| `design/emit_preflight.py` | 预检：lcsc 存在 / `getByLcscIds` 可解析 / 有封装关联（3 轮等缓存）|
+| `design_cli.py` | `emit-preflight <id>`；`emit` 默认先预检（`--no-preflight` 关、`--strict-footprint` 严）|
+| `design/store.py` | `ARTIFACTS` 加 `preflight.json` |
+| `scripts/check_p67.py` | 7 项（新增）|
+| `docs/runbook.md` | 新增 §29 |
+| `AGENTS.md` | 指针扩到 §21–§29 |
+
+### 实测
+
+```
+emit <id> --jobs=project        v3（43 件）16.4 s，project ok
+emit <id> --jobs=project + 预检  v3          17.7 s，project ok
+预检 v3：43/43 有编号；23 编号全部可解析；2 条暂无封装（warning）
+check_p67：预检不过时 emit 调用次数 = 0
+```
+
+### 根因（写进 runbook §29.1）
+
+`emit` 认 `--jobs=project`，不认 `--jobs project`；空格形式被忽略 → 跑全部
+8 段。10 分钟不是卡住，是正常耗时。AGENTS §3.12 已记过同一形状。
+
 ---
 
 ## 后续
