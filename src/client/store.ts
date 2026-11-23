@@ -482,6 +482,17 @@ export class HwStore {
     this.setPanelSection(section)
   }
 
+  /**
+   * 深链：切到某分区并选中一个元件（板级汇总 / 结论下钻用）。
+   *
+   * 与 `select()` 的区别：`select()` 对同一个 ref 是**切换**（再点取消），
+   * 而下钻必须保证"选中"这个结果，否则点同一条 finding 两次会把它取消。
+   */
+  openSection(section: SectionId, ref = ''): void {
+    this.showSection(section)
+    if (ref !== '' && ref !== this.state.selectedRef) this.select(ref)
+  }
+
   /** 展开/收起工作区设置块（工具栏与空态共用这一个状态）。 */
   setWorkspaceOpen(open: boolean): void { this.set({ workspaceOpen: open }) }
 

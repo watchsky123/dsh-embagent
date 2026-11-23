@@ -123,10 +123,10 @@ function fakeSnapshot(projectId, { errors = 0, openDecisions = 0 } = {}) {
   }
   const parts = [
     { ref: 'led1', kind: 'wokwi-led', label: 'LED', role: 'component',
-      x_px: 52.98 * 3.7751, y_px: 20, w_px: 18.88, h_px: 18.88, rotation_z: 0,
+      board_id: 'arduino-uno', x_px: 52.98 * 3.7751, y_px: 20, w_px: 18.88, h_px: 18.88, rotation_z: 0,
       physical_source: 'datasheet', size_mm: { w: 5, h: 5, d: 8.6 }, z_mm: 0 },
     { ref: 'r1', kind: 'wokwi-resistor', label: 'R', role: 'component',
-      x_px: 39.8, y_px: 40, w_px: 23.8, h_px: 8.7, rotation_z: 0,
+      board_id: 'arduino-uno', x_px: 39.8, y_px: 40, w_px: 23.8, h_px: 8.7, rotation_z: 0,
       physical_source: 'estimated', size_mm: { w: 6.3, h: 2.3, d: 2.3 }, z_mm: 0 },
   ]
   return {
@@ -584,6 +584,11 @@ if (htmlSplit === null) {
   check('估算色引用唯一强调色 --hwv-est',
     /--hwv-p-est-mark: var\(--hwv-est\)/.test(client))
   check('渲染含 hwv- 类名', cssOnly)
+  // P1：板级汇总 + 三态计数（缺数据要看得见，不能只显示"通过/失败"）。
+  check('板级汇总条在 DOM', htmlSplit.includes('hwv-boardstrip')
+    && htmlSplit.includes('hwv-board-chip'))
+  check('三态计数含「未验证」', htmlSplit.includes('未验证'))
+  check('板 chip 带件数', htmlSplit.includes('hwv-board-parts'))
 }
 
 // store.init 起了 2.5s 轮询定时器（浏览器里它负责随工具调用刷新面板）。

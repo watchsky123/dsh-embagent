@@ -118,6 +118,25 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
     }
   }, [state.panel, state.velxio])
 
+  // 键盘切分区：`[` / `]`。**输入框里不抢键**——在需求草稿里打方括号
+  // 是正常输入，不是快捷键。
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      const target = event.target as HTMLElement | null
+      if (target !== null
+          && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+            || target.isContentEditable)) return
+      if (event.key !== '[' && event.key !== ']') return
+      const list = SECTIONS[state.panel]
+      const at = list.indexOf(state.panelSection)
+      const next = list[(at + (event.key === ']' ? 1 : -1) + list.length) % list.length]
+      if (next !== undefined) store.showSection(next)
+      event.preventDefault()
+    }
+    globalThis.addEventListener('keydown', onKey)
+    return () => { globalThis.removeEventListener('keydown', onKey) }
+  }, [state.panel, state.panelSection])
+
   // DSH 当前工作目录随会话变化（用户切了项目文件夹）。**渲染期同步**，
   // 不等 effect：这个值决定"新建工作区"落在哪，首帧点"新建"就必须已经就位。
   // `setDshCwd` 内部做了等值判断，只在真的变化时才广播，因此不会自激。
@@ -135,6 +154,27 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
   const openDecisions = deferred?.open_irreversible ?? []
   const mismatches = snapshot?.crosscheck.summary.mismatches ?? 0
   const budgetOver = (snapshot?.budget.violations ?? []).length
+  // 三态口径：通过 / 失败（error）/ 警告（warning）/ 未验证。
+  // 徽章只显示"阻断+失败"会把缺数据藏起来（AGENTS §0.2 在前端的版本），
+  // 所以下面 `sectionCount('verdict')` 把 unknown 也算进警示色。
+  const passedChecks = findings.filter((f) => f.ok).length
+  const unknownChecks = snapshot?.checks.not_verified?.length ?? 0
+  const projection = snapshot?.projection2d
+  /** 板级汇总：每块板多少件、多少 error/warning、第一个问题位号（下钻用）。 */
+  const boardRows = (projection?.boards ?? []).map((board) => {
+    const own = (projection?.parts ?? []).filter((part) => part.board_id === board.id)
+    const refs = new Set(own.map((part) => part.ref))
+    const bad = findings.filter((finding) => !finding.ok
+      && (finding.refs ?? []).some((ref) => refs.has(ref)))
+    return {
+      id: board.id,
+      name: board.name !== '' ? board.name : board.id,
+      parts: own.length > 0 ? own.length : board.parts,
+      errors: bad.filter((finding) => finding.severity === 'error').length,
+      warnings: bad.filter((finding) => finding.severity === 'warning').length,
+      firstRef: bad[0]?.refs?.[0] ?? '',
+    }
+  })
 
   const splitPct = liveSplit ?? state.splitPct
   const inspectorWidth = liveInspector ?? state.inspectorWidth
@@ -206,11 +246,13 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
    */
   const sectionCount = (id: SectionId): { text: string; cls: string } | null => {
     if (id === 'verdict') {
-      // 徽章口径：**阻断 + 失败层**。不把缺数据/默认值算进去——
-      // 那些在真实设计里常驻（`示例-多板` 有 6+7 条），
-      // 常驻的数字等于没有信号。
-      const count = blockingTotal + failedLevels
-      if (count > 0) return { text: String(count), cls: 'err' }
+      // 口径：**阻断 + 失败层 = 红**；**未验证/缺数据 = 黄**。
+      // 不把"默认值/常驻缺数据"当成红（真实设计里常驻，红色会失效），
+      // 但也不能像旧版那样完全不显示——那会让"没验过"看起来像"通过"。
+      const fails = blockingTotal + failedLevels
+      const unknown = unknownChecks + (verdict?.counts?.['unknown'] ?? 0)
+      if (fails > 0) return { text: String(fails), cls: 'err' }
+      if (unknown > 0) return { text: String(unknown), cls: 'warn' }
       if (verdict === undefined || verdict.rollup === 'unknown'
         || verdict.rollup === 'not_ready') return { text: '?', cls: 'warn' }
       return null
@@ -374,6 +416,35 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
           )}
         </div>
       </div>
+
+      {/* ── 板级汇总（P1）：每块板自己的三态 + 第一个问题位号（点击下钻）──
+          多板工程只看总数会掩盖"哪块板坏了"；单板也保留——它是"板"这个
+          单位的唯一入口。数据全部来自快照（projection2d.parts.board_id），
+          前端不重新判定，只按 refs 聚合。 */}
+      {snapshot !== null && boardRows.length > 0 && (
+        <div className="hwv-boardstrip" role="list" aria-label="板级汇总">
+          <span className="hwv-boardstrip-label">板</span>
+          {boardRows.map((board) => (
+            <button key={board.id} role="listitem" type="button"
+                    className={`hwv-board-chip${board.errors > 0 ? ' err'
+                      : board.warnings > 0 ? ' warn' : ''}`}
+                    title={`${board.name}：${board.parts} 件 · 错误 ${board.errors}`
+                      + ` · 警告 ${board.warnings}（点击看这板的判定）`}
+                    onClick={() => { store.openSection('checks', board.firstRef) }}>
+              <span>{board.name}</span>
+              <span className="hwv-board-parts">{board.parts} 件</span>
+              {board.errors > 0 && <span className="n err">✕{board.errors}</span>}
+              {board.warnings > 0 && <span className="n warn">!{board.warnings}</span>}
+            </button>
+          ))}
+          <span className="hwv-boardstrip-counts">
+            <span>通过 <b>{passedChecks}</b></span>
+            <span className={errors.length > 0 ? 'n err' : ''}>失败 <b>{errors.length}</b></span>
+            <span className={warnings.length > 0 ? 'n warn' : ''}>警告 <b>{warnings.length}</b></span>
+            <span className={unknownChecks > 0 ? 'n warn' : ''}>未验证 <b>{unknownChecks}</b></span>
+          </span>
+        </div>
+      )}
 
       {state.error !== null && !unavailable && (
         <div className="hwv-banner">

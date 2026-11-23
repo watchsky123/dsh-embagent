@@ -130,6 +130,8 @@ export interface Projection2D {
     kind: string
     label: string
     role: string
+    /** 所属板（Python `projection2d` 一直有，TS 类型此前漏了）。 */
+    board_id: string
     x_px: number
     y_px: number
     w_px: number
