@@ -3391,6 +3391,71 @@ python -m hw_velxio.scripts.check_p54     # 13 项（负例 5 条仍全红）
 时钟有了但**时序约束**没有；端口名有了但**封装脚号对照**没有；
 "配置对"不等于"外设初始化对"（`main.c` 仍是骨架）。
 
+## P56 — 引脚定义表：`.ioc` 的 `PA9` ↔ 网表的 `30`（2026-11-23）
+
+> 用户点的第 8 件事：补"封装脚号 ↔ 端口名"那张表，让 `ioc.pin_conflict`
+> 从软提示变成**硬判据**。
+
+### 之前的问题
+
+P55 把 `.ioc` 的配置读进了契约，但只能**按名字对**：`.ioc` 说 `PA9`，
+网表说 `30`，中间差一张表。于是"`.ioc` 把这个脚配成 UART、板子却接去 SPI"
+仍然只能等台架发现。
+
+### 新增
+
+| 文件 | 内容 |
+|---|---|
+| `design/pinout.py` | 表的读写/自检/建表（LCSC 厂商符号 → 脚号↔端口名）；**不完整的符号拒绝建表** |
+| `design/pinout/stm32f103c8t6.json` | 48 脚（C8734）|
+| `design/pinout/stm32f103c6t6.json` | 48 脚（C8303）|
+| `design/pinout/stm32f401rct6.json` | 64 脚（C74524）|
+| `design/pinout/stm32h743iit6.json` | 176 脚（C89597）|
+| `scripts/check_p56.py` | 23 项验收（表自检 + 交叉核对 + 端到端 + 退化 + CLI）|
+| `design_cli.py` `pinout` | `list` / `show` / `build --lcsc=` / `validate` |
+| `agent_tools.py` + `src/tools.ts` | `hw_pinout` 工具（58 → 59）|
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design/interface.py` | `.ioc` 端口名经表映射到封装脚号，逐脚对账；新增硬判据 `ioc.pin_conflict`；`af.pin_numbers`、`pin_join`；有表时"脚号对照"不再是 unknown |
+| `scripts/check_p55.py` | 2f/5c 改成**表感知**（有表时该 unknown 消失、拿掉表必须回来）|
+| `docs/runbook.md` | 新增 §19 |
+| `AGENTS.md` | §3.51–3.53 指针加 §19 |
+
+### 关键数字（实测）
+
+```
+4 张表：48 / 48 / 64 / 176 脚，全部过 validate
+交叉核对：4 张表的非 GPIO 脚名与 fwgen.mcus 的 power_pins **前缀覆盖**
+  （写法差异显式列 allowlist：VDDAVREF+/PDR/VCAP/VREF+）
+拒绝：STM32F405RGT6 的符号只有 55/64 脚 → 不建表
+端到端（复刻-示例 + F103-GPS.ioc）：19 脚全部落位，冲突 0
+  PA9↔30 UART_TX / PA10↔31 UART_RX / PD0↔5 OSC_IN / PD1↔6 OSC_OUT / PA8↔29 GPS_EN
+  配了但没接：PA2/PA3/PB13/PB14/PB15（USART2/SPI2）→ 5 条软提示
+退化：表里 26↔30 对调 → 真实项目 failed（PB13 配成 SPI2_SCK，脚 30 是 UART_TX）
+拿掉表：冲突归零、pin_join 空、"脚号对照"回到 unknown
+```
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p56     # 23 项
+python -m hw_velxio.scripts.check_p55     # 29 项（改成表感知后仍全绿）
+npm test                                  # 765
+npm run check / build                     # tsc 干净
+node hw_velxio/scripts/check_tools.mjs    # 59 个工具
+```
+
+### 诚实边界
+
+* 表来源是 **LCSC/EasyEDA 厂商符号**（`source="catalog"`），不是 datasheet 原文；
+  要更硬就按 datasheet 表 5 手工录一张并标 `datasheet`
+* 表只给**脚号 ↔ 端口名**与电源/地/复位/启动；**不给 AF 编号**（仍要 datasheet）
+* **表错了会误判**：冲突信息里同时写出"表说脚 30=PA9、`.ioc` 说 PA9 是 USART1_TX、
+  网表说 30 是 UART_TX"，让人能判断是谁错了
+
 ---
 
 ## 后续

@@ -4153,6 +4153,77 @@ export function registerTools(ctx: Context): Array<() => void> {
   })))
 
   // ---- 3h. hw_plan ------------------------------------------------------
+  // ---- 3j. hw_pinout（引脚定义表：PA9 ↔ 30）--------------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_pinout',
+    description:
+      '**引脚定义表**（封装脚号 ↔ 端口名）。`.ioc` 用 `PA9`、网表用 `30`，'
+      + '有这张表才能**逐脚**对账（`ioc.pin_conflict` 才是硬判据）。'
+      + '`action=list/show/validate`；`build` 从 LCSC 厂商符号建表，'
+      + '**符号脚数不等于封装脚数就拒绝**（不补猜的脚）。',
+    parameters: {
+      action: { type: 'string', description: 'list（默认）/ show / validate / build' },
+      part: { type: 'string', description: '型号，如 stm32f103c8t6（show 用）' },
+      lcsc: { type: 'string', description: 'LCSC 编号，如 C8734（build 用）' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          status: { type: 'string' }, rows: { type: 'string' },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => text(
+        `# 引脚定义表：${(value as { status: string }).status}`,
+        ...(value as { rows: string }).rows.split('\n').filter((x) => x !== ''),
+        (value as { summary: string }).summary),
+    },
+    execute: async (args) => {
+      const a = args as { action?: unknown; part?: unknown; lcsc?: unknown }
+      const action = str(a.action) || 'list'
+      const cliArgs: string[] = [`--action=${action}`]
+      if (str(a.part) !== '') cliArgs.push(`--part=${str(a.part)}`)
+      if (str(a.lcsc) !== '') cliArgs.push(`--lcsc=${str(a.lcsc)}`)
+      const payload = await design('pinout', ...cliArgs)
+      if (payload.status === 'not_ready') {
+        throw new Error(findings(payload).join('；') || str(payload.reason) || '没有这张表')
+      }
+      if (payload.status === 'failed') {
+        const problems = Array.isArray(payload.problems) ? payload.problems : []
+        throw new Error(problems.map((x) => str(x)).join('；') || '建表被拒绝')
+      }
+      const rows: string[] = []
+      if (action === 'show') {
+        const pins = (payload.pins ?? {}) as Record<string, unknown>
+        const count = Object.keys(pins).length
+        for (const [number, raw] of Object.entries(pins).slice(0, 60)) {
+          const row = (raw ?? {}) as Record<string, unknown>
+          rows.push(`* ${number}: ${str(row.name)}${str(row.port) !== '' ? `（${str(row.port)}）` : ''}`)
+        }
+        return {
+          status: str(payload.status),
+          rows: rows.join('\n'),
+          summary: `${str(payload.part)}：${count} 脚，${str(payload.package)}，来源 ${str(payload.source)}（${str(payload.lcsc)}）`,
+        }
+      }
+      const tables = Array.isArray(payload.tables)
+        ? payload.tables
+        : (Array.isArray(payload.tables_detail) ? payload.tables_detail : [])
+      for (const raw of tables) {
+        const t = (raw ?? {}) as Record<string, unknown>
+        const problems = Array.isArray(t.problems) ? t.problems : []
+        rows.push(`* ${str(t.part)}：${num(t.count)} 脚，${str(t.package)}`
+          + `（${str(t.lcsc)}，${str(t.retrieved)}）`
+          + (problems.length > 0 ? `  **问题 ${problems.length}**` : ''))
+      }
+      return {
+        status: str(payload.status),
+        rows: rows.join('\n'),
+        summary: `共 ${tables.length} 张表；来源 LCSC/EasyEDA 厂商符号（catalog）`,
+      }
+    },
+  })))
   disposers.push(tools.register(defineTool({
     name: 'hw_plan',
     description:

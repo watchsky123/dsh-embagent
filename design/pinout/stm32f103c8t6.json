@@ -1,0 +1,255 @@
+{
+ "count": 48,
+ "lcsc": "C8734",
+ "mpn": "STM32F103C8T6",
+ "package": "LQFP-48_L7.0-W7.0-P0.50-LS9.0-BL",
+ "part": "stm32f103c8t6",
+ "pins": {
+  "1": {
+   "kind": "power",
+   "name": "VBAT",
+   "port": ""
+  },
+  "10": {
+   "kind": "gpio",
+   "name": "PA0-WKUP",
+   "port": "PA0"
+  },
+  "11": {
+   "kind": "gpio",
+   "name": "PA1",
+   "port": "PA1"
+  },
+  "12": {
+   "kind": "gpio",
+   "name": "PA2",
+   "port": "PA2"
+  },
+  "13": {
+   "kind": "gpio",
+   "name": "PA3",
+   "port": "PA3"
+  },
+  "14": {
+   "kind": "gpio",
+   "name": "PA4",
+   "port": "PA4"
+  },
+  "15": {
+   "kind": "gpio",
+   "name": "PA5",
+   "port": "PA5"
+  },
+  "16": {
+   "kind": "gpio",
+   "name": "PA6",
+   "port": "PA6"
+  },
+  "17": {
+   "kind": "gpio",
+   "name": "PA7",
+   "port": "PA7"
+  },
+  "18": {
+   "kind": "gpio",
+   "name": "PB0",
+   "port": "PB0"
+  },
+  "19": {
+   "kind": "gpio",
+   "name": "PB1",
+   "port": "PB1"
+  },
+  "2": {
+   "kind": "gpio",
+   "name": "PC13-TAMPER-RTC",
+   "port": "PC13"
+  },
+  "20": {
+   "kind": "gpio",
+   "name": "PB2",
+   "port": "PB2"
+  },
+  "21": {
+   "kind": "gpio",
+   "name": "PB10",
+   "port": "PB10"
+  },
+  "22": {
+   "kind": "gpio",
+   "name": "PB11",
+   "port": "PB11"
+  },
+  "23": {
+   "kind": "ground",
+   "name": "VSS_1",
+   "port": ""
+  },
+  "24": {
+   "kind": "power",
+   "name": "VDD_1",
+   "port": ""
+  },
+  "25": {
+   "kind": "gpio",
+   "name": "PB12",
+   "port": "PB12"
+  },
+  "26": {
+   "kind": "gpio",
+   "name": "PB13",
+   "port": "PB13"
+  },
+  "27": {
+   "kind": "gpio",
+   "name": "PB14",
+   "port": "PB14"
+  },
+  "28": {
+   "kind": "gpio",
+   "name": "PB15",
+   "port": "PB15"
+  },
+  "29": {
+   "kind": "gpio",
+   "name": "PA8",
+   "port": "PA8"
+  },
+  "3": {
+   "kind": "gpio",
+   "name": "PC14-OSC32_IN",
+   "port": "PC14"
+  },
+  "30": {
+   "kind": "gpio",
+   "name": "PA9",
+   "port": "PA9"
+  },
+  "31": {
+   "kind": "gpio",
+   "name": "PA10",
+   "port": "PA10"
+  },
+  "32": {
+   "kind": "gpio",
+   "name": "PA11",
+   "port": "PA11"
+  },
+  "33": {
+   "kind": "gpio",
+   "name": "PA12",
+   "port": "PA12"
+  },
+  "34": {
+   "kind": "gpio",
+   "name": "PA13",
+   "port": "PA13"
+  },
+  "35": {
+   "kind": "ground",
+   "name": "VSS_2",
+   "port": ""
+  },
+  "36": {
+   "kind": "power",
+   "name": "VDD_2",
+   "port": ""
+  },
+  "37": {
+   "kind": "gpio",
+   "name": "PA14",
+   "port": "PA14"
+  },
+  "38": {
+   "kind": "gpio",
+   "name": "PA15",
+   "port": "PA15"
+  },
+  "39": {
+   "kind": "gpio",
+   "name": "PB3",
+   "port": "PB3"
+  },
+  "4": {
+   "kind": "gpio",
+   "name": "PC15-OSC32_OUT",
+   "port": "PC15"
+  },
+  "40": {
+   "kind": "gpio",
+   "name": "PB4",
+   "port": "PB4"
+  },
+  "41": {
+   "kind": "gpio",
+   "name": "PB5",
+   "port": "PB5"
+  },
+  "42": {
+   "kind": "gpio",
+   "name": "PB6",
+   "port": "PB6"
+  },
+  "43": {
+   "kind": "gpio",
+   "name": "PB7",
+   "port": "PB7"
+  },
+  "44": {
+   "kind": "boot",
+   "name": "BOOT0",
+   "port": ""
+  },
+  "45": {
+   "kind": "gpio",
+   "name": "PB8",
+   "port": "PB8"
+  },
+  "46": {
+   "kind": "gpio",
+   "name": "PB9",
+   "port": "PB9"
+  },
+  "47": {
+   "kind": "ground",
+   "name": "VSS_3",
+   "port": ""
+  },
+  "48": {
+   "kind": "power",
+   "name": "VDD_3",
+   "port": ""
+  },
+  "5": {
+   "kind": "gpio",
+   "name": "PD0-OSC_IN",
+   "port": "PD0"
+  },
+  "6": {
+   "kind": "gpio",
+   "name": "PD1-OSC_OUT",
+   "port": "PD1"
+  },
+  "7": {
+   "kind": "reset",
+   "name": "NRST",
+   "port": ""
+  },
+  "8": {
+   "kind": "ground",
+   "name": "VSSA",
+   "port": ""
+  },
+  "9": {
+   "kind": "power",
+   "name": "VDDA",
+   "port": ""
+  }
+ },
+ "retrieved": "2026-11-23",
+ "sha256": "7c63526184de60d34c9a6368661954fdef487cdea8ea6cb817f3dff24ae36d2c",
+ "source": "catalog",
+ "source_kind": "LCSC/EasyEDA 符号（P~ 图元带 pinNumber/pinName）",
+ "source_url": "https://easyeda.com/api/products/C8734/components?version=6.5.46",
+ "title": "STM32F103C8T6"
+}

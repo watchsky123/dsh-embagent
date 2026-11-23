@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Any
 
 from . import ioc as ioc_module
+from . import pinout as pinout_module
 from . import power as power_mod
 from .model import DesignModel
 
@@ -200,14 +201,108 @@ def _identity_checks(mcu_kind: str, ref: str,
 # ---------------------------------------------------------------------------
 
 
+def _join_ioc_pins(facts: dict[str, Any], table: dict[str, Any],
+                   pin_net: dict[tuple[str, str], str], mcu_ref: str,
+                   power_nets: list[str], ground_nets: list[str],
+                   ) -> dict[str, Any]:
+    """`.ioc` 的端口名 ↔ 网表的封装脚号 —— **逐脚对账**（P56）。
+
+    没有这张表时 P55 只能"按名字对"；有了表，`PA9` 才真的等于网表的 `30`。
+
+    判据（**硬**的只有两条）：
+    * `.ioc` 配了通信外设，而网表把这个脚接去**别的协议族** → 冲突
+    * `.ioc` 配了通信外设，而网表把这个脚接去**电源/地** → 冲突
+
+    其余是**软**提示（可能只是网名没写族关键词，或者线没接）：
+    通信外设脚在网表里没网、网名不含族关键词、TX 网接在 RX 脚上。
+    """
+    port_to_pin: dict[str, str] = {}
+    for number, row in (table.get("pins") or {}).items():
+        port = str((row or {}).get("port") or "")
+        if port:
+            port_to_pin[port] = str(number)
+    rows: list[dict[str, Any]] = []
+    conflicts: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    missing_ports: list[str] = []
+    for port, info in sorted((facts.get("pins") or {}).items()):
+        number = port_to_pin.get(port)
+        if number is None:
+            missing_ports.append(port)
+            continue
+        net = pin_net.get((mcu_ref, number), "")
+        family = family_of(net) if net else None
+        ioc_family = str(info.get("family") or "")
+        kind = str(info.get("kind") or "")
+        is_power = bool(net) and (net in power_nets or net in ground_nets)
+        status = "ok"
+        if is_power and ioc_family:
+            status = "conflict"
+            conflicts.append({
+                "check": "ioc.pin_conflict", "refs": [mcu_ref],
+                "message": (f".ioc 把 {port} 配成 {info.get('function')}（{ioc_family}），"
+                            f"但网表把封装脚 {number} 接在电源/地 {net!r} 上"
+                            f" —— 一个脚不可能既通信又接地")})
+        elif family and ioc_family and family != ioc_family:
+            status = "conflict"
+            conflicts.append({
+                "check": "ioc.pin_conflict", "refs": [mcu_ref],
+                "message": (f".ioc 把 {port}（脚 {number}）配成 {info.get('function')}"
+                            f"（{ioc_family}），网表的脚 {number} 是 {net!r}（{family}）")})
+        elif ioc_family and not net:
+            status = "unrouted"
+            warnings.append({
+                "check": "ioc.pin_unrouted", "refs": [mcu_ref],
+                "message": (f".ioc 把脚 {number}（{port}）配成 {info.get('function')}"
+                            f"（{ioc_family}），网表里这个脚**没接**")})
+        elif ioc_family and not family:
+            status = "family_unknown"
+            warnings.append({
+                "check": "ioc.pin_family_unknown", "refs": [mcu_ref],
+                "message": (f".ioc 把脚 {number}（{port}）配成 {info.get('function')}"
+                            f"（{ioc_family}），网表接的是 {net!r}"
+                            f" —— 网名不含族关键词，**判不出对错**")})
+        if status == "ok" and ioc_family and family:
+            ioc_role = {"tx": "data_out", "rx": "data_in"}.get(str(info.get("role") or ""),
+                                                              str(info.get("role") or ""))
+            net_role = _signal_role(net, family)
+            if ioc_role and net_role and ioc_role != net_role:
+                status = "role_soft"
+                warnings.append({
+                    "check": "ioc.pin_role_conflict", "refs": [mcu_ref],
+                    "message": (f"脚 {number}（{port}）：`.ioc` 是 {info.get('function')}"
+                                f"（{ioc_role}），网表 {net!r}（{net_role}）"
+                                f" —— 方向可能反了（TX 网接在 RX 脚）")})
+        rows.append({"port": port, "pin": number, "function": info.get("function", ""),
+                     "kind": kind, "family": ioc_family,
+                     "net": net, "net_family": family or "", "status": status})
+    if missing_ports:
+        warnings.append({
+            "check": "ioc.port_not_in_package", "refs": [mcu_ref],
+            "message": (f"`.ioc` 里 {', '.join(missing_ports[:6])}"
+                        f"{' 等' if len(missing_ports) > 6 else ''} 在这颗芯片的"
+                        f"引脚表里没有 —— 封装/型号对不上？")})
+    by_status: dict[str, int] = {}
+    for row in rows:
+        by_status[row["status"]] = by_status.get(row["status"], 0) + 1
+    return {"rows": rows, "conflicts": conflicts, "warnings": warnings,
+            "missing_ports": missing_ports, "by_status": by_status,
+            "table": {"part": table.get("part"), "lcsc": table.get("lcsc"),
+                      "package": table.get("package"),
+                      "count": table.get("count"),
+                      "source": table.get("source"),
+                      "retrieved": table.get("retrieved")}}
+
+
 def _unknown_items(clock: dict[str, Any], nvic: dict[str, Any],
-                   af: dict[str, Any], facts: dict[str, Any] | None
-                   ) -> list[dict[str, Any]]:
+                   af: dict[str, Any], facts: dict[str, Any] | None,
+                   *extra: Any) -> list[dict[str, Any]]:
     """**缺的东西一律 unknown + 写明缺什么**，不猜（AGENTS §0.1）。
 
     没有 `.ioc` 时是四类老缺口（保持 P50 的形状）；有 `.ioc` 时只剩
     "它本来就给不出"的三类：AF 编号 / 时序 / 脚号对照。
     """
+    joined = bool(extra[0]) if extra else False
     if not facts:
         return [
             {"what": "时钟树（HCLK/PCLK/外设时钟）",
@@ -238,8 +333,9 @@ def _unknown_items(clock: dict[str, Any], nvic: dict[str, Any],
                       "need": "datasheet 的复用功能表（.ioc 只给功能名，不给编号）"})
     items.append({"what": "时序约束（建立/保持、采样时刻）",
                   "need": "器件 datasheet 的时序章节"})
-    items.append({"what": "封装脚号 ↔ 端口名的对照（`.ioc` 的 PA9 ↔ 网表的 30）",
-                  "need": "datasheet 的引脚定义表；缺它只能按名字对，不能逐脚对"})
+    if not joined:
+        items.append({"what": "封装脚号 ↔ 端口名的对照（`.ioc` 的 PA9 ↔ 网表的 30）",
+                      "need": "datasheet 的引脚定义表；缺它只能按名字对，不能逐脚对"})
     return items
 
 
@@ -389,6 +485,17 @@ def build(design: DesignModel, *, ioc_path: str | Path | None = None) -> dict[st
                     "message": (f"网表里有 {family} 网（"
                                 f"{', '.join(sorted(nets_of)[:4])}），"
                                 f"但 .ioc 没配这类外设 —— 固件里可能没初始化")})
+    # 6) **逐脚对账**（P56）：需要引脚定义表（封装脚号 ↔ 端口名）
+    joined: dict[str, Any] | None = None
+    table: dict[str, Any] | None = None
+    if facts and mcu is not None:
+        table = pinout_module.find(str(getattr(mcu, "kind", "")),
+                                   str(getattr(mcu, "lcsc", "") or ""))
+        if table is not None:
+            joined = _join_ioc_pins(facts, table, pin_net, mcu.ref,
+                                    power_nets, ground_nets)
+            problems += joined["conflicts"]
+            warnings += joined["warnings"]
     # 未接的 MCU 脚是正常的 —— 不报问题，只在 `pins` 里记 kind=unconnected
     status = "failed" if problems else (
         "ok" if any(p["kind"] in ("power", "signal") for p in pins) else "not_ready")
@@ -402,6 +509,11 @@ def build(design: DesignModel, *, ioc_path: str | Path | None = None) -> dict[st
     af = (dict(facts["af"], status="partial") if facts else
           {"status": "unknown", "source": "none",
            "need": "datasheet 的 AF 表（本仓库未录）"})
+    if joined:
+        af = dict(af, join="pinout",
+                  pin_numbers={row["port"]: int(row["pin"])
+                               for row in joined["rows"]},
+                  table=joined["table"])
 
     counts = {
         "pins": len(pins),
@@ -412,6 +524,7 @@ def build(design: DesignModel, *, ioc_path: str | Path | None = None) -> dict[st
         "peripherals": len(peripherals),
         "ioc_pins": len(facts["pins"]) if facts else 0,
         "ioc_peripherals": len(facts["peripherals"]) if facts else 0,
+        "ioc_joined": len(joined["rows"]) if joined else 0,
     }
     return {
         "status": status,
@@ -427,13 +540,15 @@ def build(design: DesignModel, *, ioc_path: str | Path | None = None) -> dict[st
         "nvic": nvic,
         "af": af,
         "peripheral_config": (facts["peripherals"] if facts else {}),
+        "pin_join": (joined or {}),
         "problems": problems,
         "warnings": warnings,
         "counts": counts,
-        "unknown": _unknown_items(clock, nvic, af, facts),
-        "note": ("唯一硬判据 = 引脚↔网络逐条一致；有 .ioc 时时钟/中断/复用功能/"
-                 "外设参数是**声明的**（source=ioc），AF 编号/时序/脚号对照仍 "
-                 "unknown；**配置对不证明功能对**"),
+        "unknown": _unknown_items(clock, nvic, af, facts, bool(joined)),
+        "note": ("硬判据 = 引脚↔网络逐条一致 + `.ioc` 芯片身份 + "
+                 "**逐脚协议族冲突**（有引脚表时）；"
+                 "有 .ioc 时时钟/中断/复用功能/外设参数是声明的（source=ioc），"
+                 "AF 编号/时序仍 unknown；**配置对不证明功能对**"),
     }
 
 
@@ -557,6 +672,17 @@ def render(payload: dict[str, Any]) -> str:
         lines.append(f"> {af.get('note', '')}")
     else:
         lines.append(f"_unknown —— 需要：{af.get('need', '')}_")
+    join = payload.get("pin_join") or {}
+    if join.get("rows"):
+        meta = join.get("table") or {}
+        lines += ["", "## 逐脚核对（`.ioc` ↔ 网表）", "",
+                  f"> 引脚表 `{meta.get('part')}`（{meta.get('lcsc')}，"
+                  f"{meta.get('package')}，{meta.get('source')}，"
+                  f"取于 {meta.get('retrieved')}）—— 端口名 ↔ 封装脚号由它给",
+                  "", "| 端口 | 封装脚 | `.ioc` 功能 | 网表 | 结论 |", "|---|---|---|---|---|"]
+        for row in join["rows"]:
+            lines.append(f"| {row['port']} | {row['pin']} | {row['function']} | "
+                         f"{row['net'] or '—'} | {row['status']} |")
     lines += ["", "## 外设配置（`.ioc` 里写出来的值）", ""]
     lines += _config_lines(payload.get("peripheral_config") or {})
     lines += ["", "## 引脚", "", "| 脚 | 网络 | 类别 | 方向 | 可否当 GPIO |", "|---|---|---|---|---|"]
@@ -582,15 +708,21 @@ def describe() -> dict[str, Any]:
         "module": "hw_velxio.design.interface",
         "file": FILE,
         "hard_checks": ["iface.pin_missing", "iface.pin_dangling",
-                        "ioc.mcu_mismatch（族/封装不同 = 给错 .ioc）"],
+                        "ioc.mcu_mismatch（族/封装不同 = 给错 .ioc）",
+                        "ioc.pin_conflict（有引脚表时：.ioc 的外设脚被网表接到别的族/电源）"],
         "soft_checks": ["ioc.mcu_variant（同族同封装不同型号）",
                         "ioc.peripheral_unrouted（配了但网表没有）",
-                        "ioc.peripheral_unconfigured（网表有但没配）"],
+                        "ioc.peripheral_unconfigured（网表有但没配）",
+                        "ioc.pin_unrouted / ioc.pin_family_unknown / "
+                        "ioc.pin_role_conflict（逐脚对账的软结论）"],
         "with_ioc": {"clock": "RCC.* 原样引用", "nvic": "NVIC.* + 优先级",
                      "af": "每个脚的功能名（不给 AF 编号）",
                      "peripheral_config": "<IP>.* 只收写出来的值"},
         "inferred": ["peripherals（无 .ioc 时按网名族推断）", "power_nets（未声明时）"],
-        "always_unknown": ["AF 编号", "时序约束", "封装脚号 ↔ 端口名"],
+        "always_unknown": ["AF 编号", "时序约束"],
+        "pin_table": ("封装脚号 ↔ 端口名来自 `pinout` 表（LCSC 厂商符号）；"
+                      "表在 → 逐脚对账（ioc.pin_conflict 是硬判据），"
+                      "表缺 → 该条仍 unknown"),
         "discipline": ("引脚↔网络逐条一致是唯一硬判据；"
                        "`.ioc` 给的是配置不是物理对照（PA9↔30 缺表，不编）；"
                        "缺的东西一律 unknown 并写明缺什么"),

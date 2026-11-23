@@ -385,6 +385,13 @@ TOOLS: list[ToolSpec] = [
              "AF 编号/时序/脚号对照仍 unknown；给错 .ioc = ioc.mcu_mismatch",
              {"project": "string", "ioc": "string"}, ("project",),
              arg_style="eq"),
+    ToolSpec("hw_pinout", "judge", "pinout",
+             "**引脚定义表**（封装脚号 ↔ 端口名）：`.ioc` 用 `PA9`、网表用 `30`，"
+             "有表才能逐脚对账（`ioc.pin_conflict` 才是硬判据）。"
+             "`list`/`show`/`validate`；`build --lcsc=` 从 LCSC 厂商符号建表，"
+             "符号脚数不等于封装脚数就**拒绝**（不补猜的脚）",
+             {"action": "string", "part": "string", "lcsc": "string"},
+             (), arg_style="eq"),
     ToolSpec("hw_fw_algo", "judge", "fw-algo",
              "**纯 C 算法 + PC 侧单元测试**：用本机 gcc 真编译真跑"
              "（Renode 跑不了、没有目标板时，这是唯一能验软件的路）",

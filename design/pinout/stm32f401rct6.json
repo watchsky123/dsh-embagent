@@ -1,0 +1,335 @@
+{
+ "count": 64,
+ "lcsc": "C74524",
+ "mpn": "STM32F401RCT6",
+ "package": "LQFP-64_L10.0-W10.0-P0.50-LS12.0-BL",
+ "part": "stm32f401rct6",
+ "pins": {
+  "1": {
+   "kind": "power",
+   "name": "VBAT",
+   "port": ""
+  },
+  "10": {
+   "kind": "gpio",
+   "name": "PC2",
+   "port": "PC2"
+  },
+  "11": {
+   "kind": "gpio",
+   "name": "PC3",
+   "port": "PC3"
+  },
+  "12": {
+   "kind": "ground",
+   "name": "VSSAVREF-",
+   "port": ""
+  },
+  "13": {
+   "kind": "power",
+   "name": "VDDAVREF+",
+   "port": ""
+  },
+  "14": {
+   "kind": "gpio",
+   "name": "PA0-WKUP",
+   "port": "PA0"
+  },
+  "15": {
+   "kind": "gpio",
+   "name": "PA1",
+   "port": "PA1"
+  },
+  "16": {
+   "kind": "gpio",
+   "name": "PA2",
+   "port": "PA2"
+  },
+  "17": {
+   "kind": "gpio",
+   "name": "PA3",
+   "port": "PA3"
+  },
+  "18": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "19": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "2": {
+   "kind": "gpio",
+   "name": "PC13-ANTI_TAMP",
+   "port": "PC13"
+  },
+  "20": {
+   "kind": "gpio",
+   "name": "PA4",
+   "port": "PA4"
+  },
+  "21": {
+   "kind": "gpio",
+   "name": "PA5",
+   "port": "PA5"
+  },
+  "22": {
+   "kind": "gpio",
+   "name": "PA6",
+   "port": "PA6"
+  },
+  "23": {
+   "kind": "gpio",
+   "name": "PA7",
+   "port": "PA7"
+  },
+  "24": {
+   "kind": "gpio",
+   "name": "PC4",
+   "port": "PC4"
+  },
+  "25": {
+   "kind": "gpio",
+   "name": "PC5",
+   "port": "PC5"
+  },
+  "26": {
+   "kind": "gpio",
+   "name": "PB0",
+   "port": "PB0"
+  },
+  "27": {
+   "kind": "gpio",
+   "name": "PB1",
+   "port": "PB1"
+  },
+  "28": {
+   "kind": "gpio",
+   "name": "PB2",
+   "port": "PB2"
+  },
+  "29": {
+   "kind": "gpio",
+   "name": "PB10",
+   "port": "PB10"
+  },
+  "3": {
+   "kind": "gpio",
+   "name": "PC14-OSC32_IN",
+   "port": "PC14"
+  },
+  "30": {
+   "kind": "power",
+   "name": "VCAP1",
+   "port": ""
+  },
+  "31": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "32": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "33": {
+   "kind": "gpio",
+   "name": "PB12",
+   "port": "PB12"
+  },
+  "34": {
+   "kind": "gpio",
+   "name": "PB13",
+   "port": "PB13"
+  },
+  "35": {
+   "kind": "gpio",
+   "name": "PB14",
+   "port": "PB14"
+  },
+  "36": {
+   "kind": "gpio",
+   "name": "PB15",
+   "port": "PB15"
+  },
+  "37": {
+   "kind": "gpio",
+   "name": "PC6",
+   "port": "PC6"
+  },
+  "38": {
+   "kind": "gpio",
+   "name": "PC7",
+   "port": "PC7"
+  },
+  "39": {
+   "kind": "gpio",
+   "name": "PC8",
+   "port": "PC8"
+  },
+  "4": {
+   "kind": "gpio",
+   "name": "PC15-OSC32_OUT",
+   "port": "PC15"
+  },
+  "40": {
+   "kind": "gpio",
+   "name": "PC9",
+   "port": "PC9"
+  },
+  "41": {
+   "kind": "gpio",
+   "name": "PA8",
+   "port": "PA8"
+  },
+  "42": {
+   "kind": "gpio",
+   "name": "PA9",
+   "port": "PA9"
+  },
+  "43": {
+   "kind": "gpio",
+   "name": "PA10",
+   "port": "PA10"
+  },
+  "44": {
+   "kind": "gpio",
+   "name": "PA11",
+   "port": "PA11"
+  },
+  "45": {
+   "kind": "gpio",
+   "name": "PA12",
+   "port": "PA12"
+  },
+  "46": {
+   "kind": "gpio",
+   "name": "PA13",
+   "port": "PA13"
+  },
+  "47": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "48": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "49": {
+   "kind": "gpio",
+   "name": "PA14",
+   "port": "PA14"
+  },
+  "5": {
+   "kind": "gpio",
+   "name": "PH0-OSC_IN",
+   "port": "PH0"
+  },
+  "50": {
+   "kind": "gpio",
+   "name": "PA15",
+   "port": "PA15"
+  },
+  "51": {
+   "kind": "gpio",
+   "name": "PC10",
+   "port": "PC10"
+  },
+  "52": {
+   "kind": "gpio",
+   "name": "PC11",
+   "port": "PC11"
+  },
+  "53": {
+   "kind": "gpio",
+   "name": "PC12",
+   "port": "PC12"
+  },
+  "54": {
+   "kind": "gpio",
+   "name": "PD2",
+   "port": "PD2"
+  },
+  "55": {
+   "kind": "gpio",
+   "name": "PB3",
+   "port": "PB3"
+  },
+  "56": {
+   "kind": "gpio",
+   "name": "PB4",
+   "port": "PB4"
+  },
+  "57": {
+   "kind": "gpio",
+   "name": "PB5",
+   "port": "PB5"
+  },
+  "58": {
+   "kind": "gpio",
+   "name": "PB6",
+   "port": "PB6"
+  },
+  "59": {
+   "kind": "gpio",
+   "name": "PB7",
+   "port": "PB7"
+  },
+  "6": {
+   "kind": "gpio",
+   "name": "PH1-OSC_OUT",
+   "port": "PH1"
+  },
+  "60": {
+   "kind": "boot",
+   "name": "BOOT0",
+   "port": ""
+  },
+  "61": {
+   "kind": "gpio",
+   "name": "PB8",
+   "port": "PB8"
+  },
+  "62": {
+   "kind": "gpio",
+   "name": "PB9",
+   "port": "PB9"
+  },
+  "63": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "64": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "7": {
+   "kind": "reset",
+   "name": "NRST",
+   "port": ""
+  },
+  "8": {
+   "kind": "gpio",
+   "name": "PC0",
+   "port": "PC0"
+  },
+  "9": {
+   "kind": "gpio",
+   "name": "PC1",
+   "port": "PC1"
+  }
+ },
+ "retrieved": "2026-11-23",
+ "sha256": "7eaf2badc0477e150aa9f484bf38a50f7e39ef2432101dce670f5db08056227a",
+ "source": "catalog",
+ "source_kind": "LCSC/EasyEDA 符号（P~ 图元带 pinNumber/pinName）",
+ "source_url": "https://easyeda.com/api/products/C74524/components?version=6.5.46",
+ "title": "STM32F401RCT6"
+}

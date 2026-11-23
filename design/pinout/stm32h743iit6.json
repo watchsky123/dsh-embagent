@@ -1,0 +1,895 @@
+{
+ "count": 176,
+ "lcsc": "C89597",
+ "mpn": "STM32H743IIT6",
+ "package": "LQFP-176_L24.0-W24.0-P0.50-LS26.0-BL",
+ "part": "stm32h743iit6",
+ "pins": {
+  "1": {
+   "kind": "gpio",
+   "name": "PE2",
+   "port": "PE2"
+  },
+  "10": {
+   "kind": "gpio",
+   "name": "PC15-OSC32_OUT",
+   "port": "PC15"
+  },
+  "100": {
+   "kind": "gpio",
+   "name": "PD12",
+   "port": "PD12"
+  },
+  "101": {
+   "kind": "gpio",
+   "name": "PD13",
+   "port": "PD13"
+  },
+  "102": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "103": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "104": {
+   "kind": "gpio",
+   "name": "PD14",
+   "port": "PD14"
+  },
+  "105": {
+   "kind": "gpio",
+   "name": "PD15",
+   "port": "PD15"
+  },
+  "106": {
+   "kind": "gpio",
+   "name": "PG2",
+   "port": "PG2"
+  },
+  "107": {
+   "kind": "gpio",
+   "name": "PG3",
+   "port": "PG3"
+  },
+  "108": {
+   "kind": "gpio",
+   "name": "PG4",
+   "port": "PG4"
+  },
+  "109": {
+   "kind": "gpio",
+   "name": "PG5",
+   "port": "PG5"
+  },
+  "11": {
+   "kind": "gpio",
+   "name": "PI9",
+   "port": "PI9"
+  },
+  "110": {
+   "kind": "gpio",
+   "name": "PG6",
+   "port": "PG6"
+  },
+  "111": {
+   "kind": "gpio",
+   "name": "PG7",
+   "port": "PG7"
+  },
+  "112": {
+   "kind": "gpio",
+   "name": "PG8",
+   "port": "PG8"
+  },
+  "113": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "114": {
+   "kind": "power",
+   "name": "VDD33USB",
+   "port": ""
+  },
+  "115": {
+   "kind": "gpio",
+   "name": "PC6",
+   "port": "PC6"
+  },
+  "116": {
+   "kind": "gpio",
+   "name": "PC7",
+   "port": "PC7"
+  },
+  "117": {
+   "kind": "gpio",
+   "name": "PC8",
+   "port": "PC8"
+  },
+  "118": {
+   "kind": "gpio",
+   "name": "PC9",
+   "port": "PC9"
+  },
+  "119": {
+   "kind": "gpio",
+   "name": "PA8",
+   "port": "PA8"
+  },
+  "12": {
+   "kind": "gpio",
+   "name": "PI10",
+   "port": "PI10"
+  },
+  "120": {
+   "kind": "gpio",
+   "name": "PA9",
+   "port": "PA9"
+  },
+  "121": {
+   "kind": "gpio",
+   "name": "PA10",
+   "port": "PA10"
+  },
+  "122": {
+   "kind": "gpio",
+   "name": "PA11",
+   "port": "PA11"
+  },
+  "123": {
+   "kind": "gpio",
+   "name": "PA12",
+   "port": "PA12"
+  },
+  "124": {
+   "kind": "gpio",
+   "name": "PA13",
+   "port": "PA13"
+  },
+  "125": {
+   "kind": "power",
+   "name": "VCAP2",
+   "port": ""
+  },
+  "126": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "127": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "128": {
+   "kind": "gpio",
+   "name": "PH13",
+   "port": "PH13"
+  },
+  "129": {
+   "kind": "gpio",
+   "name": "PH14",
+   "port": "PH14"
+  },
+  "13": {
+   "kind": "gpio",
+   "name": "PI11",
+   "port": "PI11"
+  },
+  "130": {
+   "kind": "gpio",
+   "name": "PH15",
+   "port": "PH15"
+  },
+  "131": {
+   "kind": "gpio",
+   "name": "PI0",
+   "port": "PI0"
+  },
+  "132": {
+   "kind": "gpio",
+   "name": "PI1",
+   "port": "PI1"
+  },
+  "133": {
+   "kind": "gpio",
+   "name": "PI2",
+   "port": "PI2"
+  },
+  "134": {
+   "kind": "gpio",
+   "name": "PI3",
+   "port": "PI3"
+  },
+  "135": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "136": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "137": {
+   "kind": "gpio",
+   "name": "PA14",
+   "port": "PA14"
+  },
+  "138": {
+   "kind": "gpio",
+   "name": "PA15",
+   "port": "PA15"
+  },
+  "139": {
+   "kind": "gpio",
+   "name": "PC10",
+   "port": "PC10"
+  },
+  "14": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "140": {
+   "kind": "gpio",
+   "name": "PC11",
+   "port": "PC11"
+  },
+  "141": {
+   "kind": "gpio",
+   "name": "PC12",
+   "port": "PC12"
+  },
+  "142": {
+   "kind": "gpio",
+   "name": "PD0",
+   "port": "PD0"
+  },
+  "143": {
+   "kind": "gpio",
+   "name": "PD1",
+   "port": "PD1"
+  },
+  "144": {
+   "kind": "gpio",
+   "name": "PD2",
+   "port": "PD2"
+  },
+  "145": {
+   "kind": "gpio",
+   "name": "PD3",
+   "port": "PD3"
+  },
+  "146": {
+   "kind": "gpio",
+   "name": "PD4",
+   "port": "PD4"
+  },
+  "147": {
+   "kind": "gpio",
+   "name": "PD5",
+   "port": "PD5"
+  },
+  "148": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "149": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "15": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "150": {
+   "kind": "gpio",
+   "name": "PD6",
+   "port": "PD6"
+  },
+  "151": {
+   "kind": "gpio",
+   "name": "PD7",
+   "port": "PD7"
+  },
+  "152": {
+   "kind": "gpio",
+   "name": "PG9",
+   "port": "PG9"
+  },
+  "153": {
+   "kind": "gpio",
+   "name": "PG10",
+   "port": "PG10"
+  },
+  "154": {
+   "kind": "gpio",
+   "name": "PG11",
+   "port": "PG11"
+  },
+  "155": {
+   "kind": "gpio",
+   "name": "PG12",
+   "port": "PG12"
+  },
+  "156": {
+   "kind": "gpio",
+   "name": "PG13",
+   "port": "PG13"
+  },
+  "157": {
+   "kind": "gpio",
+   "name": "PG14",
+   "port": "PG14"
+  },
+  "158": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "159": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "16": {
+   "kind": "gpio",
+   "name": "PF0",
+   "port": "PF0"
+  },
+  "160": {
+   "kind": "gpio",
+   "name": "PG15",
+   "port": "PG15"
+  },
+  "161": {
+   "kind": "gpio",
+   "name": "PB3",
+   "port": "PB3"
+  },
+  "162": {
+   "kind": "gpio",
+   "name": "PB4",
+   "port": "PB4"
+  },
+  "163": {
+   "kind": "gpio",
+   "name": "PB5",
+   "port": "PB5"
+  },
+  "164": {
+   "kind": "gpio",
+   "name": "PB6",
+   "port": "PB6"
+  },
+  "165": {
+   "kind": "gpio",
+   "name": "PB7",
+   "port": "PB7"
+  },
+  "166": {
+   "kind": "boot",
+   "name": "BOOT0",
+   "port": ""
+  },
+  "167": {
+   "kind": "gpio",
+   "name": "PB8",
+   "port": "PB8"
+  },
+  "168": {
+   "kind": "gpio",
+   "name": "PB9",
+   "port": "PB9"
+  },
+  "169": {
+   "kind": "gpio",
+   "name": "PE0",
+   "port": "PE0"
+  },
+  "17": {
+   "kind": "gpio",
+   "name": "PF1",
+   "port": "PF1"
+  },
+  "170": {
+   "kind": "gpio",
+   "name": "PE1",
+   "port": "PE1"
+  },
+  "171": {
+   "kind": "power",
+   "name": "PDR_ON",
+   "port": ""
+  },
+  "172": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "173": {
+   "kind": "gpio",
+   "name": "PI4",
+   "port": "PI4"
+  },
+  "174": {
+   "kind": "gpio",
+   "name": "PI5",
+   "port": "PI5"
+  },
+  "175": {
+   "kind": "gpio",
+   "name": "PI6",
+   "port": "PI6"
+  },
+  "176": {
+   "kind": "gpio",
+   "name": "PI7",
+   "port": "PI7"
+  },
+  "18": {
+   "kind": "gpio",
+   "name": "PF2",
+   "port": "PF2"
+  },
+  "19": {
+   "kind": "gpio",
+   "name": "PF3",
+   "port": "PF3"
+  },
+  "2": {
+   "kind": "gpio",
+   "name": "PE3",
+   "port": "PE3"
+  },
+  "20": {
+   "kind": "gpio",
+   "name": "PF4",
+   "port": "PF4"
+  },
+  "21": {
+   "kind": "gpio",
+   "name": "PF5",
+   "port": "PF5"
+  },
+  "22": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "23": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "24": {
+   "kind": "gpio",
+   "name": "PF6",
+   "port": "PF6"
+  },
+  "25": {
+   "kind": "gpio",
+   "name": "PF7",
+   "port": "PF7"
+  },
+  "26": {
+   "kind": "gpio",
+   "name": "PF8",
+   "port": "PF8"
+  },
+  "27": {
+   "kind": "gpio",
+   "name": "PF9",
+   "port": "PF9"
+  },
+  "28": {
+   "kind": "gpio",
+   "name": "PF10",
+   "port": "PF10"
+  },
+  "29": {
+   "kind": "gpio",
+   "name": "PH0-OSC_IN",
+   "port": "PH0"
+  },
+  "3": {
+   "kind": "gpio",
+   "name": "PE4",
+   "port": "PE4"
+  },
+  "30": {
+   "kind": "gpio",
+   "name": "PH1-OSC_OUT",
+   "port": "PH1"
+  },
+  "31": {
+   "kind": "reset",
+   "name": "NRST",
+   "port": ""
+  },
+  "32": {
+   "kind": "gpio",
+   "name": "PC0",
+   "port": "PC0"
+  },
+  "33": {
+   "kind": "gpio",
+   "name": "PC1",
+   "port": "PC1"
+  },
+  "34": {
+   "kind": "gpio",
+   "name": "PC2_C",
+   "port": "PC2"
+  },
+  "35": {
+   "kind": "gpio",
+   "name": "PC3_C",
+   "port": "PC3"
+  },
+  "36": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "37": {
+   "kind": "ground",
+   "name": "VSSA",
+   "port": ""
+  },
+  "38": {
+   "kind": "power",
+   "name": "VREF+",
+   "port": ""
+  },
+  "39": {
+   "kind": "power",
+   "name": "VDDA",
+   "port": ""
+  },
+  "4": {
+   "kind": "gpio",
+   "name": "PE5",
+   "port": "PE5"
+  },
+  "40": {
+   "kind": "gpio",
+   "name": "PA0-WKUP",
+   "port": "PA0"
+  },
+  "41": {
+   "kind": "gpio",
+   "name": "PA1",
+   "port": "PA1"
+  },
+  "42": {
+   "kind": "gpio",
+   "name": "PA2",
+   "port": "PA2"
+  },
+  "43": {
+   "kind": "gpio",
+   "name": "PH2",
+   "port": "PH2"
+  },
+  "44": {
+   "kind": "gpio",
+   "name": "PH3",
+   "port": "PH3"
+  },
+  "45": {
+   "kind": "gpio",
+   "name": "PH4",
+   "port": "PH4"
+  },
+  "46": {
+   "kind": "gpio",
+   "name": "PH5",
+   "port": "PH5"
+  },
+  "47": {
+   "kind": "gpio",
+   "name": "PA3",
+   "port": "PA3"
+  },
+  "48": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "49": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "5": {
+   "kind": "gpio",
+   "name": "PE6",
+   "port": "PE6"
+  },
+  "50": {
+   "kind": "gpio",
+   "name": "PA4",
+   "port": "PA4"
+  },
+  "51": {
+   "kind": "gpio",
+   "name": "PA5",
+   "port": "PA5"
+  },
+  "52": {
+   "kind": "gpio",
+   "name": "PA6",
+   "port": "PA6"
+  },
+  "53": {
+   "kind": "gpio",
+   "name": "PA7",
+   "port": "PA7"
+  },
+  "54": {
+   "kind": "gpio",
+   "name": "PC4",
+   "port": "PC4"
+  },
+  "55": {
+   "kind": "gpio",
+   "name": "PC5",
+   "port": "PC5"
+  },
+  "56": {
+   "kind": "gpio",
+   "name": "PB0",
+   "port": "PB0"
+  },
+  "57": {
+   "kind": "gpio",
+   "name": "PB1",
+   "port": "PB1"
+  },
+  "58": {
+   "kind": "gpio",
+   "name": "PB2",
+   "port": "PB2"
+  },
+  "59": {
+   "kind": "gpio",
+   "name": "PF11",
+   "port": "PF11"
+  },
+  "6": {
+   "kind": "power",
+   "name": "VBAT",
+   "port": ""
+  },
+  "60": {
+   "kind": "gpio",
+   "name": "PF12",
+   "port": "PF12"
+  },
+  "61": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "62": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "63": {
+   "kind": "gpio",
+   "name": "PF13",
+   "port": "PF13"
+  },
+  "64": {
+   "kind": "gpio",
+   "name": "PF14",
+   "port": "PF14"
+  },
+  "65": {
+   "kind": "gpio",
+   "name": "PF15",
+   "port": "PF15"
+  },
+  "66": {
+   "kind": "gpio",
+   "name": "PG0",
+   "port": "PG0"
+  },
+  "67": {
+   "kind": "gpio",
+   "name": "PG1",
+   "port": "PG1"
+  },
+  "68": {
+   "kind": "gpio",
+   "name": "PE7",
+   "port": "PE7"
+  },
+  "69": {
+   "kind": "gpio",
+   "name": "PE8",
+   "port": "PE8"
+  },
+  "7": {
+   "kind": "gpio",
+   "name": "PI8",
+   "port": "PI8"
+  },
+  "70": {
+   "kind": "gpio",
+   "name": "PE9",
+   "port": "PE9"
+  },
+  "71": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "72": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "73": {
+   "kind": "gpio",
+   "name": "PE10",
+   "port": "PE10"
+  },
+  "74": {
+   "kind": "gpio",
+   "name": "PE11",
+   "port": "PE11"
+  },
+  "75": {
+   "kind": "gpio",
+   "name": "PE12",
+   "port": "PE12"
+  },
+  "76": {
+   "kind": "gpio",
+   "name": "PE13",
+   "port": "PE13"
+  },
+  "77": {
+   "kind": "gpio",
+   "name": "PE14",
+   "port": "PE14"
+  },
+  "78": {
+   "kind": "gpio",
+   "name": "PE15",
+   "port": "PE15"
+  },
+  "79": {
+   "kind": "gpio",
+   "name": "PB10",
+   "port": "PB10"
+  },
+  "8": {
+   "kind": "gpio",
+   "name": "PC13",
+   "port": "PC13"
+  },
+  "80": {
+   "kind": "gpio",
+   "name": "PB11",
+   "port": "PB11"
+  },
+  "81": {
+   "kind": "power",
+   "name": "VCAP1",
+   "port": ""
+  },
+  "82": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "83": {
+   "kind": "gpio",
+   "name": "PH6",
+   "port": "PH6"
+  },
+  "84": {
+   "kind": "gpio",
+   "name": "PH7",
+   "port": "PH7"
+  },
+  "85": {
+   "kind": "gpio",
+   "name": "PH8",
+   "port": "PH8"
+  },
+  "86": {
+   "kind": "gpio",
+   "name": "PH9",
+   "port": "PH9"
+  },
+  "87": {
+   "kind": "gpio",
+   "name": "PH10",
+   "port": "PH10"
+  },
+  "88": {
+   "kind": "gpio",
+   "name": "PH11",
+   "port": "PH11"
+  },
+  "89": {
+   "kind": "gpio",
+   "name": "PH12",
+   "port": "PH12"
+  },
+  "9": {
+   "kind": "gpio",
+   "name": "PC14-OSC32_IN",
+   "port": "PC14"
+  },
+  "90": {
+   "kind": "ground",
+   "name": "VSS",
+   "port": ""
+  },
+  "91": {
+   "kind": "power",
+   "name": "VDD",
+   "port": ""
+  },
+  "92": {
+   "kind": "gpio",
+   "name": "PB12",
+   "port": "PB12"
+  },
+  "93": {
+   "kind": "gpio",
+   "name": "PB13",
+   "port": "PB13"
+  },
+  "94": {
+   "kind": "gpio",
+   "name": "PB14",
+   "port": "PB14"
+  },
+  "95": {
+   "kind": "gpio",
+   "name": "PB15",
+   "port": "PB15"
+  },
+  "96": {
+   "kind": "gpio",
+   "name": "PD8",
+   "port": "PD8"
+  },
+  "97": {
+   "kind": "gpio",
+   "name": "PD9",
+   "port": "PD9"
+  },
+  "98": {
+   "kind": "gpio",
+   "name": "PD10",
+   "port": "PD10"
+  },
+  "99": {
+   "kind": "gpio",
+   "name": "PD11",
+   "port": "PD11"
+  }
+ },
+ "retrieved": "2026-11-23",
+ "sha256": "3160eab0152968071d96c3c5714284e4907c125fd8e4947ea647520907893654",
+ "source": "catalog",
+ "source_kind": "LCSC/EasyEDA 符号（P~ 图元带 pinNumber/pinName）",
+ "source_url": "https://easyeda.com/api/products/C89597/components?version=6.5.46",
+ "title": "STM32H743IIT6"
+}

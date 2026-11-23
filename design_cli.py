@@ -1880,6 +1880,73 @@ def cmd_interface(args: list[str]) -> dict[str, Any]:
     return {"status": payload["status"], "project_id": args[0], **payload}
 
 
+def cmd_pinout(args: list[str]) -> dict[str, Any]:
+    """``pinout`` / ``list`` / ``show <part>`` / ``build --lcsc=… [--part=…]``
+
+    **引脚定义表**（P56）：封装脚号 ↔ 端口名。`.ioc` 用 `PA9`，网表用 `30`；
+    有这张表才能**逐脚**对账（`ioc.pin_conflict` 才是硬判据）。
+
+    来源是 LCSC/EasyEDA 的厂商符号；**符号不完整就拒绝建表**（不补猜的脚）。
+    参数两种写法都认：`pinout show <part>` 与 `pinout --action=show --part=<part>`
+    （后者给 DSH 工具用 —— `build_argv` 只会发 `--flag=value`）。
+    """
+    from .design import pinout as pinout_module
+
+    action, part, lcsc = "", "", ""
+    for item in args:
+        if item.startswith("--action="):
+            action = item.split("=", 1)[1]
+        elif item.startswith("--part="):
+            part = item.split("=", 1)[1]
+        elif item.startswith("--lcsc="):
+            lcsc = item.split("=", 1)[1]
+        elif not item.startswith("--"):
+            if not action:
+                action = item
+            elif not part:
+                part = item
+    if not action:
+        return {"status": "ok", **pinout_module.describe(),
+                "tables_detail": pinout_module.list_tables()}
+    if action == "list":
+        rows = pinout_module.list_tables()
+        bad = [row for row in rows if row.get("error") or row.get("problems")]
+        return {"status": "ok" if not bad else "failed", "tables": rows,
+                "count": len(rows)}
+    if action == "show":
+        if not part:
+            return {"status": "not_ready",
+                    "reason": "缺 part 名（pinout show <part>）",
+                    "known": [row.get("part") for row in pinout_module.list_tables()]}
+        table = pinout_module.load(part)
+        if table is None:
+            return {"status": "not_ready",
+                    "reason": f"没有 {part} 的表",
+                    "known": [row.get("part") for row in pinout_module.list_tables()]}
+        return {"status": "ok", **table,
+                "problems": pinout_module.validate(table)}
+    if action == "build":
+        made = pinout_module.build_table(lcsc, part=part)
+        if made.get("status") != "ok":
+            return {"status": made.get("status", "failed"), **made}
+        table = made["table"]
+        target = pinout_module.DIR / f"{table['part']}.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(table, ensure_ascii=False, indent=1,
+                                     sort_keys=True) + "\n", encoding="utf-8")
+        return {"status": "ok", "file": str(target), "part": table["part"],
+                "count": table["count"], "package": table["package"],
+                "mpn": made.get("mpn"), "lcsc": table["lcsc"],
+                "problems": pinout_module.validate(table)}
+    if action == "validate":
+        rows = pinout_module.list_tables()
+        bad = [row for row in rows if row.get("error") or row.get("problems")]
+        return {"status": "ok" if not bad else "failed", "tables": rows,
+                "count": len(rows), "checked": len(rows), "failed": len(bad)}
+    return {"status": "not_ready", "reason": f"不认识的 action {action!r}",
+            "known": ["list", "show", "build", "validate"]}
+
+
 def cmd_fw_algo(args: list[str]) -> dict[str, Any]:
     """``fw-algo list`` / ``fw-algo <id> --algo=failsafe [--out=fw]``
 
@@ -4197,6 +4264,7 @@ COMMANDS = {
     "dfm": cmd_dfm,
     "plan": cmd_plan,
     "interface": cmd_interface,
+    "pinout": cmd_pinout,
     "params": cmd_params,
     "fw-build": cmd_fw_build,
     "fw-algo": cmd_fw_algo,
