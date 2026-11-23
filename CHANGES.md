@@ -3924,6 +3924,20 @@ _import_verdict: 0/43 与 20/43 → not_ready；43/43 → ok
 fake session：0 件/一半 → pcb not_ready；全导入 → 不误报
 ```
 
+### 端到端实测（示例一体-新3，同一份需求）
+
+```
+emit            ok      337.9 s
+project         ok      新建
+schematic       ok      43 器件 / 130 引脚接线
+pcb             ok      43/43 元件在 PCB 上、43 个按坐标摆放
+                        components_on_pcb=43 / expected_on_pcb=43 / missing=0
+unresolved      0
+parity          ok      missing=0 / wrong=0 / extra=0
+```
+
+轮询放大到 40 秒后 43 件全部落地 —— 上一轮的 0 件确认是保存提交的竞态。
+
 ### 边界
 
 **没有根因**"那次为什么导入 0 件"。本轮修的是**判据**：没导入就不是 ok。
