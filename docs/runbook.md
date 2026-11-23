@@ -1283,3 +1283,53 @@ blocks validate  6/6 结构通过（零件/引脚/尺寸/网表引用都对）
 * 参数只有 `{vin,vout,iout}`；**没有做参数扫描/自动选料**
 * `rules` 是文字，还没变成"检查项"（A5 约束账本）
 * 块里没有封装/焊盘；`emit` 仍按 LCSC 匹配
+
+## 24. 装配（A4）+ 约束账本（A5）
+
+### 24.1 A4 装配：需求 → spec → 块 → 设计
+
+`assemble <id> [--req=PATH] [--board=60x40] [--write]`
+
+```bash
+python -m hw_velxio.design_cli assemble demo --write
+python -m hw_velxio.design_cli constraints demo --derive --write
+```
+
+映射是**显式表**（`assemble.ROLE_BLOCKS` / `INTERFACE_BLOCKS`）：
+
+| 来源 | 块 |
+|---|---|
+| 角色 `mcu` | `mcu_support` |
+| 角色 `power_in` | `power_dcdc_5v` + `power_ldo_3v3` |
+| 接口 `usb` | `usb_device` |
+| 接口 `can` | `can_transceiver` |
+
+映射不到的进 `uncovered`，**不造占位件**（以前 `generate` 会选一个型号顶替；
+那是枚举器的行为，`assemble` 不重复）。实测：`mcu+power_in+sensor`+`i2c/usb`
+→ **23 件 / 17 网 / 4 块**，`uncovered=[sensor, i2c]`，V0 pass。
+
+`--write` **只写空工程**：已有元件时返回失败并提示先 `new`。原因不是保守，
+而是"装配 + 人工布局"混在一份设计里，再装配就会覆盖人的摆放。
+
+### 24.2 A5 约束账本：规则 → 三态
+
+约束来源可追溯（`spec` / `block` / `netlist` / `req`），求值只认**真设计**：
+
+| 规则 | 判据 | 实测 |
+|---|---|---|
+| `decoupling.<轨>` | 轨上 ≥1 颗电容 | 轨上 3 件、0 电容 → **fail**；有电容但不在该轨 → fail（不是 unknown）|
+| `i2c.pullup.<线>` | 该线有电阻上拉到电源 | 无上拉 → **fail**；两颗 4k7 → pass |
+| `can.termination` | 120Ω 两端接 CANH/CANL | 无 → **fail**；有 → pass |
+| `budget.power` | 块预算（电流×5V）≤ 需求 `power_w` | 8.30 W vs 1 W → fail；没给 `power_w` → **unknown** |
+| `iface.*` | 网表里有该 class 的网 | 契约在、网表没有 → **unknown**（不是 pass）|
+
+总状态：有 fail → `failed`；有 pass 且无 fail → `ok`；一条都求不出 → `not_ready`。
+
+`audit` 的 pcb 段会读 `constraints.json`：有 fail 进 findings 并判 failed；
+没有产物时 note 写"约束账本没跑（constraints --derive）"，**不假装查过**。
+
+### 24.3 边界
+
+* 块预算的功耗是**上限×5V 的估算**，不是实测（basis 里写了）
+* 上拉/终端只查"有没有"，不查阻值对不对（阻值要 datasheet 与信号速率）
+* 约束目前由 `audit` 消费；`ladder/coverify/plan` 还没接（B 档）

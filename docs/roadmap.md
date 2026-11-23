@@ -53,6 +53,7 @@ L5 验证    → ladder/electrical/mech/fw/emit/audit/handoff；不达标回 L2/
 | L4 实现 | ✅ 骨架 | `emit` 8 段真跑；`generate` 仍是"每链路 1 脚"退化路径存在 |
 | L5 验证 | ✅ 强 | 48 个 check、767 单测、阶梯 V0–V6、六段 audit |
 | 变更传播 | ❌ 无 | 改 MCU/电源不会联动重算网表/固件/机械/BOM |
+| 约束 | 🟢 有账本 | 5 类规则可求值；**阻值/时序还没查** |
 
 **上一轮（P60 / A1+A2）新增**：`spec`（块/契约/版本）、`bus`（总线级网表，
 引脚按 AF 表挑，凑不出就退回并标 `bus_partial`）。
@@ -72,8 +73,8 @@ L5 验证    → ladder/electrical/mech/fw/emit/audit/handoff；不达标回 L2/
 | A1 | 规格层：需求→块/契约/约束 | `spec/vN.json` + `spec.md` | 角色 100% 落块；缺模板进 missing | ✅ P60 |
 | A2 | 总线级网表 | `design/bus.py` | 网名 == 脚的功能名（AF 核对）| ✅ P60 |
 | A3 | **块库**：块=网表片段+参数+验证记录 | `design/blocks/*.json` + `blocks` 命令 | 每个块能实例化、过 validate；`verified_by` 指向真实工程 | ✅ P61 |
-| A4 | `generate` 吃 spec：按块选型，不再"角色→型号" | `generate` 改路径 + 回归 | 生成件数/网表数随块增长；旧模板回归不退化 | ⬜ |
-| A5 | 约束账本：每块/每网一条可测约束 | `constraints.json` | `ladder/coverify/plan` 读同一份 | ⬜ |
+| A4 | **装配**：spec+块 → 设计（`assemble`）；`generate` 保留为无块角色的枚举 | `design/assemble.py` + 命令 | 件数随块增长；块外角色进 uncovered；旧枚举回归不退化 | ✅ P62 |
+| A5 | **约束账本**：去耦/上拉/终端/预算/接口 | `constraints.json` + 命令 | 三态求值；`unknown` 不算 pass；`audit` 已消费 | ✅ P62（`ladder/coverify/plan` 待接）|
 
 ### B 档（模型扩展）
 

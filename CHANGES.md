@@ -3648,6 +3648,54 @@ npm test                                # 767 项
 * 参数只有 `{vin,vout,iout}`，没有参数扫描/自动选料
 * 块内 `rules` 还是文字（A5 约束账本才进检查）
 
+## P62 — A4 装配 + A5 约束账本（2026-11-23）
+
+> 把「需求 → spec → 块」接到设计，并让规则第一次可求值。
+
+### 新增
+
+| 文件 | 内容 |
+|---|---|
+| `design/assemble.py` | 需求→spec→块计划→设计；显式映射表；未覆盖角色/接口进 `uncovered`，不造占位件 |
+| `design/constraints.py` | 5 类约束（去耦/上拉/终端/预算/接口）；`pass`/`fail`/`unknown` 三态 |
+| `scripts/check_p62.py` | 13 项 |
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design_cli.py` | 新增 `assemble` / `constraints` |
+| `design/store.py` | `ARTIFACTS` 加 `constraints.json` |
+| `design/audit.py` | pcb 段读 `constraints.json`：有 fail 判 failed；没产物写 missing |
+| `docs/runbook.md` | 新增 §24 |
+| `docs/roadmap.md` | A4/A5 ✅；现状表加"约束"行 |
+
+### 实测
+
+```
+assemble：mcu+power_in+sensor + i2c/usb → 23 件 / 17 网 / 4 块
+  uncovered=[sensor, i2c]；validate 通过；V0 pass；--write 只写空工程
+constraints：19 规则 / 9 求值 / 8 pass / 0 fail / 1 unknown（i2c 契约没有网）
+上拉缺失 → fail；CAN 无 120Ω → fail；3V3 无电容但有别处电容 → fail
+预算 8.30 W vs 1 W → fail；没给 power_w → unknown；空设计 → not_ready
+```
+
+### 诚实边界
+
+* 块预算是上限×5V 的**估算**，不是实测
+* 上拉/终端只查"有没有"，不查阻值
+* `ladder/coverify/plan` 还没读约束账本（B 档）
+
+### 一次事故（已恢复）
+
+新模块第一版直接写成 `design/assemble.py`，**覆盖了 R3 的旧模块**
+（`assemble_roles` / `assemble_plan`，24 个单测立刻红）。这就是 AGENTS §3.43
+记过的同一个坑，我又踩了一次。
+
+* 恢复：`git show HEAD:design/assemble.py` 写回（一字未改）
+* 新模块改名 `design/assemble_blocks.py`
+* 教训：**写新文件前 `ls design/`**，不要靠"我记得没有"
+
 ---
 
 ## 后续

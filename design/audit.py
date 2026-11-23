@@ -180,16 +180,30 @@ def _stage_pcb(store: Any, design: Any) -> dict[str, Any]:
     if nets and connected < nets:
         findings.append({"check": "pcb.connectivity", "refs": [],
                          "message": f"{connected}/{nets} 条网连通（铺铜之后）"})
+    # P62：约束账本（`constraints <id> --derive --write` 才有）。有 fail 就进
+    # 这一段并判 failed；没有产物时**不假装查过**（note 里写 missing）。
+    cons = store.read("constraints.json")
+    cons_counts = (cons or {}).get("counts") if isinstance(cons, dict) else None
+    if isinstance(cons_counts, dict) and int(cons_counts.get("fail") or 0):
+        findings.append({"check": "constraints", "refs": [],
+                         "message": (f"{cons_counts.get('fail')} 条约束 fail / "
+                                     f"{cons_counts.get('unknown')} 条 unknown")})
     status = ("failed" if (nets and connected < nets)
+              or (isinstance(cons_counts, dict) and int(cons_counts.get("fail") or 0))
               else "ok" if str(fab.get("status")) == "ok" else "not_ready")
     return _row("pcb", status,
                 checked={"nets": nets, "connected": connected,
                          "drc_trustworthy": cur if cur is not None else "unknown",
-                         "dfm": str((fab.get("dfm") or {}).get("status") or "")},
+                         "dfm": str((fab.get("dfm") or {}).get("status") or ""),
+                         "constraints": (dict(cons_counts)
+                                         if isinstance(cons_counts, dict) else "missing")},
                 basis="emit.json / verify_detail + fabrication",
                 findings=findings,
                 note=(f"连通 {connected}/{nets}；制造结论 {fab.get('status')}"
-                      f"（DFM {(fab.get('dfm') or {}).get('status')}）"))
+                      f"（DFM {(fab.get('dfm') or {}).get('status')}）；"
+                      + (f"约束 {cons_counts.get('pass')} pass / "
+                         f"{cons_counts.get('fail')} fail" if isinstance(cons_counts, dict)
+                         else "约束账本没跑（constraints --derive）")))
 
 
 def _stage_firmware(store: Any, design: Any) -> dict[str, Any]:

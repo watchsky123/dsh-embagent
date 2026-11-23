@@ -978,7 +978,7 @@ def cmd_roles(args: list[str]) -> dict[str, Any]:
         if index + 1 >= len(args):
             return {"status": "failed", "findings": ["--assemble 需要一个工程 id"]}
         project_id = args[index + 1]
-        from .design import assemble as assemble_module
+        from .design import assemble_blocks as assemble_module
         from .design import discipline
 
         title = ""
@@ -1586,6 +1586,120 @@ def cmd_capability(args: list[str]) -> dict[str, Any]:
     return {"status": "ok", "candidates": found,
             "count": len(found), "needs": sorted(needs),
             "role": role, "constraints": constraints}
+
+
+def cmd_assemble(args: list[str]) -> dict[str, Any]:
+    """``assemble <id> [--req=PATH] [--board=60x40] [--write]`` —— 装配（A4）。
+
+    需求 → `spec.build` → 块计划 → `blocks.compose` → 设计。块库没有的角色/
+    接口进 `uncovered`，**不造占位件**；装配后必须过 `validate()`。
+    `--write` 只允许写进**空工程**（不覆盖已有元件）。
+    """
+    from .design import assemble_blocks as assemble_module
+    from .design import generate as generate_module
+    from .design import ladder as ladder_module
+    from .design import spec as spec_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **assemble_module.describe()}
+    store, design = _load(args[0])
+    req_path = ""
+    width, height = 60.0, 40.0
+    write = False
+    for item in args[1:]:
+        if item.startswith("--req="):
+            req_path = item.split("=", 1)[1]
+        elif item.startswith("--board=") and "x" in item:
+            try:
+                w, h = item.split("=", 1)[1].split("x", 1)
+                width, height = float(w), float(h)
+            except ValueError:
+                pass
+        elif item == "--write":
+            write = True
+    raw = None
+    if req_path:
+        path = Path(req_path)
+        if not path.is_absolute():
+            path = store.dir / path
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    else:
+        raw = store.read("req.json")
+    if not isinstance(raw, dict):
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": "没有 req.json（先 req-draft，或给 --req=PATH）"}
+    fields = {"id", "title", "roles", "interfaces", "constraints", "numbers", "notes"}
+    req = generate_module.Requirement(**{k: v for k, v in raw.items() if k in fields})
+    result = assemble_module.assemble(req, board_size=(width, height))
+    if result["status"] == "not_ready":
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": result.get("reason"), "uncovered": result.get("uncovered")}
+    built = result["design"]
+    if write:
+        if design.parts:
+            return {"status": "failed", "project_id": args[0],
+                    "reason": ("工程里已有元件 —— `assemble --write` 只写空工程，"
+                               "要重来请先 new 一个空工程"),
+                    "counts": result["counts"]}
+        if built.parts:
+            # **整份替换**（含板框）：装配用的是自己的板 id，只换零件/网表
+            # 会让 `placement.board_id` 指向不存在的板（实测报满屏）。
+            design.board = built.board
+            design.boards = built.boards
+            design.parts = built.parts
+            design.nets = built.nets
+            problems = design.validate()
+            if problems:
+                return {"status": "failed", "project_id": args[0],
+                        "problems": problems[:8]}
+            store.save(design)
+    v0 = ladder_module.level_v0(built)
+    v1 = ladder_module.level_v1(built)
+    return {"status": result["status"], "project_id": args[0],
+            "counts": result["counts"], "uncovered": result["uncovered"],
+            "plan": result["plan"]["plan"],
+            "ladder": {"V0": v0.status, "V1": v1.status},
+            "written": bool(write), "note": result["note"]}
+
+
+def cmd_constraints(args: list[str]) -> dict[str, Any]:
+    """``constraints <id> [--derive] [--write]`` —— 约束账本（A5）。
+
+    从 `spec` 的接口契约 + 网表（class/block 规则）+ 需求数值派生约束，再按
+    真设计求值：`pass` / `fail` / `unknown`。缺数据是 `unknown`，**不是通过**。
+    """
+    from .design import constraints as constraints_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **constraints_module.describe()}
+    store, design = _load(args[0])
+    existing = store.read(constraints_module.FILE)
+    if "--derive" not in args:
+        if not isinstance(existing, dict):
+            return {"status": "not_ready", "project_id": args[0],
+                    "reason": "还没有 constraints.json（先跑 constraints <id> --derive）"}
+        return {"status": existing.get("status", "not_ready"), "project_id": args[0],
+                **existing}
+
+    from .design import generate as generate_module
+    from .design import spec as spec_module
+
+    spec = spec_module.load_latest(store.dir)
+    raw = store.read("req.json")
+    req = None
+    if isinstance(raw, dict):
+        fields = {"id", "title", "roles", "interfaces", "constraints",
+                  "numbers", "notes"}
+        try:
+            req = generate_module.Requirement(
+                **{k: v for k, v in raw.items() if k in fields})
+        except TypeError:
+            req = None
+    payload = constraints_module.derive(design, spec=spec, req=req)
+    if "--write" in args:
+        store.write(constraints_module.FILE, payload)
+    return {"status": payload["status"], "project_id": args[0], **payload,
+            "written": "--write" in args}
 
 
 def cmd_blocks(args: list[str]) -> dict[str, Any]:
@@ -4726,6 +4840,8 @@ COMMANDS = {
     "ioc-links": cmd_ioc_links,
     "renode": cmd_renode,
     "capability": cmd_capability,
+    "assemble": cmd_assemble,
+    "constraints": cmd_constraints,
     "blocks": cmd_blocks,
     "spec": cmd_spec,
     "generate": cmd_generate,
