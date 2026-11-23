@@ -235,6 +235,7 @@ def compose(plan: list[dict[str, str]], *, board_id: str = "",
         nets.extend(got["nets"])
         blocks.append({"instance": instance, "block": block_id,
                        "parts": [p.ref for p in got["parts"]],
+                       "nets": [row["net"] for row in got["nets"]],
                        "verified": bool(got["verified_by"])})
     nets = _merge_nets(nets)
     verified = [row for row in blocks if row["verified"]]

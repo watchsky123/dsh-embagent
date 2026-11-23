@@ -76,6 +76,8 @@ ARTIFACTS = (
     "params.md",
     "geom.json",
     "constraints.json",
+    "graph.json",
+    "pin_assign.json",
     "fab.json",
     "sch_drc.json",
     "panel.json",

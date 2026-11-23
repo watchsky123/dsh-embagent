@@ -123,6 +123,13 @@ def assemble(req: Any, *, board_size: tuple[float, float] = (60.0, 40.0),
     if not merged.get("ok"):
         return {"status": "failed", "design": design, "spec": spec,
                 "plan": planned, "reason": merged.get("reason")}
+    # B3：块实例进 `blocks_list`（零件/网表仍平铺，flatten 是恒等）。
+    design.blocks_list = [
+        {"instance": row["instance"], "block": row["block"],
+         "parts": list(row.get("parts") or []),
+         "nets": list(row.get("nets") or [])}
+        for row in composed["blocks"]
+    ]
     problems = design.validate()
     if problems:
         return {"status": "failed", "design": design, "spec": spec,

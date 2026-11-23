@@ -3696,6 +3696,47 @@ constraints：19 规则 / 9 求值 / 8 pass / 0 fail / 1 unknown（i2c 契约没
 * 新模块改名 `design/assemble_blocks.py`
 * 教训：**写新文件前 `ls design/`**，不要靠"我记得没有"
 
+## P63 — B 档：选型字段 / 网络类 / 块实例 / 变更图 / 引脚分配（2026-11-23）
+
+### 新增
+
+| 文件 | 内容 |
+|---|---|
+| `design/graph.py` | 变更图：四种节点 + 四种边；`impact` 双向两跳 |
+| `design/pin_assign.py` | 引脚分配器：AF 表候选、贪心、冲突换组、unassigned |
+| `scripts/check_p63.py` | 17 项 |
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design/model.py` | Part 六字段；`NET_CLASSES`；nets/blocks_list 校验 |
+| `design/blocks.py` | compose 记录每块的网名 |
+| `design/assemble_blocks.py` | 装配写入 `blocks_list` |
+| `design_cli.py` | 新增 `graph` / `pin-assign`；assemble --write 同步 blocks_list |
+| `design/store.py` | `ARTIFACTS` 加 `graph.json`、`pin_assign.json` |
+| `design/lceda_geom.py` | 重试 2 → 3 轮（冷启动漏 1–2 颗） |
+| `docs/runbook.md` | 新增 §25 |
+| `docs/roadmap.md` | B1–B5 ✅ |
+| `AGENTS.md` | 指针扩到 §21–§25 |
+
+### 实测
+
+```
+B1 六字段往返不丢；空字段不写；负成本/降额 1.5 报错
+B2 未知 class 列全部允许值；constraints 非数组、同网重复引脚各报一条
+B3 装配 3 块写入 blocks_list；引用不存在/一件两属 → 报错
+B4 impact(U1) → 18 零件 / 8 网 / 3 块 / 1 固件引脚（85 边）；目标不存在 → not_ready
+B5 4 功能 4 脚（PA9/PA10/PB6/PB7）；avoid PA9 + PB6/PB7 被占 → USART1_TX 进 unassigned
+   assign_protocol(uart, avoid PA9/PB6) → 换到 USART2（PA2/PA3）
+```
+
+### 诚实边界
+
+* `cost/supply` 只是字段，没接 LCSC 价格/库存回填
+* `graph` 不含机械域/引脚级边
+* 引脚分配是贪心，不是全局最优
+
 ---
 
 ## 后续

@@ -221,14 +221,15 @@ def fetch(design: Any, *, session: lceda.LcedaSession | None = None,
         refs_by_lcsc.setdefault(str(part.lcsc).strip().upper(), []).append(part.ref)
     by_lcsc = {lcsc: refs[0] for lcsc, refs in refs_by_lcsc.items()}
     wanted = sorted(by_lcsc)
-    # **两轮**：第一轮把库缓存暖起来；`no_footprint` / `geometry_unavailable`
-    # 再试一次 —— 实测同一个 LCSC 连查三次，`footprintUuid` 会在"空/有"之间
-    # 跳（库 worker 异步装载）。`device_not_found` 不值得重试。
+    # **三轮**：第一轮把库缓存暖起来；`no_footprint` / `geometry_unavailable`
+    # 再试两次 —— 实测同一个 LCSC 连查三次，`footprintUuid` 会在"空/有"之间
+    # 跳（库 worker 异步装载）。只重试 2 轮时，冷启动仍会漏 1–2 颗
+    # （check_p58 实测 24/28 → 27/28 的差别）。`device_not_found` 不重试。
     RETRY_REASONS = ("no_footprint", "geometry_unavailable")
     resolved_items: dict[str, dict[str, Any]] = {}
     last_reason: dict[str, str] = {}
     pending = list(wanted)
-    for _round in range(2):
+    for _round in range(3):
         if not pending:
             break
         retry_next: list[str] = []

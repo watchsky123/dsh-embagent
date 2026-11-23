@@ -1588,6 +1588,100 @@ def cmd_capability(args: list[str]) -> dict[str, Any]:
             "role": role, "constraints": constraints}
 
 
+def cmd_graph(args: list[str]) -> dict[str, Any]:
+    """``graph <id> [--impact=U1,net:3V3,block:MCU1] [--write]`` —— 变更图（B4）。
+
+    派生图（零件/网/块/固件四种节点）；`--impact` 沿边双向走两跳，列出受影响
+    的零件/网/块/固件引脚。**目标不存在 → not_ready**（不是"没有影响"）。
+    """
+    from .design import graph as graph_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **graph_module.describe()}
+    store, design = _load(args[0])
+    targets: list[str] = []
+    for item in args[1:]:
+        if item.startswith("--impact="):
+            targets = [chunk.strip() for chunk in item.split("=", 1)[1].split(",")
+                       if chunk.strip()]
+    if targets:
+        return {"project_id": args[0], **graph_module.impact(design, targets)}
+    payload = graph_module.build(design)
+    if "--write" in args:
+        store.write(graph_module.FILE, payload)
+    return {"project_id": args[0], **payload}
+
+
+def cmd_pin_assign(args: list[str]) -> dict[str, Any]:
+    """``pin-assign <id> [--mcu=stm32f103c8t6] [--need=USART1_TX,...] [--avoid=PA9]``
+    —— 引脚分配器（B5）。
+
+    候选来自 AF 表（功能名完全匹配），按候选数升序贪心，冲突换组；
+    分不出来进 `unassigned`，**不硬塞**。没给 `--need` 时从 spec 的接口推。
+    """
+    from .design import afmap as afmap_module
+    from .design import pin_assign as pin_module
+    from .design import spec as spec_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **pin_module.describe()}
+    store, design = _load(args[0])
+    model = ""
+    needs: list[str] = []
+    avoid: set[str] = set()
+    for item in args[1:]:
+        if item.startswith("--mcu="):
+            model = item.split("=", 1)[1]
+        elif item.startswith("--need="):
+            needs = [chunk.strip() for chunk in item.split("=", 1)[1].split(",")
+                     if chunk.strip()]
+        elif item.startswith("--avoid="):
+            avoid = {chunk.strip().upper() for chunk in
+                     item.split("=", 1)[1].split(",") if chunk.strip()}
+    if not model:
+        model = str((design.firmware or {}).get("mcu") or "")
+    if not model:
+        mcu = next((part for part in design.parts
+                    if str(part.kind).lower() in {t.lower() for t in afmap_module.list_tables()}),
+                   None)
+        model = str(mcu.kind) if mcu else ""
+    if not model:
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": "没给 --mcu，设计里也没有 AF 表覆盖的 MCU",
+                "tables": afmap_module.list_tables()}
+    if not afmap_module.find(model):
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": f"AF 表里没有 {model}", "tables": afmap_module.list_tables()}
+    used: set[str] = set()
+    results: list[dict[str, Any]] = []
+    if needs:
+        got = pin_module.assign(model, needs, avoid=avoid, used=used)
+        payload = {**got, "model": model, "mode": "explicit"}
+    else:
+        spec = spec_module.load_latest(store.dir)
+        protocols = pin_module.derive_needs(spec)
+        if not protocols:
+            return {"status": "not_ready", "project_id": args[0],
+                    "reason": ("没有 spec 接口，也没给 --need —— 不知道要分什么脚"),
+                    "model": model}
+        for protocol in protocols:
+            one = pin_module.assign_protocol(model, protocol, avoid=avoid, used=used)
+            if one["status"] == "ok":
+                used |= set(one["assignment"].values())
+            results.append(one)
+        assignment = {key: value for row in results
+                      for key, value in (row.get("assignment") or {}).items()}
+        unassigned = [item for row in results for item in (row.get("unassigned") or [])]
+        payload = {"status": ("ok" if not unassigned else
+                              "partial" if assignment else "not_ready"),
+                   "assignment": assignment, "unassigned": unassigned,
+                   "protocols": results, "used": sorted(used),
+                   "model": model, "mode": "from-spec"}
+    if "--write" in args and payload.get("assignment"):
+        store.write("pin_assign.json", payload)
+    return {"project_id": args[0], **payload}
+
+
 def cmd_assemble(args: list[str]) -> dict[str, Any]:
     """``assemble <id> [--req=PATH] [--board=60x40] [--write]`` —— 装配（A4）。
 
@@ -1648,6 +1742,8 @@ def cmd_assemble(args: list[str]) -> dict[str, Any]:
             design.boards = built.boards
             design.parts = built.parts
             design.nets = built.nets
+            # B3：块实例表也要跟着写（否则 graph 看不到块边界）。
+            design.blocks_list = [dict(row) for row in built.blocks_list]
             problems = design.validate()
             if problems:
                 return {"status": "failed", "project_id": args[0],
@@ -4840,6 +4936,8 @@ COMMANDS = {
     "ioc-links": cmd_ioc_links,
     "renode": cmd_renode,
     "capability": cmd_capability,
+    "graph": cmd_graph,
+    "pin-assign": cmd_pin_assign,
     "assemble": cmd_assemble,
     "constraints": cmd_constraints,
     "blocks": cmd_blocks,

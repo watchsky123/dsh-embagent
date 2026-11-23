@@ -80,11 +80,11 @@ L5 验证    → ladder/electrical/mech/fw/emit/audit/handoff；不达标回 L2/
 
 | 编号 | 内容 | 判据 |
 |---|---|---|
-| B1 | `Part` 加 `mpn/footprint/alternates/cost/supply/derating` | 选型能把供货/裕量纳入；缺数据仍是 `unknown` |
-| B2 | `Net` 加 `class/constraints`（已在总线里用，需进 model 校验）| `validate` 认这些键，不静默丢 |
-| B3 | 层次化：`design.blocks` 实体 + flatten | 同一块可多实例；网表展开可追溯 |
-| B4 | 变更图 `graph.json` | 改一个元素 → 列出受影响的网/固件/机械/BOM |
-| B5 | 引脚分配器：AF + 冲突 + 布局偏好求解 | 不再"第一个能用的脚" |
+| B1 | `Part` 加 `mpn/footprint/alternates/cost/supply/derating` | 往返不丢；非法值报错；空字段不写 | ✅ P63 |
+| B2 | `Net` 加 `class/constraints`（单一 `NET_CLASSES`）| `validate` 拦未知 class/坏 constraints/重复引脚 | ✅ P63 |
+| B3 | 层次化：`blocks_list` 元数据 + flatten（恒等）| 引用存在；一件只属一块；graph 可见 | ✅ P63 |
+| B4 | 变更图 `graph.json`：part/net/block/firmware | 两跳影响面；目标不存在 → not_ready | ✅ P63（不含机械/BOM）|
+| B5 | 引脚分配器：AF + 冲突 + 换组 | 不重复用脚；分不出来进 unassigned | ✅ P63 |
 
 ### C 档（闭环与回归）
 

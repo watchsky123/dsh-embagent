@@ -1333,3 +1333,71 @@ python -m hw_velxio.design_cli constraints demo --derive --write
 * 块预算的功耗是**上限×5V 的估算**，不是实测（basis 里写了）
 * 上拉/终端只查"有没有"，不查阻值对不对（阻值要 datasheet 与信号速率）
 * 约束目前由 `audit` 消费；`ladder/coverify/plan` 还没接（B 档）
+
+## 25. B 档：选型字段 / 网络类 / 块实例 / 变更图 / 引脚分配
+
+### 25.1 选型与供应链（B1）
+
+`Part` 新加六个字段（**全部可选**，旧文件往返不变）：
+
+| 字段 | 形状 | 用途 |
+|---|---|---|
+| `mpn` | 字符串 | 厂家型号（`lcsc` 是目录号）|
+| `footprint` | 字符串 | 封装名（如 `LQFP-48`）——**不是尺寸** |
+| `alternates` | `[{mpn, lcsc, note}]` | 替代料（空 = 没评估）|
+| `cost` | `{unit_cny, qty}` | 单价/用量（负值报错）|
+| `supply` | `{stock, lead_time_days}` | 库存/交期 |
+| `derating` | `{voltage_pct, current_pct}` | 降额比例 **0–1**（1.5 报错）|
+
+`validate()` 只查"给了但不对"；空 = 没人填，不是 0。
+
+### 25.2 网络类与约束（B2）
+
+`NET_CLASSES` 是**单一事实源**（`model.py`）：power/ground/signal/spi/i2c/
+uart/can/usb/clock/reset/boot/debug/analog/hs/diff。`validate()` 会拦：
+
+* 未知 class（实测拼错 `wat` 会列全部允许值）
+* `constraints` 不是数组
+* 同一网里同一引脚出现两次
+
+块库里的 `boot` 类就是这么暴露的——第一版没进表，装配直接 failed。
+
+### 25.3 块实例（B3）
+
+`DesignModel.blocks_list = [{instance, block, parts: [ref], nets: [name]}]`。
+
+**它只是层次元数据**：零件/网表仍平铺，`flatten` 是恒等，所以所有已有判定器
+不用改。`validate()` 查：块引用存在、一个元件只属一个块。`graph` 用它画
+块边界。
+
+### 25.4 变更图（B4）
+
+`graph <id> [--impact=U1,net:3V3,block:MCU1] [--write]`
+
+四种节点（part/net/block/firmware）+ 四种边（pin/block_part/block_net/
+firmware）。`impact` 沿边**双向两跳**；目标不存在 → `not_ready`。
+
+实测（装配后的 18 件板 + 一条固件 pinmap）：`impact(U1)` → 18 零件 /
+8 网 / 3 块 / 1 固件引脚，85 条边。
+
+**边界**：两跳在"MCU 是枢纽"的板上会覆盖全板（这是真的，不是错）；
+再远就没有区分度了，所以不扩。
+
+### 25.5 引脚分配器（B5）
+
+`pin-assign <id> --mcu=stm32f103c8t6 [--need=USART1_TX,...] [--avoid=PA9]`
+
+* 候选 = AF 表里功能名**完全等于** `组_角色` 的脚
+* 按候选数升序贪心；冲突换组（`USART1` → `USART2`）
+* 分不出来进 `unassigned` 并写原因（候选脚被谁占了）
+
+实测：`USART1_TX/RX + I2C1_SCL/SDA` → PA9/PA10/PB6/PB7；`--avoid=PA9` 且
+PB6/PB7 被 I2C 占用 → `USART1_TX` 进 unassigned（PA9 被禁、PB6 已用）；
+`assign_protocol(uart, avoid=PA9,PB6)` → 换到 **USART2**（PA2/PA3）。
+
+### 25.6 边界
+
+* `cost/supply` 只是**字段**，还没接目录自动回填（要 LCSC 价格/库存接口）
+* `graph` 不含机械域/引脚级边（只到"零件—网"）
+* 引脚分配是贪心，不是全局最优（候选多时可能占掉后面要用的脚；
+  可用 `--avoid`/`prefer` 引导）

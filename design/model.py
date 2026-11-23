@@ -35,6 +35,13 @@ from typing import Any, Iterable
 SCHEMA = "hw_velxio.design/1"
 UNITS = "mm"
 
+#: 网络类（B2）。**单一事实源**：`bus.BUSES` 的 class、`constraints.py` 的判据、
+#: `assert`/`handoff` 的措辞都读这一张表；再抄一份就是 AGENTS §3.15 的老坑。
+NET_CLASSES = (
+    "power", "ground", "signal", "spi", "i2c", "uart", "can", "usb",
+    "clock", "reset", "boot", "debug", "analog", "hs", "diff",
+)
+
 #: 允许的来源值。**这一份是唯一事实源**（`validate()` 与各处按它判，别另抄）。
 #:
 #: P41 补了两个：
@@ -308,6 +315,23 @@ class Part:
     justification: Justification | None = None
     #: 所属功能单元 id（对应 `DesignModel.units` 里的项）。空 = 未归属。
     unit: str = ""
+    # ---- 选型 / 供应链（B1）--------------------------------------------
+    #
+    # 这五项让"为什么选它"能被机器读到：型号、封装、替代料、单价、库存交期、
+    # 降额。**全部可选**：空 = 没人填，`to_dict` 省略，旧文件往返不变。
+    #: 制造商型号（与 `lcsc` 并列：一个是目录号，一个是厂家号）。
+    mpn: str = ""
+    #: 封装名（如 `LQFP-48`、`SOT-223`）。**不是尺寸**；尺寸仍在 `size_mm`。
+    footprint: str = ""
+    #: 替代料清单：`[{mpn, lcsc, note}]`。空 = 没评估过替代。
+    alternates: list[dict[str, Any]] = field(default_factory=list)
+    #: 成本：`{"unit_cny": 0.85, "qty": 1, "currency": "CNY", "source": "lcsc"}`。
+    cost: dict[str, Any] = field(default_factory=dict)
+    #: 供货：`{"stock": 12000, "lead_time_days": 3, "source": "lcsc"}`。
+    supply: dict[str, Any] = field(default_factory=dict)
+    #: 降额：`{"voltage_pct": 0.8, "current_pct": 0.7, "temp_c": 85}`。
+    #: 比例是 0–1；缺项 = 没评估，不是 0。
+    derating: dict[str, Any] = field(default_factory=dict)
     # ---- 机械域（P15）-------------------------------------------------
     #
     # 这三项是 MuJoCo 仿真的输入（v3 架构 L2 的 kinematic 域）。
@@ -447,6 +471,19 @@ class Part:
             out["justification"] = self.justification.to_dict()
         if self.unit:
             out["unit"] = self.unit
+        # B1：只在填了才写（旧文件往返不变）。
+        if self.mpn:
+            out["mpn"] = self.mpn
+        if self.footprint:
+            out["footprint"] = self.footprint
+        if self.alternates:
+            out["alternates"] = [dict(a) for a in self.alternates]
+        if self.cost:
+            out["cost"] = dict(self.cost)
+        if self.supply:
+            out["supply"] = dict(self.supply)
+        if self.derating:
+            out["derating"] = dict(self.derating)
         # 机械域三项：**None 与 0 分开**。
         # mass_g=0 是"称出来是 0"（合法但不常见），None 是"没人称过"。
         # 用 `is not None` 而不是真值判断，否则 0 会被当成"没填"丢掉。
@@ -478,6 +515,14 @@ class Part:
             justification=(Justification.from_dict(data["justification"])
                            if data.get("justification") else None),
             unit=str(data.get("unit") or ""),
+            # B1：旧文件没有这些键 → 空，行为不变。
+            mpn=str(data.get("mpn") or ""),
+            footprint=str(data.get("footprint") or ""),
+            alternates=[dict(a) for a in (data.get("alternates") or [])
+                        if isinstance(a, dict)],
+            cost=dict(data.get("cost") or {}),
+            supply=dict(data.get("supply") or {}),
+            derating=dict(data.get("derating") or {}),
             # 旧文件没有这三个键 → None，行为不变。
             mass_g=(float(data["mass_g"])
                     if data.get("mass_g") is not None else None),
@@ -922,6 +967,10 @@ class DesignModel:
     units_list: list[dict[str, Any]] = field(default_factory=list)
     #: 板间链路表（P5 落地）。**空 = 单板**，旧行为不变。
     links_list: list[dict[str, Any]] = field(default_factory=list)
+    #: 块实例表（B3）：`[{instance, block, parts: [ref], nets: [name]}]`。
+    #: **它只是元数据**：零件和网表仍然平铺在 `parts`/`nets`（flatten 是恒等），
+    #: 这样所有已有判定器不用改。空 = 没按块装配，旧行为不变。
+    blocks_list: list[dict[str, Any]] = field(default_factory=list)
     # ---- 四域（P41）------------------------------------------------------
     #
     #: 显式声明的电源/地网（如 `["GND", "+3V3"]`）。
@@ -1146,6 +1195,57 @@ class DesignModel:
         for wire in self.wires:
             if wire.net not in {e.get("net") for e in self.nets}:
                 problems.append(f"导线 {wire.net} 不在网表里")
+        # ---- B2：网络类 / 约束 / 重复引脚 ----------------------------
+        for entry in self.nets:
+            name = str(entry.get("net") or "")
+            cls = entry.get("class")
+            if cls not in (None, ""):
+                if str(cls) not in NET_CLASSES:
+                    problems.append(
+                        f"net {name}: 未知 class {cls!r}（允许：{', '.join(NET_CLASSES)}）")
+            cons = entry.get("constraints")
+            if cons is not None and not isinstance(cons, list):
+                problems.append(f"net {name}: constraints 必须是数组")
+            seen_pins: set[tuple[str, str]] = set()
+            for pin in entry.get("pins") or []:
+                key = (str(pin.get("ref")), str(pin.get("pin")))
+                if key in seen_pins:
+                    problems.append(f"net {name}: 引脚重复 {key[0]}.{key[1]}")
+                seen_pins.add(key)
+        # ---- B1：选型/供应链字段的格式（只查"给了但不对"）-------------
+        for part in self.parts:
+            cost = part.cost or {}
+            unit = cost.get("unit_cny")
+            if unit is not None and (not isinstance(unit, (int, float))
+                                     or float(unit) < 0):
+                problems.append(f"{part.ref}: cost.unit_cny 必须是非负数")
+            der = part.derating or {}
+            for key in ("voltage_pct", "current_pct"):
+                value = der.get(key)
+                if value is None:
+                    continue
+                try:
+                    ratio = float(value)
+                except (TypeError, ValueError):
+                    problems.append(f"{part.ref}: derating.{key} 不是数")
+                    continue
+                if not (0 < ratio <= 1):
+                    problems.append(f"{part.ref}: derating.{key} 必须在 (0,1]")
+        # ---- B3：块实例表（引用存在、一个元件只属于一个块）------------
+        known_refs = {p.ref for p in self.parts}
+        claimed: dict[str, str] = {}
+        for row in self.blocks_list:
+            instance = str(row.get("instance") or "")
+            if not instance:
+                problems.append("blocks_list: 缺 instance")
+            for ref in row.get("parts") or []:
+                text = str(ref)
+                if text not in known_refs:
+                    problems.append(f"块 {instance}: 引用了不存在的元件 {text}")
+                if text in claimed and claimed[text] != instance:
+                    problems.append(
+                        f"元件 {text} 同时属于块 {claimed[text]} 和 {instance}")
+                claimed[text] = instance
         problems.extend(self._validate_domains())
         return problems
 
@@ -1215,6 +1315,8 @@ class DesignModel:
             out["units_list"] = [dict(u) for u in self.units_list]
         if self.links_list:
             out["links_list"] = [dict(l) for l in self.links_list]
+        if self.blocks_list:
+            out["blocks_list"] = [dict(b) for b in self.blocks_list]
         # 四域（P41）：只在非空时写，旧文件往返不变。
         if self.power_nets:
             out["power_nets"] = [str(n) for n in self.power_nets]
@@ -1258,6 +1360,8 @@ class DesignModel:
                         if isinstance(u, dict)],
             links_list=[dict(l) for l in (data.get("links_list") or [])
                         if isinstance(l, dict)],
+            blocks_list=[dict(b) for b in (data.get("blocks_list") or [])
+                         if isinstance(b, dict)],
             power_nets=[str(n) for n in (data.get("power_nets") or [])],
             firmware=(dict(data["firmware"])
                       if isinstance(data.get("firmware"), dict) else None),
