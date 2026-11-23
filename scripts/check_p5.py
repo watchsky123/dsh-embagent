@@ -190,8 +190,14 @@ def check_numbers() -> None:
                 continue
             if read_re.search(line):
                 readers.append(f"{path.name}:{number} {stripped[:60]}")
-    check("3c. 整个 design/ 里**没有** `req.numbers` 的读取点（结论可复核）",
-          not readers, f"读取点：{readers[:3]}")
+    # P65 起 `numbers.power_w` **有**消费方（constraints 的预算）。
+    # 这条从"没有读取点"改成"读取点只有 power_w、且清单是同一份常量"——
+    # 否则它会因为"有人接了消费方"而红（那正好是本条要防的反面）。
+    check("3c. 读取点只有 `numbers.power_w`（消费清单来自常量，不抄字面量）",
+          any("power_w" in reader and reader.startswith("constraints.py")
+              for reader in readers)
+          and tuple(req_draft.CONSUMED_NUMBERS) == ("power_w",),
+          f"读取点：{readers[:3]}")
 
     unread = req_draft.validate(req_draft.ReqDraft.from_dict(
         {**GOOD, "constraints": {**GOOD["constraints"], "weight_g": 100}}))

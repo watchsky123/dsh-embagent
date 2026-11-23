@@ -3780,6 +3780,38 @@ C4 add → 0001 + 索引；缺「证据」→ failed；空决策 → ValueError/
 * 基线只看"变差"，不验证"变好"是真的
 * ADR 的"证据"是自由文本，机器不判真伪
 
+## P65 — 修正：块布局按尺寸 + 预算上限三来源（2026-11-23）
+
+> 来源：用“示例工作区”需求跑整条链时暴露的两个真问题（不是猜的）。
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design/blocks.py` | 固定 6 mm 栅格 → 按 `w/h` 行式排布；**跨块全局重排**；`layout_fits` 口径改为“放得进板框” |
+| `design/assemble_blocks.py` | 板框按内容自动扩（`board_auto_sized` + 实际尺寸）；`layout_fits` 按最终板框重算 |
+| `design/constraints.py` | `_power_limit()`：`req.numbers` → `req.constraints` → `spec.constraints`，结果带 `limit_from` |
+| `scripts/check_p65.py` | 6 项（新增）|
+| `scripts/check_p62.py` | “没给 power_w”夹具改成不含该值的 spec（否则 spec 兜住了）|
+| `docs/runbook.md` | 新增 §27 |
+| `docs/roadmap.md` | 现状表补一行 |
+| `AGENTS.md` | 指针扩到 §21–§27 |
+
+### 实测（示例一体-全链 v2：26 件 / 5 块）
+
+```
+重叠：77 处 → 0 处（组合 33 件也两两不重叠）
+板框：60×40 放不下 → 自动扩到 60×49.4，validate 通过
+预算：unknown → fail（26.18 A×5V = 130.9 W > 需求 60 W，limit_from=req.constraints）
+V2 剩余 fail：space.connector_edge（J2 距板边 10.9 mm）—— 独立的布局规则，未在本次范围
+```
+
+### 边界
+
+* 连接器不贴边（V2 仍 fail，下一次布局规则）
+* 行式排布不是最优布局；只保证不重叠、在板内
+* 板框自动扩是**内容驱动**的，不是需求尺寸；需求若给了板框，不会缩回去
+
 ---
 
 ## 后续

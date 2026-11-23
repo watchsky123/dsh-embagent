@@ -46,6 +46,7 @@ from typing import Any
 __all__ = [
     "CONSUMED_CONSTRAINTS",
     "CONSUMERLESS_FIELDS",
+    "CONSUMED_NUMBERS",
     "DRAFT_DIR",
     "DRAFT_FILE",
     "REQ_FILE",
@@ -74,7 +75,10 @@ DRAFT_DIR = "_drafts"
 CONSUMED_CONSTRAINTS = ("area_mm2",)
 
 #: 能填但**没有任何消费方**的字段。填了不会改变任何结论。
-CONSUMERLESS_FIELDS = ("numbers",)
+#: `numbers` 里**已被消费**的键。P65 起 `power_w` 进了 `constraints.budget`。
+CONSUMED_NUMBERS: tuple[str, ...] = ("power_w",)
+#: 整字段都还没有消费方的（`numbers` 不再是——它有 `power_w` 了）。
+CONSUMERLESS_FIELDS: tuple[str, ...] = ()
 
 
 @dataclass
@@ -225,16 +229,18 @@ def validate(draft: ReqDraft) -> dict[str, Any]:
     #
     # 这一条不是"低影响"，是"没有消费方"。分开说，是因为后者会让人
     # 以为那些数字已经进模型了（AGENTS §3.16）。
-    for name in CONSUMERLESS_FIELDS:
-        value = getattr(draft, name, None)
-        if value:
-            warnings.append({
-                "kind": "field_without_consumer",
-                "message": (f"{name} 里填了 {len(value)} 项，但**没有任何代码读它**"
-                            "——这些数不会影响 generate 或任何判定"),
-                "fix": ("要么在消费方接上（coverify 的 numbers 还没接），"
-                        "要么把它们写进 constraints 的已支持键"),
-            })
+    for key, value in (draft.numbers or {}).items():
+        if value in (None, ""):
+            continue
+        if key in CONSUMED_NUMBERS:
+            continue
+        warnings.append({
+            "kind": "field_without_consumer",
+            "message": (f"numbers.{key} 填了，但**没有任何代码读它**"
+                        "——这些数不会影响 generate 或任何判定"),
+            "fix": ("要么在消费方接上，要么写进 constraints 的已支持键"
+                    f"（numbers 里目前只有 {', '.join(CONSUMED_NUMBERS)} 被读）"),
+        })
 
     return {
         "ok": not problems,
@@ -250,7 +256,7 @@ def validate(draft: ReqDraft) -> dict[str, Any]:
         },
         "basis": ("roles 比对 roles.ROLE_TEMPLATES；constraints 只认 "
                   f"{', '.join(CONSUMED_CONSTRAINTS)}；"
-                  f"{', '.join(CONSUMERLESS_FIELDS)} 无消费方"),
+                  f"numbers 只认 {', '.join(CONSUMED_NUMBERS)}"),
     }
 
 
@@ -470,6 +476,7 @@ def describe() -> dict[str, Any]:
         "fields": list(ReqDraft.__dataclass_fields__),
         "files": {"draft": DRAFT_FILE, "requirement": REQ_FILE},
         "consumed_constraints": list(CONSUMED_CONSTRAINTS),
+        "consumed_numbers": list(CONSUMED_NUMBERS),
         "consumerless": list(CONSUMERLESS_FIELDS),
         "why_two_files": ("草稿模型可改，需求只有人确认后才有；"
                           "合成一个的话『写了没看』和『确认了』在磁盘上一样"),

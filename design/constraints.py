@@ -133,9 +133,27 @@ def _eval_termination(design: Any) -> list[dict[str, Any]]:
     return rows
 
 
-def _eval_budget(spec: dict[str, Any] | None, req: Any) -> list[dict[str, Any]]:
+def _power_limit(spec: dict[str, Any] | None, req: Any) -> tuple[Any, str]:
+    """功耗上限从**三个地方**找（实测需求常只写在 constraints 里）：
+
+    1. `req.numbers.power_w`
+    2. `req.constraints.power_w`
+    3. `spec.constraints[]` 里 `kind == power_w`（`spec.build` 的产物）
+    """
     numbers = dict(getattr(req, "numbers", None) or {}) if req is not None else {}
-    limit = numbers.get("power_w")
+    if numbers.get("power_w") not in (None, "", 0):
+        return numbers.get("power_w"), "req.numbers"
+    constraints = dict(getattr(req, "constraints", None) or {}) if req is not None else {}
+    if constraints.get("power_w") not in (None, "", 0):
+        return constraints.get("power_w"), "req.constraints"
+    for row in (spec or {}).get("constraints") or []:
+        if str(row.get("kind")) in ("power_w", "power") and row.get("value") not in (None, ""):
+            return row.get("value"), "spec.constraints"
+    return None, ""
+
+
+def _eval_budget(spec: dict[str, Any] | None, req: Any) -> list[dict[str, Any]]:
+    limit, limit_from = _power_limit(spec, req)
     blocks = (spec or {}).get("blocks") or []
     current_ma = sum(float((block.get("budget") or {}).get("current_ma") or 0)
                      for block in blocks)
@@ -148,11 +166,12 @@ def _eval_budget(spec: dict[str, Any] | None, req: Any) -> list[dict[str, Any]]:
         return [{"id": "budget.power", "kind": "budget", "status": "unknown",
                  "checked": {"current_ma": current_ma, "estimated_w": round(watts, 2)},
                  "basis": "spec（块预算上限×5V，估算）",
-                 "detail": "需求没给 power_w —— 无法判超没超"}]
+                 "detail": ("需求没给 power_w（numbers/constraints/spec 都查过）"
+                            " —— 无法判超没超")}]
     status = "pass" if watts <= float(limit) else "fail"
     return [{"id": "budget.power", "kind": "budget", "status": status,
              "checked": {"current_ma": current_ma, "estimated_w": round(watts, 2),
-                         "limit_w": float(limit)},
+                         "limit_w": float(limit), "limit_from": limit_from},
              "basis": "spec（块预算上限×5V，估算；不是实测）",
              "detail": f"估算 {watts:.2f} W vs 需求 {limit} W"}]
 

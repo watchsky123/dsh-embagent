@@ -115,7 +115,7 @@ def assemble(req: Any, *, board_size: tuple[float, float] = (60.0, 40.0),
                 "plan": planned,
                 "reason": "块计划为空（需求里的角色/接口都没有对应块）"}
     composed = blocks_module.compose(planned["plan"], board_id=board.id,
-                                     max_x_mm=width)
+                                     max_x_mm=width, max_y_mm=height)
     if composed["status"] != "ok":
         return {"status": "not_ready", "design": design, "spec": spec,
                 "plan": planned, **composed}
@@ -130,6 +130,20 @@ def assemble(req: Any, *, board_size: tuple[float, float] = (60.0, 40.0),
          "nets": list(row.get("nets") or [])}
         for row in composed["blocks"]
     ]
+    # **板框不够大时按内容扩**：需求没给板尺寸，块布局只保证不重叠。
+    # 不扩就等于"装配失败"，而失败原因只是板框太小（实测 26 件需要 60×40+）。
+    spans = [part.footprint_mm() for part in design.parts]
+    need_w = max((span[2] for span in spans), default=0.0) + 5.0
+    need_h = max((span[3] for span in spans), default=0.0) + 5.0
+    auto_sized = False
+    if need_w > width + 0.01 or need_h > height + 0.01:
+        width = max(width, need_w)
+        height = max(height, need_h)
+        board.size_mm = {"w": round(width, 2), "h": round(height, 2)}
+        board.outline = [(0.0, 0.0), (width, 0.0), (width, height), (0.0, height)]
+        design.board = board
+        design.boards = [board]
+        auto_sized = True
     problems = design.validate()
     if problems:
         return {"status": "failed", "design": design, "spec": spec,
@@ -143,6 +157,12 @@ def assemble(req: Any, *, board_size: tuple[float, float] = (60.0, 40.0),
         "plan": planned,
         "counts": {
             "parts": len(design.parts),
+            "layout_fits": all(span[0] >= -0.01 and span[1] >= -0.01
+                               and span[2] <= width + 0.01
+                               and span[3] <= height + 0.01 for span in spans)
+            if spans else True,
+            "board_auto_sized": auto_sized,
+            "board_mm": {"w": round(width, 2), "h": round(height, 2)},
             "nets": len(design.nets),
             "blocks": composed["counts"]["blocks"],
             "verified_blocks": composed["counts"]["verified_blocks"],
@@ -154,7 +174,9 @@ def assemble(req: Any, *, board_size: tuple[float, float] = (60.0, 40.0),
         },
         "uncovered": uncovered,
         "note": ("块之外的角色**没有造占位件**；未覆盖的进 uncovered，"
-                 "要补块库或手工接线"),
+                 "要补块库或手工接线"
+                 + ("；板框按内容自动扩到 "
+                    f"{width:.0f}×{height:.0f} mm" if auto_sized else "")),
     }
 
 

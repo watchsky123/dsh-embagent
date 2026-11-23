@@ -44,9 +44,38 @@ __all__ = ["LIB_DIR", "load_all", "get", "validate", "instantiate", "compose",
 
 LIB_DIR = Path(__file__).with_name("blocks")
 
-#: 实例化时零件摆放的起点与间距（**布局是工程师的活**，这里只保证不重叠）。
-_ORGIN_MM = 10.0
-_STEP_MM = 6.0
+#: 实例化时的摆放：**按零件实际尺寸**做行式排布（shelf packing）。
+#: 之前用固定 6 mm 栅格，7×7 的 MCU 会和晶振/排针大面积重叠（实测 77 处）。
+_ORGIN_MM = 5.0
+_GAP_MM = 2.0
+
+
+def _pack(sizes: list[tuple[float, float]], max_x_mm: float,
+          max_y_mm: float) -> tuple[list[tuple[float, float]], bool]:
+    """行式排布：`(w,h)` 列表 → `(x,y)` 左下角。返回 `(positions, fits)`。
+
+    行内按 `_GAP_MM` 间隔，行高取该行最高件；到板宽折行。
+    `fits=False` 表示按板高放不下（调用方要如实报出来，不能假装放好了）。
+    """
+    positions: list[tuple[float, float]] = []
+    x = y = _ORGIN_MM
+    row_h = 0.0
+    fits = True
+    limit_x = max_x_mm if max_x_mm > 0 else 1e9
+    limit_y = max_y_mm if max_y_mm > 0 else 1e9
+    for width, height in sizes:
+        if x > _ORGIN_MM and x + width > limit_x - _ORGIN_MM:
+            x = _ORGIN_MM
+            y += row_h + _GAP_MM
+            row_h = 0.0
+        positions.append((x, y))
+        # `fits` 只表示"放得进板内"（板边由 `validate` 再判）。用 5 mm 边距当
+        # 硬判据会把"贴边但合法"的板误报成放不下（实测 38.4/40 被误报）。
+        if y + height > limit_y + 0.01:
+            fits = False
+        x += width + _GAP_MM
+        row_h = max(row_h, height)
+    return positions, fits
 
 
 def load_all() -> dict[str, dict[str, Any]]:
@@ -138,7 +167,8 @@ def _alloc_ref(prefix: str, counters: dict[str, int], used: set[str]) -> str:
 def instantiate(block: dict[str, Any], instance: str, *,
                 used_refs: set[str] | None = None,
                 board_id: str = "",
-                max_x_mm: float = 0.0) -> dict[str, Any]:
+                max_x_mm: float = 0.0,
+                max_y_mm: float = 0.0) -> dict[str, Any]:
     """一个块 → 零件 + 网表。**零件/网都带来源**（可追溯）。"""
     problems = validate(block)
     if problems:
@@ -146,11 +176,12 @@ def instantiate(block: dict[str, Any], instance: str, *,
     used = used_refs if used_refs is not None else set()
     counters: dict[str, int] = {}
     parts: list[Part] = []
-    # **摆放要留在板内**：`design.validate()` 会拦"足迹超出板轮廓"。
-    # 这里只做栅格排布（layout 是人的活），按板宽折行。
-    per_row = max(1, int(((max_x_mm - 2 * _ORGIN_MM) if max_x_mm else 1e9) // _STEP_MM) + 1)
+    specs = [spec for spec in (block.get("parts") or []) if isinstance(spec, dict)]
+    sizes = [(float((spec.get("size_mm") or {}).get("w") or 0),
+              float((spec.get("size_mm") or {}).get("h") or 0)) for spec in specs]
+    positions, fits = _pack(sizes, max_x_mm, max_y_mm)
     key_ref: dict[str, str] = {}
-    for index, spec in enumerate(block.get("parts") or []):
+    for index, spec in enumerate(specs):
         prefix = str(spec.get("ref_prefix") or "U")
         ref = _alloc_ref(prefix, counters, used)
         used.add(ref)
@@ -168,10 +199,8 @@ def instantiate(block: dict[str, Any], instance: str, *,
             pins=[str(pin) for pin in spec.get("pins") or []],
             notes=[f"block={block.get('id')} instance={instance} key={spec['key']}"],
             unit=f"block:{instance}",
-            placement=Placement(
-                x_mm=_ORGIN_MM + (index % per_row) * _STEP_MM,
-                y_mm=_ORGIN_MM + (index // per_row) * _STEP_MM,
-                mount="board", board_id=board_id),
+            placement=Placement(x_mm=positions[index][0], y_mm=positions[index][1],
+                                mount="board", board_id=board_id),
         ))
     nets: list[dict[str, Any]] = []
     for spec in block.get("nets") or []:
@@ -189,7 +218,7 @@ def instantiate(block: dict[str, Any], instance: str, *,
                      for pin in spec.get("pins") or []],
         })
     return {"block": block.get("id"), "instance": instance,
-            "parts": parts, "nets": nets,
+            "parts": parts, "nets": nets, "layout_fits": fits,
             "verified_by": list(block.get("verified_by") or [])}
 
 
@@ -213,7 +242,7 @@ def _merge_nets(nets: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def compose(plan: list[dict[str, str]], *, board_id: str = "",
-            max_x_mm: float = 0.0) -> dict[str, Any]:
+            max_x_mm: float = 0.0, max_y_mm: float = 0.0) -> dict[str, Any]:
     """按计划组合多个块。`plan = [{"instance": "PWR1", "block": "power_ldo_3v3"}]`。"""
     library = load_all()
     used: set[str] = set()
@@ -230,13 +259,24 @@ def compose(plan: list[dict[str, str]], *, board_id: str = "",
                             "reason": "块库里没有这个 id"})
             continue
         got = instantiate(block, instance, used_refs=used, board_id=board_id,
-                          max_x_mm=max_x_mm)
+                          max_x_mm=max_x_mm, max_y_mm=max_y_mm)
         parts.extend(got["parts"])
         nets.extend(got["nets"])
         blocks.append({"instance": instance, "block": block_id,
                        "parts": [p.ref for p in got["parts"]],
                        "nets": [row["net"] for row in got["nets"]],
+                       "layout_fits": bool(got.get("layout_fits", True)),
                        "verified": bool(got["verified_by"])})
+    # **全局重排**：`instantiate` 是按块各自从原点排的，组合后会整块叠在一起
+    # （实测 U1×U2 7×7 完全重合）。这里按**所有零件**统一排一次。
+    sizes = [(float(part.size_mm.get("w") or 0), float(part.size_mm.get("h") or 0))
+             for part in parts]
+    positions, fits = _pack(sizes, max_x_mm, max_y_mm)
+    for part, (x, y) in zip(parts, positions):
+        part.placement.x_mm = x
+        part.placement.y_mm = y
+    for row in blocks:
+        row["layout_fits"] = bool(fits)
     nets = _merge_nets(nets)
     verified = [row for row in blocks if row["verified"]]
     return {
@@ -247,7 +287,9 @@ def compose(plan: list[dict[str, str]], *, board_id: str = "",
         "missing": missing,
         "counts": {"blocks": len(blocks), "parts": len(parts), "nets": len(nets),
                    "verified_blocks": len(verified),
-                   "unverified_blocks": len(blocks) - len(verified)},
+                   "unverified_blocks": len(blocks) - len(verified),
+                   "layout_fits": all(row.get("layout_fits", True)
+                                      for row in blocks)},
         "note": ("未验证的块单独计数；块来自常见参考电路，不等于在真板上验过"),
     }
 

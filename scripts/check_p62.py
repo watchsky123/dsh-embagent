@@ -254,7 +254,12 @@ def part_constraints() -> None:
 
     tiny = constraints_module.derive(design, spec=spec,
                                     req=_req(numbers={"power_w": 1}))
-    no_num = constraints_module.derive(design, spec=spec, req=_req(numbers={}))
+    # "没给 power_w"要用不含它的 spec（A5 修正后 spec.constraints 也算来源）
+    spec_no_power = spec_module.build(_req(numbers={"mass_g": 200},
+                                           constraints={"io_voltage_v": 3.3}))
+    no_num = constraints_module.derive(design, spec=spec_no_power,
+                                       req=_req(numbers={},
+                                                constraints={"io_voltage_v": 3.3}))
     budget_tiny = next(row for row in tiny["results"] if row["id"] == "budget.power")
     budget_none = next(row for row in no_num["results"] if row["id"] == "budget.power")
     check("A5-6. 预算：power_w 太小 → **fail**；没给 → **unknown**（不是 pass）",
