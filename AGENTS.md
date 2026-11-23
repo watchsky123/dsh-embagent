@@ -1102,7 +1102,7 @@ return {"status": "ok", **result}   # ← result 里没有 status，写死的活
    初始化成 alpha=0.1 却期望 alpha=0 的结果 → 报 `got 90 want 100`。
    **先怀疑用例，再怀疑实现**——但要能分清（这里实现是对的）。
 
-**`interface` 的边界**：只剩**时序**是 `unknown`。
+**`interface` 的边界**：只剩**时序** `unknown`。
 
 ---
 
@@ -1121,7 +1121,7 @@ return {"status": "ok", **result}   # ← result 里没有 status，写死的活
 > * **§18**：`.ioc` → 配置（时钟/中断/AF/参数）；给错 = 硬冲突。
 > * **§19**：引脚表（LCSC 符号）→ `PA9↔30`；符号不完整就拒绝。
 > * **§20**：AF 表（ST 官方）：F4/H7 有 AF0–15，F1 只有重映射。
-> * **§21/§22**：立创扩产（几何/制造包/DRC）；spec 规格层 + 总线级网表。
+> * **§21/§22**：立创扩产；spec + 总线级网表；长程见 `docs/roadmap.md`。
 
 ---
 
