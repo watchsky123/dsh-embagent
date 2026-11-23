@@ -29,6 +29,8 @@ P5 的初版方案有两处**错的前提**（见 `docs/p5-plan.md` §0）：
 
 from __future__ import annotations
 
+import re
+
 import json
 import os
 import shutil
@@ -373,14 +375,18 @@ def check_frontend() -> None:
           "人的动作" in block or "人的确认" in block,
           block.split("description:")[1][:90].strip() if "description:" in block else "")
 
+    features = (PKG / "src" / "client" / "features.ts").read_text(encoding="utf-8")
     store_src = (PKG / "src" / "client" / "store.ts").read_text(encoding="utf-8")
     panels = (PKG / "src" / "client" / "panels.tsx").read_text(encoding="utf-8")
     view = (PKG / "src" / "client" / "HwIdeView.tsx").read_text(encoding="utf-8")
     service = (PKG / "src" / "service.ts").read_text(encoding="utf-8")
 
-    delivery = _delivery_sections(store_src)
+    rows = re.findall(
+        r"id: '(\w+)', label: '([^']+)', panel: '(\w+)', order: (\d+)", features)
+    delivery = [row[0] for row in rows if row[2] == 'delivery']
     check("5c. 前端：`req` 是 delivery 组分区，标签「需求」",
-          "req" in delivery and "req: '需求'" in store_src,
+          "req" in delivery
+          and any(row[0] == 'req' and row[1] == '需求' for row in rows),
           f"delivery={delivery}")
 
     has_panel = "export function ReqPanel" in panels

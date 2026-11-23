@@ -44,6 +44,7 @@ import {
 } from './store.js'
 import type { Layout, PanelId, SectionId } from './store.js'
 import { composeReviewPrompt } from './view.js'
+import { useJob } from './jobs.js'
 
 export interface HwIdeViewProps {
   readonly sessionId: string
@@ -724,6 +725,7 @@ function PanelBody(props: {
   onSelectField: (ref: string, field: string) => void
   onExport: () => void
 }): JSX.Element {
+  const job = useJob()
   const common = {
     snapshot: props.snapshot,
     onSelect: props.onSelect,
@@ -737,6 +739,8 @@ function PanelBody(props: {
     onApplyReq: () => { void store.applyReqDraft() },
     // P46：发射是长任务，`busy` 会一直挂着；`只重验` 只跑 verify 那一段。
     onEmitRun: () => { void store.emitRun() },
+    onEmitRunStage: (stage: string) => { void store.emitRun(stage) },
+    emitRunning: job.running,
     onEmitReverify: () => { void store.emitReverify() },
   }
   // 按**分区**渲染（不是分组）：分组只是导航，分区才是内容。

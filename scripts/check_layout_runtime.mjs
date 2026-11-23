@@ -159,6 +159,22 @@ function fakeSnapshot(projectId, { errors = 0, openDecisions = 0 } = {}) {
       parts: 2, parts_by_source: { datasheet: 1, estimated: 1 }, nets: 1, wires: 0,
       enclosure: false, estimated_parts: ['r1'] },
     problems: [],
+    emit: {
+      status: 'failed', version: 'JLCEDA Pro 冒烟',
+      project: { name: '冒烟', uuid: 'u' }, bad_jobs: ['pcb'],
+      jobs: [
+        { name: 'project', status: 'ok', note: '新建工程' },
+        { name: 'layout', status: 'ok', note: '' },
+        { name: 'schematic', status: 'ok', note: '装 2 个器件' },
+        { name: 'pcb', status: 'failed', note: 'PCB 导入 0/2' },
+        { name: 'route', status: 'not_ready', note: '未跑' },
+        { name: 'pour', status: 'not_ready', note: '未跑' },
+        { name: 'verify', status: 'not_ready', note: '未跑' },
+        { name: 'outputs', status: 'not_ready', note: '未跑' },
+      ],
+      verify: { nets: 2, connected: 0, split: 2 },
+      fabrication: {}, channel: {}, pareto: {}, artifacts: [], note: '',
+    },
     projection2d: {
       units: 'mm', px_per_mm: 3.7751,
       // 拼板（单板时 = 那一块板）。字段与 `projection.to_2d()` 一致；
@@ -589,6 +605,17 @@ if (htmlSplit === null) {
     && htmlSplit.includes('hwv-board-chip'))
   check('三态计数含「未验证」', htmlSplit.includes('未验证'))
   check('板 chip 带件数', htmlSplit.includes('hwv-board-parts'))
+
+  // P2：发射 8 段时间线 + 每段"重跑"（状态是投影，按钮是真的）
+  store.setPanelSection('emit')
+  const emitHtml = await renderOnce(fakeSnapshot('001-blink'), 'split')
+  check('发射时间线 8 段', (emitHtml.match(/hwv-emit-stage /g) ?? []).length >= 8,
+    `渲染 ${(emitHtml.match(/hwv-emit-stage /g) ?? []).length} 段`)
+  check('每段有「重跑」按钮（可单独重跑）',
+    emitHtml.includes('hwv-emit-retry') && emitHtml.includes('重跑'))
+  check('失败段有独立状态类（不把 failed 画成 ok）',
+    emitHtml.includes('hwv-emit-stage failed'))
+  store.setPanelSection('verdict')
 }
 
 // store.init 起了 2.5s 轮询定时器（浏览器里它负责随工具调用刷新面板）。

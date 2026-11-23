@@ -22,6 +22,7 @@ import type { WorkbenchFace } from './rpc.js'
 import type { HwApi } from './api.js'
 import { createApi } from './api.js'
 import { QueryCache } from './queries.js'
+import { jobs as jobStore } from './jobs.js'
 
 import type { PanelId, SectionId } from './features.js'
 import { DEFAULT_SECTION, SECTIONS, groupOf, isSectionId } from './features.js'
@@ -697,7 +698,9 @@ export class HwStore {
     const face = this.api
     const project = this.state.project
     if (face === null || project === '') return
-    this.set({ busy: jobs === 'verify' ? '只重验' : '发射（8 段，可能要几分钟）',
+    const label = jobs === 'verify' ? '只重验' : (jobs === '' ? '发射（8 段）' : `只重跑 ${jobs}`)
+    jobStore.begin('emit', project, label)
+    this.set({ busy: label === '发射（8 段）' ? '发射（8 段，可能要几分钟）' : label,
                error: null, notice: null })
     try {
       const result = await face.emitRun(project, jobs)
@@ -712,6 +715,8 @@ export class HwStore {
       await this.open(project)
     } catch (error) {
       this.set({ busy: '', error: message(error) })
+    } finally {
+      jobStore.end()
     }
   }
 

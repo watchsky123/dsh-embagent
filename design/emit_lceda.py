@@ -48,7 +48,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from . import lceda as lceda_mod
 from . import dfm as dfm_mod
@@ -2702,6 +2702,7 @@ def emit(
     max_parts: int = MAX_PARTS,
     autolayout: bool = False,
     channel: str = "cli",
+    on_progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> EmitReport:
     """发射主入口。
 
@@ -2718,6 +2719,19 @@ def emit(
     """
     started = time.time()
     report = EmitReport(version=lceda_mod.version_of(session.exe) if session and session.exe else "")
+
+    def _notify() -> None:
+        """每段结束把**当前**报告交给调用方（CLI 用它增量写 emit.json）。
+
+        回调失败**不改发射结论**：进度是给人看的，不能让它的异常把一段
+        成功的发射变成失败。
+        """
+        if on_progress is None:
+            return
+        try:
+            on_progress(report.to_dict())
+        except Exception:  # noqa: BLE001 - 进度回调不该影响判定
+            pass
     report.project["name"] = project_name or _design_project_name(design)
 
     # -- 闸门 1：设计不合法就不发射（出口：改 design.json 后重跑）--------
@@ -2828,8 +2842,10 @@ def emit(
 
         report.project["path"] = _project_path(report.project.get("name") or "",
                                                report.project.get("root") or "")
+        _notify()
         if "layout" in wanted:
             _run_layout(design, report, autolayout=autolayout)
+            _notify()
         if not report.project.get("root"):
             report.notes.append(
                 "工程没有落成磁盘文件夹（`getProjectsPaths` 被外部交互权限拦着）；"
@@ -2837,16 +2853,22 @@ def emit(
         report.stackup = stackup_spec.derive(design).to_dict()
         if "schematic" in wanted:
             _run_schematic(session, design, report, max_parts=max_parts)
+            _notify()
         if "pcb" in wanted:
             _run_pcb(session, design, report)
+            _notify()
         if "route" in wanted:
             _run_route(session, design, report, route=route)
+            _notify()
         if "pour" in wanted:
             _run_pour(session, design, report)
+            _notify()
         if "verify" in wanted:
             _run_verify(session, design, report)
+            _notify()
         if "outputs" in wanted:
             _run_outputs(session, design, report, save_dir=save_dir)
+            _notify()
     except lceda_mod.LcedaError as exc:
         report.notes.append(f"会话层面失败：{exc}")
         for name in wanted:
@@ -2865,6 +2887,7 @@ def emit(
         report.project["path"] = session.project_path
     report.project["elapsed_s"] = round(time.time() - started, 1)
     report.recompute_status()
+    _notify()
     return report
 
 

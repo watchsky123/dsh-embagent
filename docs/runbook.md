@@ -1672,3 +1672,46 @@ fake session：导入 0 件 → pcb not_ready（note「0/2」）
 **没有根因**为什么那次 import 导入了 0 件（可能是保存提交的竞态，也可能
 是文档激活问题）。这两条修的是"不许把没导入当成 ok"，不是"保证一定导入"。
 要定位还需在失败现场抓 `docPoll.docType` / `steps`。
+
+## 32. 前端 P0–P2（结构 / Shell / Job）
+
+> 方案见 [`docs/frontend-refactor.md`](frontend-refactor.md)。P3/P4 未做。
+
+### 32.1 P0：一个注册点 + 一个数据入口 + 样式分片
+
+| 新增 | 作用 |
+|---|---|
+| `client/features.ts` | 分区注册表（id/label/panel/order/badge/empty）；`store` 从它派生并重导出 |
+| `client/api.ts` | `HwApi`：域命名空间 + 与 `WorkbenchFace` 同名的兼容层；store 只跟它说话 |
+| `client/queries.ts` | 按域缓存（entity 30s）+ 前缀失效；`projects` **故意不强缓存**（`reloadProjects` 语义是重新拉） |
+| `client/styles/` | tokens / layout / panels / dark 四个字符串模块 |
+
+`check_dead_css` 改为扫分片（只读 `styles.ts` 会把全部规则判成缺失）；
+`.hwv-fw-${status}` 改成显式映射（脚本才看得见 `hwv-fw-ok`）；
+`.not_run` 的下划线不再被截成 `.not`。
+
+### 32.2 P1：板级汇总 / 三态 / 深链
+
+* 板条：按 `projection2d.parts.board_id` 聚合，点 chip → `openSection('checks', 第一个问题位号)`
+* 三态：通过/失败/警告/**未验证** 同排；verdict 徽章把 `unknown` 算黄
+* `[` / `]` 切分区（输入框里不抢键）
+* `store.openSection(section, ref?)` 与 `select()` 的区别：后者是切换，前者保证选中
+
+### 32.3 P2：发射时间线（进度粒度 = 段）
+
+* Python：`emit(..., on_progress=cb)` 每段结束回调；CLI 回调里**增量写**
+  `emit.json`。此前只在最后写，UI 在几分钟里看不到任何进展。
+* 客户端：`jobs.ts` 记 running；EmitPanel 8 段时间线（工程/布局规则/原理图/
+  PCB/布线/铺铜/连通/产物），每段一个"重跑"（`emitRun(project, stage)`）。
+* **边界**：没有 SSE；粒度是一段，不是每颗器件；回调抛错不改发射结论
+  （`check_p70` C7 守着）。
+
+### 32.4 验收
+
+```
+check_p70  16/16（静态结构 + 回调行为 + 回调抛错）
+check_dead_css / check_client_runtime / check_layout_runtime 通过
+npm run check / build 通过
+59 个离线 check：除环境类 3 条（check_installed 宿主未重启、
+check_plugin 既有红、check_p17 真 EDA 在 4 个 lceda 进程下失败）外全绿
+```

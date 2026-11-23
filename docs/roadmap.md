@@ -62,6 +62,7 @@ L5 验证    → ladder/electrical/mech/fw/emit/audit/handoff；不达标回 L2/
 | 发射预检（P67） | ✅ | 23 编号可解析；预检不过不建工程；`--jobs=project` 16–18s |
 | 引脚契约（P68） | ✅ | 块 `pin_map`；符号引脚表实测；预检三层（编号/器件/引脚）|
 | 导入完整性（P69） | ✅ | 轮询按件数放大；0/半件 → `not_ready`；`expected_on_pcb` |
+| 前端 P0–P2（P70） | ✅ | 注册表/api/queries/样式分片；板级汇总+三态；发射 8 段时间线（P3/P4 待做）|
 
 **上一轮（P60 / A1+A2）新增**：`spec`（块/契约/版本）、`bus`（总线级网表，
 引脚按 AF 表挑，凑不出就退回并标 `bus_partial`）。

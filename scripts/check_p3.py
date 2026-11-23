@@ -243,10 +243,14 @@ def check_contract() -> None:
     panels = (PKG / "src" / "client" / "panels.tsx").read_text(encoding="utf-8")
     view = (PKG / "src" / "client" / "HwIdeView.tsx").read_text(encoding="utf-8")
 
+    # P70：分区表在 features.ts（store 派生 + 重导出）
+    features = (PKG / "src" / "client" / "features.ts").read_text(encoding="utf-8")
+    rows = re.findall(
+        r"id: '(\w+)', label: '([^']+)', panel: '(\w+)', order: (\d+)", features)
     check("6a. 前端：`params` 是 health 组的一个分区，标签为「参数」",
-          "'params'" in store_src and "params: '参数'" in store_src
-          and "health: ['verdict', 'params'" in store_src,
-          "分区 + 标签 + 位置都在")
+          any(row[0] == 'params' and row[1] == '参数' and row[2] == 'health'
+              for row in rows),
+          "注册表里 分区+标签+组 都在")
 
     has_panel = "export function ParamsPanel" in panels
     has_case = "case 'params':" in view

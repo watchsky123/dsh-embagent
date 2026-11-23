@@ -3942,6 +3942,40 @@ parity          ok      missing=0 / wrong=0 / extra=0
 
 **没有根因**"那次为什么导入 0 件"。本轮修的是**判据**：没导入就不是 ok。
 
+## P70 — 前端 P0/P1/P2（2026-11-24）
+
+> 方案与边界见 `docs/frontend-refactor.md`；P3/P4 未做。
+
+### P0 基建
+
+| 文件 | 改动 |
+|---|---|
+| `src/client/features.ts` | 15 个分区的注册表（唯一事实源）；store 派生并重导出 |
+| `src/client/api.ts` | `HwApi` 域命名空间 + 同名兼容层；store 不再散调 face |
+| `src/client/queries.ts` | 按域缓存 + 前缀失效（entity 30s）|
+| `src/client/styles/*` | tokens/layout/panels/dark 四分片 |
+| `scripts/check_dead_css.py` | 扫分片；修 `.not_run` 下划线误报 |
+
+### P1 Shell
+
+* 板级汇总条（`projection2d.parts.board_id` 聚合；点击下钻到第一个问题件）
+* 三态计数含"未验证"；verdict 徽章把 unknown 算黄
+* `openSection(section, ref?)` 深链；`[`/`]` 切分区
+
+### P2 Job / 时间线
+
+* `emit(..., on_progress=cb)` 每段回调；`cmd_emit` 增量写 `emit.json`
+* `jobs.ts`（running 状态）+ EmitPanel 8 段时间线 + 逐段"重跑"
+* 回调抛错不影响发射结论
+
+### 实测
+
+```
+check_p70 16/16（含 C6 每段回调 3 次、C7 回调抛错仍 ok）
+check_layout_runtime 新增 6 条断言（板条/三态/时间线/重跑/失败类）
+npm run check / build 通过
+```
+
 ---
 
 ## 后续

@@ -3290,10 +3290,14 @@ def cmd_emit(args: list[str]) -> dict[str, Any]:
     if not save_dir:
         save_dir = str(store.dir / "artifacts")
 
-    report = emit_lceda.emit(design, project_name=name or args[0], jobs=jobs,
-                             route=route, reuse=reuse, save_dir=save_dir,
-                             max_parts=max_parts, autolayout=autolayout,
-                             channel=channel)
+    report = emit_lceda.emit(
+        design, project_name=name or args[0], jobs=jobs,
+        route=route, reuse=reuse, save_dir=save_dir,
+        max_parts=max_parts, autolayout=autolayout, channel=channel,
+        # **每段结束就落一次 emit.json**：此前只在最后写，UI 在几分钟里
+        # 看不到任何进展（P2 的 job 时间线靠它）。
+        on_progress=lambda payload: store.write(
+            "emit.json", {**payload, "project_id": args[0]}))
     payload = report.to_dict()
     payload["project_id"] = args[0]
     if preflight:

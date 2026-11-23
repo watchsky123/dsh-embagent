@@ -25,6 +25,8 @@ P46 把两者接进快照并各给一个分区。
 
 from __future__ import annotations
 
+import re
+
 import sys
 from pathlib import Path
 
@@ -69,21 +71,26 @@ def _read(*parts: str) -> str:
 
 
 def part_sections() -> None:
-    store = _read("src", "client", "store.ts")
+    # P70：分区注册表在 `features.ts`（store 派生 + 重导出）
+    features = _read("src", "client", "features.ts")
+    rows = re.findall(
+        r"id: '(\w+)', label: '([^']+)', panel: '(\w+)', order: (\d+)", features)
     check("1a. `SectionId` 里有 `emit` 与 `brief`",
-          "'emit'" in store and "'brief'" in store
-          and "| 'emit'" in store and "| 'brief'" in store,
-          "store.ts 的 SectionId 联合类型")
+          any(row[0] == 'emit' for row in rows)
+          and any(row[0] == 'brief' for row in rows),
+          "features.ts 的注册表")
+    delivery = [row for row in rows if row[2] == 'delivery']
     check("1b. 两者都在 `delivery` 组里",
-          "delivery: ['emit', 'brief', 'export'" in store,
-          "SECTIONS.delivery 顺序")
-    idx_emit = store.find("delivery: ['emit'")
-    idx_export = store.find("'export'", idx_emit)
+          {row[0] for row in delivery} >= {'emit', 'brief'},
+          str([row[0] for row in delivery]))
+    order = {row[0]: int(row[3]) for row in delivery}
     check("1c. **emit 排在 export 前面**（人先出板再打包）",
-          idx_emit > 0 and idx_emit < idx_export,
-          f"emit@{idx_emit} export@{idx_export}")
+          order.get('emit', 999) < order.get('export', -1),
+          f"emit={order.get('emit')} export={order.get('export')}")
+    labels = {row[0]: row[1] for row in rows}
     check("1d. `SECTION_LABEL` 有「发射」与「半成品」",
-          "emit: '发射'" in store and "brief: '半成品'" in store)
+          labels.get('emit') == '发射' and labels.get('brief') == '半成品',
+          str({k: labels.get(k) for k in ('emit', 'brief')}))
 
 
 # ---------------------------------------------------------------------------

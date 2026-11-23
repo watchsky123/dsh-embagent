@@ -53,6 +53,10 @@ export interface PanelProps {
   readonly onEmitRun?: () => void
   /** 只重验（8 段里只跑 verify）。 */
   readonly onEmitReverify?: () => void
+  /** 只重跑 8 段里的某一段（P2）。不给就不渲染逐段按钮。 */
+  readonly onEmitRunStage?: (stage: string) => void
+  /** 发射是否正在跑：按钮禁用 + 顶部提示（进度按段刷新，不是流）。 */
+  readonly emitRunning?: boolean
 }
 
 /**
@@ -1020,6 +1024,17 @@ export function ExportPanel(props: PanelProps): JSX.Element {
  *
  * **`verify` 那一段是权威**（铺铜之后的连通性）；`route` 段只报"布了多少段"。
  */
+/** 发射的 8 段（顺序 = Python `JOBS`；`layout` 不碰 EDA，但也是报告里的一段）。 */
+const EMIT_STAGES = ['project', 'layout', 'schematic', 'pcb',
+                     'route', 'pour', 'verify', 'outputs'] as const
+const EMIT_STAGE_LABEL: Readonly<Record<string, string>> = {
+  project: '工程', layout: '布局规则', schematic: '原理图', pcb: 'PCB',
+  route: '布线', pour: '铺铜', verify: '连通', outputs: '产物',
+}
+const EMIT_STATUS_LABEL: Readonly<Record<string, string>> = {
+  ok: '通过', not_ready: '未就绪', failed: '失败',
+}
+
 export function EmitPanel(props: PanelProps): JSX.Element {
   const emit = props.snapshot.emit
   const [copied, setCopied] = useState(false)
@@ -1060,6 +1075,37 @@ export function EmitPanel(props: PanelProps): JSX.Element {
             ? (emit.reason ?? '还没发射过')
             : `发射 ${emit.status} —— ${emit.note ?? ''}`}
         </span>
+      </div>
+
+      {props.emitRunning === true && (
+        <div className="hwv-banner info">
+          正在{props.snapshot.emit === undefined ? '发射' : '执行'}…每段结束会自动刷新，不必重复点
+        </div>
+      )}
+
+      {/* 8 段时间线（P2）：每段一行，可单独重跑。**状态只做投影**——
+          流水线在 Python，这里不猜“应该到哪一段了”。 */}
+      <div className="hwv-emit-stages" role="list" aria-label="发射阶段">
+        {EMIT_STAGES.map((stage) => {
+          const row = jobs.find((job) => job.name === stage)
+          const status = row === undefined ? '' : row.status
+          return (
+            <div key={stage} role="listitem"
+                 className={`hwv-emit-stage ${status === '' ? 'idle' : status}`}
+                 title={row?.note ?? '这一段还没跑'}>
+              <span className="hwv-emit-dot" aria-hidden="true" />
+              <span className="hwv-emit-name">{EMIT_STAGE_LABEL[stage] ?? stage}</span>
+              <span className="hwv-emit-status">
+                {row === undefined ? '未跑' : (EMIT_STATUS_LABEL[status] ?? status)}
+              </span>
+              <button type="button" className="hwv-btn hwv-emit-retry"
+                      disabled={props.onEmitRunStage === undefined || props.emitRunning === true}
+                      onClick={() => { props.onEmitRunStage?.(stage) }}>
+                重跑
+              </button>
+            </div>
+          )
+        })}
       </div>
 
       <div className="hwv-inline hwv-block-tight">

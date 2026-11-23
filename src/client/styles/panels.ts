@@ -240,4 +240,30 @@ export const PANELS = `
   background: var(--hwv-p-fill-estimated);
   outline: 1px solid var(--hwv-p-plain-stroke);
 }
+
+/* ── 发射时间线（P2）──────────────────────────────────────────────────── */
+.hwv-emit-stages {
+  display: flex; flex-direction: column; gap: 0;
+  border: 1px solid var(--hwv-line); border-radius: var(--hwv-radius-sm);
+  overflow: hidden; margin: var(--hwv-space-2) 0;
+}
+.hwv-emit-stage {
+  display: flex; align-items: center; gap: var(--hwv-space-3);
+  padding: var(--hwv-space-1) var(--hwv-space-3);
+  border-bottom: 1px solid var(--hwv-line);
+  font-size: var(--hwv-fs-caption);
+}
+.hwv-emit-stage:last-child { border-bottom: none; }
+.hwv-emit-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--hwv-dim); flex: 0 0 auto;
+}
+.hwv-emit-stage.ok .hwv-emit-dot { background: var(--hwv-ok); }
+.hwv-emit-stage.not_ready .hwv-emit-dot { background: var(--hwv-warn); }
+.hwv-emit-stage.failed .hwv-emit-dot { background: var(--hwv-err); }
+.hwv-emit-name { min-width: 64px; color: var(--hwv-text); }
+.hwv-emit-status { color: var(--hwv-dim); }
+.hwv-emit-stage.failed .hwv-emit-status { color: var(--hwv-err); }
+.hwv-emit-stage.not_ready .hwv-emit-status { color: var(--hwv-warn); }
+.hwv-emit-retry { margin-left: auto; }
 `

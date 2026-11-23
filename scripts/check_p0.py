@@ -18,6 +18,8 @@ P0 只做一件事：**让"这版行不行、下一步做什么"出现在首屏*
 
 from __future__ import annotations
 
+import re
+
 import json
 import os
 import shutil
@@ -227,12 +229,16 @@ def check_contract() -> None:
           and "levels" in (payload.get("verdict") or {}),
           f"exit={code} keys={sorted(payload)[:6]}…")
 
-    # 前端契约：**读 TS 源码**而不是猜——分区表是单一事实源
-    store_src = (REPO / "hw_velxio" / "src" / "client" / "store.ts").read_text(
+    # 前端契约：**读注册表**而不是猜。P70 起分区表在 `features.ts`
+    # （store 只派生 + 重导出），所以断言跟着唯一事实源走。
+    features = (REPO / "hw_velxio" / "src" / "client" / "features.ts").read_text(
         encoding="utf-8")
-    health_ok = "health: ['verdict', " in store_src
-    label_ok = "verdict: '结论'" in store_src
-    default_ok = "health: 'verdict'" in store_src
+    rows = re.findall(
+        r"id: '(\w+)', label: '([^']+)', panel: '(\w+)', order: (\d+)", features)
+    health = [row for row in rows if row[2] == 'health']
+    health_ok = health[0][0] == 'verdict' if health else False
+    label_ok = any(row[0] == 'verdict' and row[1] == '结论' for row in rows)
+    default_ok = "health: 'verdict'" in features
     check("6b. 前端：verdict 是 health 组第一个分区、标签为「结论」、且为默认分区",
           health_ok and label_ok and default_ok,
           f"首位={health_ok} 标签={label_ok} 默认={default_ok}")

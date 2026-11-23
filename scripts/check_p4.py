@@ -19,6 +19,8 @@ P4 把 `pinmap-check` 的三张**问题表**变成 **每脚一行**的矩阵。
 
 from __future__ import annotations
 
+import re
+
 import json
 import os
 import shutil
@@ -267,9 +269,13 @@ def check_contract() -> None:
     view = (PKG / "src" / "client" / "HwIdeView.tsx").read_text(encoding="utf-8")
 
     delivery = _delivery_sections(store_src)
+    features = (PKG / "src" / "client" / "features.ts").read_text(encoding="utf-8")
+    rows = re.findall(
+        r"id: '(\w+)', label: '([^']+)', panel: '(\w+)', order: (\d+)", features)
     check("7a. 前端：`firmware` 是 delivery 组分区，标签「固件」",
-          "firmware" in delivery and "firmware: '固件'" in store_src,
-          f"delivery={delivery}")
+          any(row[0] == 'firmware' and row[1] == '固件' and row[2] == 'delivery'
+              for row in rows),
+          f"delivery={[row[0] for row in rows if row[2] == 'delivery']}")
 
     has_panel = "export function FirmwarePanel" in panels
     has_case = "case 'firmware':" in view
