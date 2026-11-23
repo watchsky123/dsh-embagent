@@ -568,7 +568,10 @@ if (htmlSplit === null) {
   check('焦点环规则', client.includes(':focus-visible'))
   check('reduced-motion', client.includes('prefers-reduced-motion'))
   check('把手样式', client.includes('.hwv-handle.vertical'))
-  check('segmented 按下态', client.includes('.hwv-seg-btn[aria-pressed="true"]'))
+  // bundle 里 CSS 是 JS 字符串：双引号可能被转义成 \"。两种都认。
+  check('segmented 按下态',
+    client.includes('.hwv-seg-btn[aria-pressed="true"]')
+    || client.includes('.hwv-seg-btn[aria-pressed=\\"true\\"]'))
   check('深色命令式调色板仍在', client.includes('body[data-ds-dark-theme] .hwv-root'))
   // P2/P3 静态断言：字阶只有 11/12/13/15 四档，且不再出现 10px。
   check('字号阶梯已令牌化（--hwv-fs-*）', client.includes('--hwv-fs-caption')

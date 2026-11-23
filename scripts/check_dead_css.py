@@ -23,7 +23,9 @@ USAGE = re.compile(r"(hwv-[a-z0-9-]+)")
 # 复合选择器的**修饰类**（`.hwv-tab.active` 里的 active）：它们不带 hwv-
 # 前缀，只查基类会漏掉一整类死规则（例如改成条件挂载后没人再用的
 # `.hwv-pane.hidden`）。按词边界在组件源码里找这个名字。
-MODIFIER = re.compile(r"\.(hwv-[a-z0-9-]+)((?:\.[a-z][a-z0-9-]*)+)")
+# 修饰类允许下划线（`.hwv-ladder-cell.not_run`）：只写 `[a-z0-9-]` 会把
+# `not_run` 截成 `not`，报出一条不存在的"死规则 .not"（实测）。
+MODIFIER = re.compile(r"\.(hwv-[a-z0-9-]+)((?:\.[a-z][a-z0-9_-]*)+)")
 
 
 def _word_present(text: str, word: str) -> bool:
@@ -39,7 +41,10 @@ def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    css = STYLES.read_text(encoding="utf-8")
+    # 样式已拆到 `src/client/styles/*.ts`（P0）：只读 styles.ts 会把全部规则
+    # 判成"缺失"。这里把所有分片拼起来，等价于最终注入的那份 CSS。
+    parts = [STYLES] + sorted((CLIENT / "styles").glob("*.ts"))
+    css = "\n".join(f.read_text(encoding="utf-8") for f in parts)
     # 去掉注释块，否则注释里提到的类名会被当成定义
     body = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
     defined = set(SELECTOR.findall(body))

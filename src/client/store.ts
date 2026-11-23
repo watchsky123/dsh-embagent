@@ -19,84 +19,24 @@ import type {
   EntityProfile,
 } from '../shared/types.js'
 import type { WorkbenchFace } from './rpc.js'
+import type { HwApi } from './api.js'
+import { createApi } from './api.js'
+import { QueryCache } from './queries.js'
 
-/**
- * 底部面板的**分组**（3 个），不是原来的 8 个页签。
- *
- * 为什么合并：8 个平级页签要求用户先在一排同类控件里选一个，再去找那个页里
- * 的按钮；而"判定/预算/未决/核对"回答的其实是同一个问题（这东西有没有毛病），
- * "证据/制造"回答的是"交给别人"。分组后顶部只需 3 个入口，组内再用
- * 分段控件切换——认知负担从"8 选 1"降到"3 选 1，再 2~5 选 1"，且
- * 默认落在最有用的那个分区。
- */
-export type PanelId = 'health' | 'delivery' | 'velxio'
+import type { PanelId, SectionId } from './features.js'
+import { DEFAULT_SECTION, SECTIONS, groupOf, isSectionId } from './features.js'
 
-/** 分组内的分区（保留原来的 8 个语义，一个都没丢）。 */
-export type SectionId =
-  | 'verdict'
-  | 'params'
-  | 'firmware'
-  | 'req'
-  | 'checks'
-  | 'budget'
-  | 'deferred'
-  | 'crosscheck'
-  | 'blocks'
-  | 'emit'
-  | 'brief'
-  | 'export'
-  | 'evidence'
-  | 'velxio'
-  | 'sim'
+// 注册表在 `features.ts`；这里重导出是为了**兼容既有 import**
+// （HwIdeView / 测试脚本都从 store 取），以及让 store 内部用同一份。
+export type { PanelId, SectionId } from './features.js'
+export {
+  DEFAULT_SECTION, FEATURES, GROUP_LABEL, SECTION_LABEL, SECTIONS, featureOf,
+  groupOf, isSectionId,
+} from './features.js'
 
 export type Layout = 'split' | '2d' | '3d'
 const LAYOUTS = ['split', '2d', '3d'] as const
 
-// -- 分组 / 分区 的结构化定义（单一事实源，UI 与 store 都读它）-----------
-
-/** 每个分组里有哪几个分区，顺序即分段控件的顺序。 */
-export const SECTIONS: Readonly<Record<PanelId, readonly SectionId[]>> = {
-  health: ['verdict', 'params', 'checks', 'budget', 'deferred', 'crosscheck', 'blocks'],
-  // **顺序 = 人做事的顺序**：先出板（emit）→ 看半成品待办（brief）
-  // → 再打包（export）。把 emit 放最后等于让人最后才知道板子出没出来。
-  delivery: ['emit', 'brief', 'export', 'firmware', 'req', 'evidence'],
-  velxio: ['velxio', 'sim'],
-}
-
-export const GROUP_LABEL: Readonly<Record<PanelId, string>> = {
-  health: '体检', delivery: '交付', velxio: 'Velxio',
-}
-
-export const SECTION_LABEL: Readonly<Record<SectionId, string>> = {
-  verdict: '结论', params: '参数', checks: '判定', budget: '预算', deferred: '未决', crosscheck: '核对',
-  blocks: '积木', emit: '发射', brief: '半成品',
-  export: '制造', firmware: '固件', req: '需求', evidence: '证据/轨迹',
-  velxio: '后端', sim: '仿真',
-}
-
-/** 每个分组的默认分区 —— 打开就该看到最常用的那个。 */
-export const DEFAULT_SECTION: Readonly<Record<PanelId, SectionId>> = {
-  health: 'verdict', delivery: 'export', velxio: 'velxio',
-}
-
-/** 是不是一个已知分区。**别猜**：host 的 `view` 是自由字符串。 */
-export function isSectionId(value: string): boolean {
-  return (Object.values(SECTIONS) as readonly (readonly string[])[])
-    .some((list) => list.includes(value))
-}
-
-/** 分区属于哪个分组。由 `SECTIONS` 反推，避免两处各写一份对不齐。 */
-export function groupOf(section: SectionId): PanelId {
-  for (const group of Object.keys(SECTIONS) as PanelId[]) {
-    if (SECTIONS[group].includes(section)) return group
-  }
-  return 'health'
-}
-
-/**
- * 可拖与持久化的布局尺寸（Velxio 纪律：每块面板 MIN/MAX/DEFAULT 三件套）。
- * 值存 localStorage；存储被禁就静默用默认（编辑器记忆是 nicety，不是崩溃理由）。
- */
 export const SPLIT_MIN = 20
 export const SPLIT_MAX = 80
 export const SPLIT_DEFAULT = 50
@@ -287,6 +227,8 @@ function message(error: unknown): string {
 }
 
 export class HwStore {
+  private api: HwApi | null = null
+  private readonly queries = new QueryCache()
   private state: HwState = INITIAL
   private listeners = new Set<Listener>()
   private pollTimer: ReturnType<typeof setInterval> | null = null
@@ -310,6 +252,8 @@ export class HwStore {
   /** 交给组件：注入 face 并拉首次数据。重复调用是安全的。 */
   async init(face: WorkbenchFace): Promise<void> {
     if (this.state.face !== null) return
+    // 数据入口统一走 api（`client/api.ts`）；face 只在这里出现一次。
+    this.api = createApi(face)
     this.set({ face })
     await this.reload()
     this.startPolling()
@@ -330,7 +274,7 @@ export class HwStore {
   }
 
   private async poll(): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     if (face === null || this.state.loading) return
     try {
       const hint = await face.hint()
@@ -367,7 +311,7 @@ export class HwStore {
   // -- 数据 ---------------------------------------------------------------
 
   private async reload(): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     if (face === null) return
     this.set({ loading: true, error: null })
     try {
@@ -404,7 +348,7 @@ export class HwStore {
 
   /** 读当前工作区（工程住的目录，与插件安装位置无关）。 */
   async loadWorkspace(): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     if (face === null) return
     try {
       const payload = await face.workspace()
@@ -420,7 +364,7 @@ export class HwStore {
 
   /** 切换工作区（客户端已用原生选择器选好目录）。成功后重载工程列表。 */
   async chooseWorkspace(path: string): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     if (face === null || path === '') return
     this.set({ busy: '切换工作区', error: null })
     try {
@@ -447,7 +391,7 @@ export class HwStore {
    * 项目里，而不是插件目录或家目录的隐藏位置。
    */
   async createWorkspace(parent: string, name: string): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     if (face === null) return
     this.set({ busy: '新建工作区', error: null })
     try {
@@ -467,9 +411,11 @@ export class HwStore {
     }
   }
 
-  async reloadProjects(): Promise<void> {    const face = this.state.face
+  async reloadProjects(): Promise<void> {    const face = this.api
     if (face === null) return
     try {
+      // **不走缓存**：这个方法的语义就是"重新拉列表"（P0 里曾缓存 3s，
+      // 结果检查脚本改完项目列表后读到旧值，读失败路径被误判成空态）。
       const projects: ProjectSummary[] = await face.projects()
       const bootstrap = this.state.bootstrap
       if (bootstrap !== null) this.set({ bootstrap: { ...bootstrap, projects } })
@@ -480,7 +426,7 @@ export class HwStore {
 
   /** 打开一个工程并拉快照（2D + 3D + 判定 + 预算 + 闸门一次往返）。 */
   async open(project: string): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     if (face === null || project === '') return
     this.set({ project, loading: true, error: null, busy: '读取工程' })
     try {
@@ -544,7 +490,7 @@ export class HwStore {
    * 界面刷新不该产生文件。用户点「初审工作区」才走 `hw_survey(write=true)`。
    */
   async loadSurvey(): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     if (face === null) return
     try {
       const payload = await face.survey(false)
@@ -626,7 +572,7 @@ export class HwStore {
    * 画像区自己显示"读不到"。
    */
   private async loadEntity(ref: string): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     const project = this.state.project
     if (ref === '' || face === null || project === '') {
       this.set({ entity: null, entityLoading: false })
@@ -634,7 +580,8 @@ export class HwStore {
     }
     this.set({ entityLoading: true })
     try {
-      const profile = await face.entity(project, ref)
+      const profile = await this.queries.fetch(
+        `entity:${project}:${ref}`, () => face.entity(project, ref), 30_000)
       // 用户可能在等待期间又点了别的件：**只认最后一次**
       if (this.state.selectedRef !== ref) return
       this.set({ entity: profile.status === 'ok' ? profile : null, entityLoading: false })
@@ -648,9 +595,9 @@ export class HwStore {
 
   // -- 编辑 ---------------------------------------------------------------
 
-  private async edit<T>(label: string, action: (face: WorkbenchFace,
+  private async edit<T>(label: string, action: (face: HwApi,
                                                 project: string) => Promise<T>): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     const project = this.state.project
     if (face === null || project === '') return
     this.set({ busy: label, error: null })
@@ -663,6 +610,9 @@ export class HwStore {
         return
       }
       this.set({ busy: '' })
+      // 设计变了：元件画像与工程列表都可能过期。
+      this.queries.invalidate('entity:')
+      this.queries.invalidate('projects')
       await this.open(project)
       await this.reloadProjects()
     } catch (error) {
@@ -733,7 +683,7 @@ export class HwStore {
    * `jobs` 传 `'verify'` 就是"只重验"——8 段里只有它下"能不能打板"的结论。
    */
   async emitRun(jobs = ''): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     const project = this.state.project
     if (face === null || project === '') return
     this.set({ busy: jobs === 'verify' ? '只重验' : '发射（8 段，可能要几分钟）',
@@ -760,7 +710,7 @@ export class HwStore {
   }
 
   async runHealth(): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     const project = this.state.project
     if (face === null || project === '') return
     this.set({ busy: '跑体检', error: null, notice: null })
@@ -848,7 +798,7 @@ export class HwStore {
    * 不能因为"后端没起"把整个工作台打进错误态——检查/预算/导出都不依赖它。
    */
   async refreshVelxio(): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     if (face === null) return
     try {
       const payload = await face.velxioHealth()
@@ -885,7 +835,7 @@ export class HwStore {
    * 由 invoker 负责取）。这里先把 snapshot 里能拿到的板卡传下去。
    */
   async startSim(): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     const project = this.state.project
     if (face === null || project === '') return
     this.set({ busy: '启动仿真', error: null, notice: null })
@@ -909,7 +859,7 @@ export class HwStore {
 
   /** 推进仿真并把新串口文本追加进面板缓冲。 */
   async runSim(): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     const project = this.state.project
     if (face === null || project === '') return
     this.set({ busy: '推进仿真', error: null })
@@ -930,7 +880,7 @@ export class HwStore {
 
   /** 只读串口（不推进 CPU）。 */
   async readSerial(): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     const project = this.state.project
     if (face === null || project === '') return
     try {
@@ -944,7 +894,7 @@ export class HwStore {
   }
 
   async stopSim(): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     const project = this.state.project
     if (face === null || project === '') return
     try {
@@ -956,7 +906,7 @@ export class HwStore {
   }
 
   async setBudgetLimit(currency: string, value: number): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     const project = this.state.project
     if (face === null || project === '') return
     this.set({ busy: '设置预算上限', error: null })
@@ -971,7 +921,7 @@ export class HwStore {
 
   /** 新建工程；成功后自动打开。 */
   async createProject(project: string, board: string, title: string): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     if (face === null) return
     this.set({ busy: '新建工程', error: null })
     try {
@@ -989,7 +939,7 @@ export class HwStore {
   }
 
   async importProject(path: string, bomPath = ''): Promise<void> {
-    const face = this.state.face
+    const face = this.api
     if (face === null) return
     const base = path.replace(/\\/g, '/').split('/').pop() ?? 'imported'
     const id = base.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 48)

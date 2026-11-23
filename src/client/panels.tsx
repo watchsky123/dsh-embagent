@@ -24,6 +24,18 @@ import type {
   VerdictPayload,
 } from '../shared/types.js'
 
+/**
+ * 固件矩阵状态 → 样式类。**不用模板字符串拼类名**：那样源码里只剩一个
+ * 前缀，`check_dead_css` 既看不到 `hwv-fw-ok` 被用、又会把前缀当成缺失类。
+ * 显式映射让"组件用的类"在源码里可搜索。
+ */
+const FW_CLASS: Readonly<Record<'ghost' | 'direction' | 'idle' | 'ok', string>> = {
+  ghost: 'hwv-fw-ghost',
+  direction: 'hwv-fw-direction',
+  idle: 'hwv-fw-idle',
+  ok: 'hwv-fw-ok',
+}
+
 export interface PanelProps {
   readonly snapshot: SnapshotPayload
   readonly onSelect: (ref: string) => void
@@ -502,7 +514,7 @@ export function FirmwarePanel(props: PanelProps): JSX.Element {
                         </div>
                       ))}
                   </td>
-                  <td className={`hwv-fw-${row.status}`}>
+                  <td className={FW_CLASS[row.status]}>
                     {FW_STATUS[row.status] ?? row.status}
                     {row.why !== undefined && row.why !== '' && (
                       <div className="hwv-danger-dim">{row.why}</div>
