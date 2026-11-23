@@ -1588,6 +1588,82 @@ def cmd_capability(args: list[str]) -> dict[str, Any]:
             "role": role, "constraints": constraints}
 
 
+def cmd_spec(args: list[str]) -> dict[str, Any]:
+    """``spec <id> [--build] [--req=PATH]`` —— 规格层（A1）。
+
+    需求 → **功能/子系统/接口契约**（`spec/vN.json` + `spec.md`），在选型与
+    排脚之前。`--build` 同需求复用同一版（`requirement_hash`），需求变了才
+    `v(N+1)`；缺模板进 `missing`（占位块标 `proposed`），缺的数写 null 进
+    `unknown` —— **不填默认值**。
+    """
+    from .design import generate as generate_module
+    from .design import spec as spec_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **spec_module.describe()}
+    store, design = _load(args[0])
+    latest = spec_module.load_latest(store.dir)
+    if "--build" not in args:
+        if latest is None:
+            return {"status": "not_ready", "project_id": args[0],
+                    "reason": "还没有 spec（先跑 spec <id> --build）"}
+        return {"status": latest.get("status", "ok"), "project_id": args[0], **latest}
+
+    req_path = ""
+    for item in args[1:]:
+        if item.startswith("--req="):
+            req_path = item.split("=", 1)[1]
+    raw = None
+    if req_path:
+        path = Path(req_path)
+        if not path.is_absolute():
+            path = store.dir / path
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    else:
+        raw = store.read("req.json")
+    if not isinstance(raw, dict):
+        return {"status": "not_ready", "project_id": args[0],
+                "reason": "没有 req.json（先 req-draft，或给 --req=PATH）"}
+    fields = {"id", "title", "roles", "interfaces", "constraints", "numbers", "notes"}
+    req = generate_module.Requirement(**{k: v for k, v in raw.items() if k in fields})
+    spec = spec_module.build(req)
+    root = store.path(spec_module.DIR)
+    root.mkdir(parents=True, exist_ok=True)
+    index_path = root / spec_module.INDEX
+    meta = {}
+    if index_path.is_file():
+        try:
+            meta = json.loads(index_path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            meta = {}
+    versions = [row for row in (meta.get("versions") or [])
+                if isinstance(row, dict) and row.get("version")]
+    same = next((row for row in versions
+                 if row.get("requirement_hash") == spec["requirement_hash"]), None)
+    if same:
+        version = int(same["version"])
+    else:
+        version = max([int(row["version"]) for row in versions] or [0]) + 1
+    name = f"v{version}"
+    spec = {**spec, "version": version}
+    (root / f"{name}.json").write_text(
+        json.dumps(spec, ensure_ascii=False, indent=1), encoding="utf-8")
+    store.write_text("spec.md", spec_module.render(spec))
+    row = {"version": version, "file": f"{name}.json",
+           "requirement_hash": spec["requirement_hash"],
+           "status": spec["status"],
+           "blocks": len(spec["blocks"]),
+           "interfaces": len(spec["interfaces"]),
+           "created": spec["retrieved"]}
+    versions = [r for r in versions if int(r["version"]) != version] + [row]
+    versions.sort(key=lambda r: int(r["version"]))
+    index_path.write_text(json.dumps(
+        {"latest": name, "versions": versions}, ensure_ascii=False, indent=1),
+        encoding="utf-8")
+    return {"status": spec["status"], "project_id": args[0],
+            "version": version, "file": str(root / f"{name}.json"), **spec}
+
+
 def cmd_generate(args: list[str]) -> dict[str, Any]:
     """``generate --requirement <file> [--max-candidates N] [--fast]``
 
@@ -4563,6 +4639,7 @@ COMMANDS = {
     "ioc-links": cmd_ioc_links,
     "renode": cmd_renode,
     "capability": cmd_capability,
+    "spec": cmd_spec,
     "generate": cmd_generate,
     "budget": cmd_budget,
     "move": cmd_move,

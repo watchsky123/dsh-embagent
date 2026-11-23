@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import bus as bus_module
 from . import capability, claims as claims_module, units as units_module
 from .model import Board, DesignModel, Part, Placement
 
@@ -436,6 +437,7 @@ def to_design(candidate: Candidate, req: Requirement) -> DesignModel:
     parts: list[Part] = []
     ref_of: dict[str, str] = {}
     pin_of: dict[str, dict[str, Any]] = {}
+    model_of: dict[str, str] = {}
     for index, row in enumerate(candidate.parts):
         cap = capability.get(row["model"]) or {}
         pins = sorted({p for group in (cap.get("pins") or {}).values()
@@ -454,6 +456,7 @@ def to_design(candidate: Candidate, req: Requirement) -> DesignModel:
             ref_of[str(owner)] = ref
             ref_of[f"unit:{owner}"] = ref
         pin_of[ref] = cap
+        model_of[ref] = str(row["model"])
         parts.append(Part(
             ref=ref, kind=row["model"], label=row["model"],
             role="module",
@@ -475,6 +478,9 @@ def to_design(candidate: Candidate, req: Requirement) -> DesignModel:
     # 四根）。网表里标 `"level": "peripheral"`，`handoff` 会把它记成缺数据 ——
     # 不许当成真实原理图。
     used_pins: dict[str, set[str]] = {}
+    taken_nets: set[str] = set()
+    bus_meta: list[dict[str, Any]] = []
+    bus_partial: list[dict[str, Any]] = []
     nets: list[dict[str, Any]] = []
     unresolved_links: list[dict[str, Any]] = []
     for index, link in enumerate(candidate.links):
@@ -491,6 +497,28 @@ def to_design(candidate: Candidate, req: Requirement) -> DesignModel:
             # 第一版会造出一条 `U1 -- U1` 的自环网，V0 查不出来但物理上是假的。
             continue
         protocol = str(link.get("protocol") or "sig").upper()
+        # ---- A2：先试**总线级**（SPI 4 根 / I2C 2 根 / UART 交叉 …）----
+        # 引脚来自 AF 表（这个脚真的能做这个功能），不是按名字顺序猜。
+        # 凑不出 ≥2 条就退回下面的单脚示意网，并记进 `bus_partial`。
+        expanded = None
+        if protocol.lower() in bus_module.BUSES and protocol.lower() != "power":
+            expanded = bus_module.expand(
+                protocol.lower(), ref_a, ref_b,
+                model_a=model_of.get(ref_a, ""), model_b=model_of.get(ref_b, ""),
+                cap_a=pin_of.get(ref_a) or {}, cap_b=pin_of.get(ref_b) or {},
+                used_a=used_pins.setdefault(ref_a, set()),
+                used_b=used_pins.setdefault(ref_b, set()),
+                taken_names=taken_nets)
+        if expanded:
+            nets.extend(expanded["nets"])
+            bus_meta.append({"link": link.get("id"), "protocol": protocol,
+                             "group": expanded["group"],
+                             "nets": [row["net"] for row in expanded["nets"]],
+                             "missing": expanded["missing"]})
+            continue
+        if protocol.lower() in bus_module.BUSES:
+            bus_partial.append({"link": link.get("id"), "protocol": protocol,
+                                "reason": "AF 表/能力表凑不出总线（或用不到 ≥2 条）"})
         pin_a = _pick_pin(pin_of.get(ref_a) or {}, protocol,
                           used_pins.setdefault(ref_a, set()))
         pin_b = _pick_pin(pin_of.get(ref_b) or {}, protocol,
@@ -501,12 +529,18 @@ def to_design(candidate: Candidate, req: Requirement) -> DesignModel:
                 "reason": (f"能力表里 {ref_a}/{ref_b} 没有 {protocol} 组，"
                            "接不到具体引脚")})
             continue
-        nets.append({"net": f"{protocol}_{index + 1}", "level": "peripheral",
+        name = f"{protocol}_{index + 1}"
+        taken_nets.add(name)
+        nets.append({"net": name, "level": "peripheral", "bus_partial": True,
                      "source": "derived",
                      "pins": [{"ref": ref_a, "pin": pin_a},
                               {"ref": ref_b, "pin": pin_b}]})
     design.nets = nets
     design.meta = dict(getattr(design, "meta", None) or {})
+    if bus_meta:
+        design.meta["bus"] = bus_meta
+    if bus_partial:
+        design.meta["bus_partial"] = bus_partial
     if unresolved_links:
         design.meta["unresolved_links"] = unresolved_links
     design.links_list = [dict(l) for l in candidate.links]

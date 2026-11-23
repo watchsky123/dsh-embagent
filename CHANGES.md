@@ -3569,6 +3569,47 @@ python -m hw_velxio.scripts.check_p59   # 12 项（约 80 秒，真调用）
 * 拼板**不可调**：这一版没有放板/阵列/面板 DRC/面板制造文件
 * 所有命令都需要 `emit.json`（工程 uuid）与桌面客户端；缺任何一样都是 `not_ready`
 
+## P60 — 规格层 + 总线级网表（A1+A2，2026-11-23）
+
+> 用户判词："现在做的太简单，达不到真实项目的复杂度" —— 差距不在件数，在
+> **中间三层缺失**（块 / 约束 / 变更）。这一轮补前两层的地基。
+
+### 新增
+
+| 文件 | 内容 |
+|---|---|
+| `design/spec.py` | 需求 → 块 / 接口契约 / 约束 / 覆盖率；`spec/vN.json` + `spec.md` + 索引；同需求复用版本 |
+| `design/bus.py` | 总线级网表：SPI 4 根 / I2C 2 根 / UART 交叉 / CAN / USB / power；引脚按 **AF 表**挑；凑不出就 `None` |
+| `scripts/check_p60.py` | 15 项 |
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design/generate.py` | `to_design` 先试总线展开；退化时保留单脚示意并标 `bus_partial`；`meta.bus` 记录展开结果 |
+| `design_cli.py` | 新增 `spec <id> [--build] [--req=PATH]` |
+| `design/store.py` | `ARTIFACTS` 加 `spec/index.json`、`spec.md` |
+| `docs/runbook.md` | 新增 §22 |
+| `AGENTS.md` | 指针行合并 §21/§22（保持 65 KB 内）|
+
+### 实测
+
+```
+spec：4 角色 → 4 块；3 接口 → 3 契约（SPI=SCK/MOSI/MISO/NSS，3.3V，master_slave）
+版本：同需求 v1 → v1；改 mass_g 后 v2
+bus ：SPI1_SCK=PA5 / MOSI=PA7 / MISO=PA6 / NSS=PA15（AF 表核对通过）
+      UART：U1.PA9(TX) ↔ U2.PA10(RX)（交叉）
+      三条总线 8 根网，同一颗芯片引脚零重用
+退化：去掉 AF 表 → 单脚示意网 + bus_partial（不崩、不硬凑）
+```
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p60   # 15 项
+npm test                                # 767 项
+```
+
 ---
 
 ## 后续
