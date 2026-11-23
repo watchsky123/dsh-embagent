@@ -100,6 +100,10 @@ export interface HwState {
   readonly bootstrap: BootstrapPayload | null
   readonly project: string
   readonly snapshot: SnapshotPayload | null
+  readonly preflight: import('../shared/types.js').PreflightPayload | null
+  readonly diff: import('../shared/types.js').DiffPayload | null
+  readonly maturity: import('../shared/types.js').MaturityPayload | null
+  readonly adr: import('../shared/types.js').AdrPayload | null
   readonly layout: Layout
   readonly selectedRef: string
   readonly panel: PanelId
@@ -194,6 +198,10 @@ const INITIAL: HwState = {
   bootstrap: null,
   project: '',
   snapshot: null,
+  preflight: null,
+  diff: null,
+  maturity: null,
+  adr: null,
   layout: readStoredEnum('layout', LAYOUTS, 'split'),
   selectedRef: '',
   panel: 'health',
@@ -604,6 +612,56 @@ export class HwStore {
   }
 
   clearNotice(): void { this.set({ notice: null, error: null }) }
+
+  // -- P3：治理类动作（结果留在 store，面板只投影）------------------------
+
+  /** 发射前预检。失败也把载荷留下——面板要显示"哪一层没过"。 */
+  async runPreflight(): Promise<void> {
+    return this.governance('预检', (api, project) => api.preflight(project), 'preflight')
+  }
+
+  /** 回读差异（**会开立创会话，几十秒**）。 */
+  async runReadbackDiff(): Promise<void> {
+    return this.governance('回读对比', (api, project) => api.readbackDiff(project), 'diff')
+  }
+
+  async runMaturity(): Promise<void> {
+    return this.governance('成熟度', (api, project) => api.maturity(project), 'maturity')
+  }
+
+  async runAdrValidate(): Promise<void> {
+    return this.governance('ADR 校验', async (api, project) => {
+      const list = await api.adrList(project)
+      const valid = await api.adrValidate(project)
+      return { ...valid, entries: list.entries ?? [] }
+    }, 'adr')
+  }
+
+  /**
+   * 三个"治理类"动作共用：不走 `edit()`（它把 not_ready 当失败并中止，
+   * 而预检/成熟度/回读的 not_ready 恰恰是**要显示的内容**）。
+   */
+  private async governance<T extends { status?: string }>(
+    label: string,
+    action: (api: HwApi, project: string) => Promise<T>,
+    field: 'preflight' | 'diff' | 'maturity' | 'adr',
+  ): Promise<void> {
+    const api = this.api
+    const project = this.state.project
+    if (api === null || project === '') return
+    this.set({ busy: label, error: null })
+    try {
+      const payload = await action(api, project)
+      const status = String((payload as { status?: string }).status ?? 'not_ready')
+      this.set({
+        busy: '',
+        [field]: payload,
+        notice: `${label}：${status}`,
+      } as Partial<HwState>)
+    } catch (error) {
+      this.set({ busy: '', error: message(error) })
+    }
+  }
 
   // -- 编辑 ---------------------------------------------------------------
 

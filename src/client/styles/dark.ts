@@ -35,4 +35,5 @@ body[data-ds-dark-theme] .hwv-root {
   --hwv-m-fill-error: #8f2f2f;
   --hwv-m-fill-warn: #8f6f2f;
   --hwv-m-wire-l: 60%;
+}
 `

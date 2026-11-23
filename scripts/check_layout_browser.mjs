@@ -27,7 +27,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -209,11 +209,23 @@ const bundle = readFileSync(bundlePath, 'utf8')
 // 用**下标**而不是正则：源文件是 CRLF，`\n\n` 这类模式会被 `\r\n\r\n`
 // 打断，正则静默匹配不到 → 抽出来是空字符串 → 检查跑在一个**没有样式**的
 // 页面上，"画布尺寸不对"其实是测试自己的问题。抽空必须直接失败。
-const styleSource = readFileSync(resolve(repoRoot, 'src', 'client', 'styles.ts'), 'utf8')
-const cssStart = styleSource.indexOf('const CSS = `')
-const cssBody = cssStart < 0 ? '' : styleSource.slice(cssStart + 'const CSS = `'.length)
-const cssEnd = cssBody.lastIndexOf('`')
-const css = cssEnd < 0 ? '' : cssBody.slice(0, cssEnd)
+// **顺序 = styles.ts 里的拼接顺序**（tokens → layout → panels → dark）。
+// 按文件名排序会把 dark 放最前：它那条 `body[data-ds-dark-theme] .hwv-root {`
+// 若在末尾少一个 `}`，会把后面所有规则吞进深色作用域，浅色页面就"没样式"。
+const STYLE_ORDER = ['tokens', 'layout', 'panels', 'dark']
+const styleSources = [
+  readFileSync(resolve(repoRoot, 'src', 'client', 'styles.ts'), 'utf8'),
+  ...STYLE_ORDER.map((name) =>
+    readFileSync(resolve(repoRoot, 'src', 'client', 'styles', `${name}.ts`), 'utf8')),
+]
+function extractCss(src) {
+  const at = src.indexOf('= `')
+  if (at < 0) return ''
+  const body = src.slice(at + 3)
+  const end = body.lastIndexOf('`')
+  return end < 0 ? '' : body.slice(0, end)
+}
+const css = styleSources.map(extractCss).filter((part) => part.trim() !== '').join('\n')
 if (css.trim().length < 100) {
   console.log(`  FAIL 抽不到样式表（长度 ${css.trim().length}），测的是无样式页面，结论无意义`)
   process.exit(1)
@@ -449,3 +461,6 @@ if (failures.length > 0) {
   process.exit(1)
 }
 console.log('\n✅ 真实浏览器布局检查通过')
+// `execFileSync` 拉起的 headless Chrome 偶尔留下句柄，Node 断言全过却不退出
+// —— 在 CI/脚本串联里表现为"卡住"。断言已经结束，显式退出。
+process.exit(0)

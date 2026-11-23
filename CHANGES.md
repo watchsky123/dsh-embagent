@@ -3976,6 +3976,34 @@ check_layout_runtime 新增 6 条断言（板条/三态/时间线/重跑/失败�
 npm run check / build 通过
 ```
 
+## P71 — 前端 P3/P4（治理面板 / 空态与可访问性）（2026-11-24）
+
+### P3 面板
+
+| 文件 | 改动 |
+|---|---|
+| `src/client/panels_governance.tsx` | 预检 / 回读差异 / 成熟度 / ADR 四面板（动作驱动，not_ready 也显示）|
+| `src/service.ts` | `preflight` / `readbackDiff` / `maturity` / `adrList` / `adrValidate` 五个 `@Remote` |
+| `src/client/rpc.ts` + `api.ts` | 契约与 api 同步（**两处都加**，不是只加一半）|
+| `src/client/store.ts` | 4 个结果字段 + 4 个动作；`governance()` 不走 `edit()`（not_ready 留载荷）|
+| `src/client/features.ts` | 4 个新分区（delivery）→ 19 个 |
+
+### P4
+
+* 长任务横幅 `role="status" aria-live="polite"`（HwIdeView + EmitPanel）
+* 分区切换标题写明 `[ / ]`
+* `check_layout_browser` 断言后显式退出（headless Chrome 留句柄会"卡住"）
+* 修 `dark.ts` 被切掉的结尾 `}`（否则深色规则吞掉后面所有样式，浅色页面"没样式"）
+* 三个浏览器/画布检查改为按 **tokens→layout→panels→dark** 拼接分片
+
+### 实测
+
+```
+check_p71 16/16；check_layout_runtime 新增 4 条通过
+check_canvas_draw / check_assembly3d / check_layout_browser 通过
+check_dead_css 绿
+```
+
 ---
 
 ## 后续

@@ -30,6 +30,10 @@ import type {
   ProjectSummary,
   SnapshotPayload,
   EntityProfile,
+  PreflightPayload,
+  DiffPayload,
+  MaturityPayload,
+  AdrPayload,
 } from '../shared/types.js'
 
 const CHANNEL = '/api'
@@ -125,6 +129,15 @@ export interface WorkbenchFace {
   hint(): Promise<HintPayload>
   /** 勘察工作区（P2）。write=true 会刷新初审.md 的事实段。 */
   survey(write?: boolean): Promise<Record<string, unknown>>
+  /** P3：发射前预检（三层）。 */
+  preflight(project: string): Promise<import('../shared/types.js').PreflightPayload>
+  /** P3：回读差异（会开立创会话，慢）。 */
+  readbackDiff(project: string): Promise<import('../shared/types.js').DiffPayload>
+  /** P3：成熟度六维。 */
+  maturity(project: string): Promise<import('../shared/types.js').MaturityPayload>
+  /** P3：ADR 列表 / 校验。 */
+  adrList(project: string): Promise<import('../shared/types.js').AdrPayload>
+  adrValidate(project: string): Promise<import('../shared/types.js').AdrPayload>
   /** 读回初审.md（含 stale 判定）。 */
   initialReview(): Promise<Record<string, unknown>>
   workspace(): Promise<WorkspacePayload>
@@ -222,6 +235,11 @@ export function createFace(
     runBlock: (project, block, params) =>
       call<Record<string, unknown>>(handle, 'runBlock',
         params === undefined ? { project, block } : { project, block, params }),
+    preflight: (project) => call<PreflightPayload>(handle, 'preflight', { project }),
+    readbackDiff: (project) => call<DiffPayload>(handle, 'readbackDiff', { project }),
+    maturity: (project) => call<MaturityPayload>(handle, 'maturity', { project }),
+    adrList: (project) => call<AdrPayload>(handle, 'adrList', { project }),
+    adrValidate: (project) => call<AdrPayload>(handle, 'adrValidate', { project }),
     hint: () => call<HintPayload>(handle, 'hint'),
     survey: (write) => call<Record<string, unknown>>(handle, 'survey',
       write === true ? { write: true } : {}),

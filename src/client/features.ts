@@ -26,6 +26,10 @@ export type SectionId =
   | 'brief'
   | 'export'
   | 'evidence'
+  | 'preflight'
+  | 'diff'
+  | 'maturity'
+  | 'adr'
   | 'velxio'
   | 'sim'
 
@@ -93,6 +97,15 @@ export const FEATURES: readonly FeatureDef[] = [
     empty: '还没有需求草稿（req-draft）' },
   { id: 'evidence', label: '证据/轨迹', panel: 'delivery', order: 60, badge: 'none',
     empty: '还没有事件轨迹' },
+  // -- P3：治理类（都在"交付"下，因为它们的结论影响"能不能交"）---------
+  { id: 'preflight', label: '预检', panel: 'delivery', order: 70, badge: 'none',
+    empty: '还没跑预检（emit-preflight）' },
+  { id: 'diff', label: '回读', panel: 'delivery', order: 80, badge: 'none',
+    empty: '还没跑回读对比（readback --diff）' },
+  { id: 'maturity', label: '成熟度', panel: 'delivery', order: 90, badge: 'none',
+    empty: '还没算过成熟度（maturity）' },
+  { id: 'adr', label: '决策', panel: 'delivery', order: 100, badge: 'none',
+    empty: '还没有 ADR' },
   // -- Velxio 后端 / 仿真 ------------------------------------------------
   { id: 'velxio', label: '后端', panel: 'velxio', order: 10, badge: 'none',
     empty: '还没探测 Velxio 后端' },

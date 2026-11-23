@@ -58,8 +58,9 @@ def part_p0() -> None:
     features = _read("features.ts")
     store = _read("store.ts")
     ids = re.findall(r"id: '([a-z_]+)'", features)
-    check("A1. features.ts 收录全部 15 个分区",
-          len(ids) == 15 and len(set(ids)) == 15, str(len(ids)))
+    # P3 加了 4 个治理分区（preflight/diff/maturity/adr）→ 19 个。
+    check("A1. features.ts 收录全部分区（19 = 15 + P3 的 4 个）",
+          len(ids) == 19 and len(set(ids)) == 19, str(len(ids)))
     check("A2. store 不再手写 SECTIONS（从注册表派生 + 重导出）",
           "export const SECTIONS" not in store
           and "from './features.js'" in store)

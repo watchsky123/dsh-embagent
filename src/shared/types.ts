@@ -803,3 +803,54 @@ export interface HintPayload {
   seq: number
   at: number
 }
+
+// -- P3：发射前预检 / 回读差异 / 成熟度 / ADR -------------------------------
+
+/** 发射前预检（`emit-preflight`）。三层：编号 → 器件 → 引脚名。 */
+export interface PreflightPayload {
+  readonly status: string
+  readonly reason?: string
+  readonly counts?: Readonly<Record<string, number>>
+  readonly missing_code?: readonly string[]
+  readonly unresolved?: ReadonlyArray<{ ref: string; lcsc: string; name?: string }>
+  readonly no_footprint?: ReadonlyArray<{ ref: string; lcsc: string }>
+  readonly pin_missing?: ReadonlyArray<{ ref: string; lcsc: string
+                                        missing: readonly string[] }>
+  readonly unverified_pins?: readonly string[]
+  readonly note?: string
+}
+
+/** 回读差异（`readback --diff`）：设计 vs 立创 PCB 网表。 */
+export interface DiffPayload {
+  readonly status: string
+  readonly reason?: string
+  readonly differences?: ReadonlyArray<Readonly<Record<string, unknown>>>
+  readonly counts?: Readonly<Record<string, number>>
+  readonly checked?: Readonly<Record<string, number>>
+  readonly note?: string
+}
+
+/** 成熟度（`maturity`）：六维三态。 */
+export interface MaturityPayload {
+  readonly status: string
+  readonly level?: number
+  readonly total?: number
+  readonly dimensions?: ReadonlyArray<{
+    readonly id: string
+    readonly status: string
+    readonly checked?: Readonly<Record<string, unknown>>
+    readonly detail?: string
+    readonly need?: string
+  }>
+  readonly missing?: ReadonlyArray<{ dimension: string; need: string }>
+  readonly note?: string
+}
+
+/** ADR 列表 / 校验（`adr <id> list|validate`）。 */
+export interface AdrPayload {
+  readonly status: string
+  readonly entries?: ReadonlyArray<{ id: string; file: string; title: string; date?: string }>
+  readonly rows?: ReadonlyArray<{ id: string; file: string; missing: readonly string[] }>
+  readonly problems?: readonly string[]
+  readonly counts?: Readonly<Record<string, number>>
+}

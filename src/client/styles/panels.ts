@@ -266,4 +266,37 @@ export const PANELS = `
 .hwv-emit-stage.failed .hwv-emit-status { color: var(--hwv-err); }
 .hwv-emit-stage.not_ready .hwv-emit-status { color: var(--hwv-warn); }
 .hwv-emit-retry { margin-left: auto; }
+
+/* ── P3 治理面板（预检 / 回读 / 成熟度 / ADR）───────────────────────── */
+.hwv-gov-mark {
+  width: 14px; text-align: center; font-weight: 600;
+  color: var(--hwv-dim);
+}
+.hwv-gov-counts {
+  display: flex; flex-wrap: wrap; gap: var(--hwv-space-2);
+  margin: var(--hwv-space-2) 0;
+}
+.hwv-table-tight td, .hwv-table-tight th { padding: 2px var(--hwv-space-2); }
+.hwv-gov-dims { display: flex; flex-direction: column; gap: 2px; margin-top: var(--hwv-space-2); }
+.hwv-gov-dim {
+  display: flex; align-items: baseline; gap: var(--hwv-space-3);
+  padding: 2px var(--hwv-space-2);
+  border-left: 2px solid var(--hwv-line);
+  font-size: var(--hwv-fs-caption);
+}
+.hwv-gov-dim.pass { border-left-color: var(--hwv-ok); }
+.hwv-gov-dim.fail { border-left-color: var(--hwv-err); }
+.hwv-gov-dim.unknown, .hwv-gov-dim.missing { border-left-color: var(--hwv-warn); }
+.hwv-gov-dim .id { color: var(--hwv-text); min-width: 84px; }
+.hwv-gov-dim .st { color: var(--hwv-dim); min-width: 56px; }
+.hwv-gov-dim .detail { color: var(--hwv-dim); }
+.hwv-gov-dim .need { color: var(--hwv-warn); margin-left: auto; }
+
+.hwv-table { width: 100%; border-collapse: collapse; font-size: var(--hwv-fs-caption); }
+.hwv-table th {
+  text-align: left; color: var(--hwv-dim); font-weight: 600;
+  border-bottom: 1px solid var(--hwv-line); padding: 2px var(--hwv-space-2);
+}
+.hwv-table td { border-bottom: 1px solid var(--hwv-line); }
+.hwv-table tr:last-child td { border-bottom: none; }
 `

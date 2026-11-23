@@ -1078,7 +1078,7 @@ export function EmitPanel(props: PanelProps): JSX.Element {
       </div>
 
       {props.emitRunning === true && (
-        <div className="hwv-banner info">
+        <div className="hwv-banner info" role="status" aria-live="polite">
           正在{props.snapshot.emit === undefined ? '发射' : '执行'}…每段结束会自动刷新，不必重复点
         </div>
       )}

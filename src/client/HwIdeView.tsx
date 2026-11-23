@@ -44,6 +44,7 @@ import {
 } from './store.js'
 import type { Layout, PanelId, SectionId } from './store.js'
 import { composeReviewPrompt } from './view.js'
+import { AdrPanel, DiffPanel, MaturityPanel, PreflightPanel } from './panels_governance.js'
 import { useJob } from './jobs.js'
 
 export interface HwIdeViewProps {
@@ -379,7 +380,8 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
             </span>
           </button>
           {/* segmented 视图组：一个控件，aria-pressed（仿 Velxio view-mode toggle） */}
-          <div className="hwv-seg" role="group" aria-label="视图布局">
+          <div className="hwv-seg" role="group" aria-label="视图布局"
+               title="分区切换：键盘 [ / ]">
             {(['2d', 'split', '3d'] as const).map((layout, index) => (
               <ViewModeSegment key={layout} index={index}
                                layout={layout} active={state.layout === layout} />
@@ -454,7 +456,11 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
           <button className="hwv-btn" onClick={() => { store.clearNotice() }}>关闭</button>
         </div>
       )}
-      {state.busy !== '' && <div className="hwv-banner info">正在{state.busy}…</div>}
+      {state.busy !== '' && (
+        <div className="hwv-banner info" role="status" aria-live="polite">
+          正在{state.busy}…
+        </div>
+      )}
       <ExportResult result={state.lastExport} />
 
       {/* ── AI 协作面板：**一个入口，三个阶段** ──────────────────────────
@@ -726,6 +732,17 @@ function PanelBody(props: {
   onExport: () => void
 }): JSX.Element {
   const job = useJob()
+  const governance = {
+    preflight: props.state.preflight,
+    diff: props.state.diff,
+    maturity: props.state.maturity,
+    adr: props.state.adr,
+    busy: props.state.busy,
+    onPreflight: () => { void store.runPreflight() },
+    onDiff: () => { void store.runReadbackDiff() },
+    onMaturity: () => { void store.runMaturity() },
+    onAdr: () => { void store.runAdrValidate() },
+  }
   const common = {
     snapshot: props.snapshot,
     onSelect: props.onSelect,
@@ -757,6 +774,10 @@ function PanelBody(props: {
     case 'emit': return <EmitPanel {...common} />
     case 'brief': return <BriefPanel {...common} />
     case 'export': return <ExportPanel {...common} />
+    case 'preflight': return <PreflightPanel {...governance} />
+    case 'diff': return <DiffPanel {...governance} />
+    case 'maturity': return <MaturityPanel {...governance} />
+    case 'adr': return <AdrPanel {...governance} />
     case 'blocks':
       return (
         <BlocksPanel

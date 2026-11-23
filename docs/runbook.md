@@ -1715,3 +1715,34 @@ npm run check / build 通过
 59 个离线 check：除环境类 3 条（check_installed 宿主未重启、
 check_plugin 既有红、check_p17 真 EDA 在 4 个 lceda 进程下失败）外全绿
 ```
+
+## 33. 前端 P3/P4（治理面板 / 空态与可访问性）
+
+### 33.1 P3：四个治理面板（动作驱动，结果留在 store）
+
+| 分区 | 后端 | 面板要点 |
+|---|---|---|
+| `preflight` | `emit-preflight` | 三层（编号/器件/引脚名）；**not_ready 也显示**哪一层没过 |
+| `diff` | `readback --diff`（`designLong 600s`，会开立创会话）| 差异表 + 计数；回写只做加法/搬迁 |
+| `maturity` | `maturity` | 六维三态 + level/6 + 每维 need |
+| `adr` | `adr list` + `adr validate` | 四节校验；缺节用错误色且**不当作通过** |
+
+共同纪律：没结果 → "空白不代表通过"；`governance()` 不走 `edit()`——
+后者把 `not_ready` 当失败丢弃，而这几个面板的 not_ready 恰恰是内容。
+
+### 33.2 P4：空态 / 可访问性 / 测试卫生
+
+* 长任务横幅（HwIdeView busy + EmitPanel running）加
+  `role="status" aria-live="polite"`：读屏能听到进度，不只看得见。
+* 分区切换标题写明 `[ / ]`（键盘提示和数据同源，不另写一份）。
+* `check_layout_browser` 断言全过后**显式 `process.exit(0)`**：
+  headless Chrome 偶尔留句柄，脚本会"卡住"（CI 里表现为超时）。
+
+### 33.3 验收
+
+```
+check_p71 16/16（注册表/网关/契约/store/面板/空态/aria）
+check_layout_runtime 新增 4 条（成熟度 3/6、预检 not_ready、回读 pin_moved、ADR 缺节）
+check_canvas_draw / check_assembly3d / check_layout_browser 通过
+check_dead_css 绿
+```

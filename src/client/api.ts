@@ -25,6 +25,10 @@ import type {
   DesignDoc,
   EntityProfile,
   EvidencePayload,
+  PreflightPayload,
+  DiffPayload,
+  MaturityPayload,
+  AdrPayload,
   HintPayload,
   ExportPayload,
   ProjectSummary,
@@ -75,6 +79,11 @@ export interface HwApi {
   serialRead(id: string): Promise<LoosePayload>
   survey(write?: boolean): Promise<LoosePayload>
   trace(id: string, action?: string): Promise<LoosePayload>
+  preflight(id: string): Promise<PreflightPayload>
+  readbackDiff(id: string): Promise<DiffPayload>
+  maturity(id: string): Promise<MaturityPayload>
+  adrList(id: string): Promise<AdrPayload>
+  adrValidate(id: string): Promise<AdrPayload>
 
   // -- 域命名空间（新代码用）---------------------------------------------
   ws: {
@@ -168,6 +177,11 @@ export function createApi(face: WorkbenchFace): HwApi {
     serialRead: (id) => face.serialRead(id),
     survey: (write) => face.survey(write),
     trace: (id, action) => face.trace(id, action),
+    preflight: (id) => face.preflight(id),
+    readbackDiff: (id) => face.readbackDiff(id),
+    maturity: (id) => face.maturity(id),
+    adrList: (id) => face.adrList(id),
+    adrValidate: (id) => face.adrValidate(id),
     ws: {
       bootstrap: () => face.bootstrap(),
       list: () => face.workspace(),

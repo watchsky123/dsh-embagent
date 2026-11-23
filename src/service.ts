@@ -29,6 +29,10 @@ import type {
   PartSizeEntry,
   ProjectSummary,
   SnapshotPayload,
+  PreflightPayload,
+  DiffPayload,
+  MaturityPayload,
+  AdrPayload,
 } from './shared/types.js'
 
 export const NS = 'hwvelxio'
@@ -589,6 +593,47 @@ export class HwVelxioGateway extends TypertRemoteService {
   async serialRead(project: string): Promise<Record<string, unknown>> {
     const { serialRead } = await import('./velxio/sim.js')
     return serialRead(project)
+  }
+
+  // -- P3：治理类（预检 / 回读差异 / 成熟度 / ADR）------------------------
+
+  /** 发射前预检（三层：编号 → 器件 → 引脚名）。**不开工程**，只问系统库。 */
+  @Remote('preflight')
+  async preflight(project: string): Promise<PreflightPayload> {
+    const payload = await design('emit-preflight', project)
+    noteHint(project, 'preflight')
+    return payload as unknown as PreflightPayload
+  }
+
+  /**
+   * 回读差异：`readback --diff`。**会开一个立创会话**（几十秒），
+   * 用 `designLong` 而不是默认 120s —— 43 件工程的打开+读网表会撞默认超时。
+   */
+  @Remote('readbackDiff')
+  async readbackDiff(project: string): Promise<DiffPayload> {
+    const payload = await designLong(600_000, 'readback', project, '--diff')
+    noteHint(project, 'diff')
+    return payload as unknown as DiffPayload
+  }
+
+  /** 成熟度：六维只读本工程。 */
+  @Remote('maturity')
+  async maturity(project: string): Promise<MaturityPayload> {
+    const payload = await design('maturity', project)
+    noteHint(project, 'maturity')
+    return payload as unknown as MaturityPayload
+  }
+
+  /** ADR 列表（只读）。 */
+  @Remote('adrList')
+  async adrList(project: string): Promise<AdrPayload> {
+    return await design('adr', project, 'list') as unknown as AdrPayload
+  }
+
+  /** ADR 校验（四节齐全 + 索引↔文件一致）。 */
+  @Remote('adrValidate')
+  async adrValidate(project: string): Promise<AdrPayload> {
+    return await design('adr', project, 'validate') as unknown as AdrPayload
   }
 
   // -- 通知 ---------------------------------------------------------------

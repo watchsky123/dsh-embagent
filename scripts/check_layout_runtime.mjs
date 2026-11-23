@@ -303,6 +303,39 @@ const face = {
     status: 'ok', workspace: `${parent}/${name}`, source: 'config',
     writable: true, created: true,
   }),
+  // P3：治理类。返回**带 not_ready 的假载荷**——面板要能把"没过"显示出来。
+  preflight: async () => ({
+    status: 'not_ready', reason: 'stub：1 个引脚不在符号里',
+    counts: { parts: 2, checked: 2, pin_missing: 1, unresolved: 0 },
+    pin_missing: [{ ref: 'r1', lcsc: 'C1', missing: ['1'] }],
+    unresolved: [], no_footprint: [], unverified_pins: [],
+  }),
+  readbackDiff: async () => ({
+    status: 'changed', counts: { total: 1, pin_moved: 1 },
+    differences: [{ kind: 'pin_moved', ref: 'r1', pin: '1',
+      design_net: 'GND', eda_net: 'MID' }],
+    note: 'stub：自动回写只做加法/搬迁',
+  }),
+  maturity: async () => ({
+    status: 'ok', level: 3, total: 6,
+    dimensions: [
+      { id: 'requirements', status: 'pass' },
+      { id: 'spec', status: 'pass' },
+      { id: 'blocks', status: 'unknown', need: '补 verified_by' },
+      { id: 'constraints', status: 'pass' },
+      { id: 'evidence', status: 'unknown' },
+      { id: 'emit', status: 'missing', need: 'emit <id>' },
+    ],
+    note: 'stub：只读本工程',
+  }),
+  adrList: async () => ({
+    status: 'ok', entries: [{ id: '0001', file: '0001-a.md',
+      title: '选 LDO', date: '2026-01-01' }],
+  }),
+  adrValidate: async () => ({
+    status: 'failed', problems: ['0001: 缺节 [证据]'],
+    rows: [{ id: '0001', file: '0001-a.md', missing: ['证据'] }],
+  }),
 }
 
 // --- 渲染 -----------------------------------------------------------------
@@ -615,6 +648,32 @@ if (htmlSplit === null) {
     emitHtml.includes('hwv-emit-retry') && emitHtml.includes('重跑'))
   check('失败段有独立状态类（不把 failed 画成 ok）',
     emitHtml.includes('hwv-emit-stage failed'))
+  // P3：治理四面板（动作驱动；store 收结果，面板只投影）
+  store.setPanelSection('maturity')
+  await store.runMaturity()
+  const matHtml = await renderOnce(fakeSnapshot('001-blink'), 'split')
+  check('成熟度面板显示 3/6 与六维',
+    matHtml.includes('3/6') && matHtml.includes('requirements')
+    && matHtml.includes('missing'))
+
+  store.setPanelSection('preflight')
+  await store.runPreflight()
+  const preHtml = await renderOnce(fakeSnapshot('001-blink'), 'split')
+  check('预检面板显示 not_ready 原因与引脚缺失',
+    preHtml.includes('stub：1 个引脚不在符号里') && preHtml.includes('r1.1'))
+
+  store.setPanelSection('diff')
+  await store.runReadbackDiff()
+  const diffHtml = await renderOnce(fakeSnapshot('001-blink'), 'split')
+  check('回读面板显示差异行（pin_moved）',
+    diffHtml.includes('pin_moved') && diffHtml.includes('MID'))
+
+  store.setPanelSection('adr')
+  await store.runAdrValidate()
+  const adrHtml = await renderOnce(fakeSnapshot('001-blink'), 'split')
+  check('决策面板显示缺节（failed 不当通过）',
+    adrHtml.includes('缺节') && adrHtml.includes('证据'))
+
   store.setPanelSection('verdict')
 }
 

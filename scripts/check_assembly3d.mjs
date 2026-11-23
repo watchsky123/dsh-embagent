@@ -22,7 +22,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -126,10 +126,23 @@ try {
 const bundlePath = [join(outDir, 'probe.iife.js'), join(outDir, 'probe.js')]
   .find((p) => existsSync(p)) ?? join(outDir, 'probe.iife.js')
 
-const styleSource = readFileSync(resolve(repoRoot, 'src', 'client', 'styles.ts'), 'utf8')
-const cssStart = styleSource.indexOf('const CSS = `')
-const cssBody = cssStart < 0 ? '' : styleSource.slice(cssStart + 'const CSS = `'.length)
-const css = cssBody.slice(0, cssBody.lastIndexOf('`'))
+// **顺序 = styles.ts 里的拼接顺序**（tokens → layout → panels → dark）。
+// 按文件名排序会把 dark 放最前：它那条 `body[data-ds-dark-theme] .hwv-root {`
+// 若在末尾少一个 `}`，会把后面所有规则吞进深色作用域，浅色页面就"没样式"。
+const STYLE_ORDER = ['tokens', 'layout', 'panels', 'dark']
+const styleSources = [
+  readFileSync(resolve(repoRoot, 'src', 'client', 'styles.ts'), 'utf8'),
+  ...STYLE_ORDER.map((name) =>
+    readFileSync(resolve(repoRoot, 'src', 'client', 'styles', `${name}.ts`), 'utf8')),
+]
+function extractCss(src) {
+  const at = src.indexOf('= `')
+  if (at < 0) return ''
+  const body = src.slice(at + 3)
+  const end = body.lastIndexOf('`')
+  return end < 0 ? '' : body.slice(0, end)
+}
+const css = styleSources.map(extractCss).filter((part) => part.trim() !== '').join('\n')
 
 const pagePath = join(tmpdir(), 'hwv-3d-page.html')
 writeFileSync(pagePath, `<!doctype html>
