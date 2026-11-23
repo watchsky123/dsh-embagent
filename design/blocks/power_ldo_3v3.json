@@ -1,0 +1,142 @@
+{
+ "id": "power_ldo_3v3",
+ "title": "5V → 3.3V LDO + 去耦",
+ "family": "power",
+ "params": {
+  "vin": 5.0,
+  "vout": 3.3,
+  "iout_ma": 500
+ },
+ "parts": [
+  {
+   "key": "ldo",
+   "kind": "ams1117-3.3",
+   "label": "AMS1117-3.3",
+   "ref_prefix": "U",
+   "pins": [
+    "1",
+    "2",
+    "3"
+   ],
+   "size_mm": {
+    "w": 6.5,
+    "h": 3.5,
+    "d": 1.7
+   },
+   "role": "regulator",
+   "lcsc": "C6186"
+  },
+  {
+   "key": "cin",
+   "kind": "capacitor",
+   "label": "10uF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 3.2,
+    "h": 1.6,
+    "d": 1.6
+   },
+   "role": "decoupling"
+  },
+  {
+   "key": "cout",
+   "kind": "capacitor",
+   "label": "22uF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 3.2,
+    "h": 1.6,
+    "d": 1.6
+   },
+   "role": "decoupling"
+  },
+  {
+   "key": "cbyp",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling"
+  }
+ ],
+ "nets": [
+  {
+   "net": "VIN",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "ldo",
+     "pin": "3"
+    },
+    {
+     "key": "cin",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "VOUT",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "ldo",
+     "pin": "2"
+    },
+    {
+     "key": "cout",
+     "pin": "1"
+    },
+    {
+     "key": "cbyp",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "ldo",
+     "pin": "1"
+    },
+    {
+     "key": "cin",
+     "pin": "2"
+    },
+    {
+     "key": "cout",
+     "pin": "2"
+    },
+    {
+     "key": "cbyp",
+     "pin": "2"
+    }
+   ]
+  }
+ ],
+ "rules": [
+  "输入 10µF、输出 22µF 贴近器件",
+  "压差×电流 > 0.6 W 时校核热耗"
+ ],
+ "verified_by": []
+}

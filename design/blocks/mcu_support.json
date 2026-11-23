@@ -1,0 +1,419 @@
+{
+ "id": "mcu_support",
+ "title": "STM32F103C8 最小系统（晶振/复位/BOOT/SWD/去耦）",
+ "family": "mcu",
+ "params": {
+  "model": "stm32f103c8t6"
+ },
+ "parts": [
+  {
+   "key": "mcu",
+   "kind": "stm32f103c8t6",
+   "label": "STM32F103C8T6",
+   "ref_prefix": "U",
+   "pins": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "20",
+    "21",
+    "22",
+    "23",
+    "24",
+    "25",
+    "26",
+    "27",
+    "28",
+    "29",
+    "30",
+    "31",
+    "32",
+    "33",
+    "34",
+    "35",
+    "36",
+    "37",
+    "38",
+    "39",
+    "40",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+    "46",
+    "47",
+    "48"
+   ],
+   "size_mm": {
+    "w": 7.0,
+    "h": 7.0,
+    "d": 1.4
+   },
+   "role": "mcu",
+   "lcsc": "C8734"
+  },
+  {
+   "key": "y1",
+   "kind": "crystal_2p",
+   "label": "8MHz",
+   "ref_prefix": "X",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 11.4,
+    "h": 4.5,
+    "d": 4.0
+   },
+   "role": "clock"
+  },
+  {
+   "key": "c_osc1",
+   "kind": "capacitor",
+   "label": "12pF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "clock"
+  },
+  {
+   "key": "c_osc2",
+   "kind": "capacitor",
+   "label": "12pF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "clock"
+  },
+  {
+   "key": "r_nrst",
+   "kind": "resistor",
+   "label": "10k",
+   "ref_prefix": "R",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.45
+   },
+   "role": "reset"
+  },
+  {
+   "key": "c_nrst",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "reset"
+  },
+  {
+   "key": "r_boot0",
+   "kind": "resistor",
+   "label": "10k",
+   "ref_prefix": "R",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.45
+   },
+   "role": "boot"
+  },
+  {
+   "key": "j_swd",
+   "kind": "header_4p",
+   "label": "SWD 4P",
+   "ref_prefix": "J",
+   "pins": [
+    "1",
+    "2",
+    "3",
+    "4"
+   ],
+   "size_mm": {
+    "w": 10.16,
+    "h": 2.54,
+    "d": 8.5
+   },
+   "role": "debug"
+  },
+  {
+   "key": "c_de1",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling"
+  },
+  {
+   "key": "c_de2",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling"
+  }
+ ],
+ "nets": [
+  {
+   "net": "3V3",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "mcu",
+     "pin": "9"
+    },
+    {
+     "key": "mcu",
+     "pin": "24"
+    },
+    {
+     "key": "mcu",
+     "pin": "36"
+    },
+    {
+     "key": "mcu",
+     "pin": "48"
+    },
+    {
+     "key": "r_nrst",
+     "pin": "1"
+    },
+    {
+     "key": "j_swd",
+     "pin": "1"
+    },
+    {
+     "key": "c_de1",
+     "pin": "1"
+    },
+    {
+     "key": "c_de2",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "mcu",
+     "pin": "8"
+    },
+    {
+     "key": "mcu",
+     "pin": "23"
+    },
+    {
+     "key": "mcu",
+     "pin": "35"
+    },
+    {
+     "key": "mcu",
+     "pin": "47"
+    },
+    {
+     "key": "c_osc1",
+     "pin": "2"
+    },
+    {
+     "key": "c_osc2",
+     "pin": "2"
+    },
+    {
+     "key": "c_nrst",
+     "pin": "2"
+    },
+    {
+     "key": "r_boot0",
+     "pin": "2"
+    },
+    {
+     "key": "j_swd",
+     "pin": "4"
+    },
+    {
+     "key": "c_de1",
+     "pin": "2"
+    },
+    {
+     "key": "c_de2",
+     "pin": "2"
+    }
+   ]
+  },
+  {
+   "net": "NRST",
+   "global": false,
+   "class": "reset",
+   "pins": [
+    {
+     "key": "mcu",
+     "pin": "7"
+    },
+    {
+     "key": "r_nrst",
+     "pin": "2"
+    },
+    {
+     "key": "c_nrst",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "BOOT0",
+   "global": false,
+   "class": "boot",
+   "pins": [
+    {
+     "key": "mcu",
+     "pin": "44"
+    },
+    {
+     "key": "r_boot0",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "OSC_IN",
+   "global": false,
+   "class": "clock",
+   "pins": [
+    {
+     "key": "mcu",
+     "pin": "5"
+    },
+    {
+     "key": "y1",
+     "pin": "1"
+    },
+    {
+     "key": "c_osc1",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "OSC_OUT",
+   "global": false,
+   "class": "clock",
+   "pins": [
+    {
+     "key": "mcu",
+     "pin": "6"
+    },
+    {
+     "key": "y1",
+     "pin": "2"
+    },
+    {
+     "key": "c_osc2",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "SWDIO",
+   "global": false,
+   "class": "debug",
+   "pins": [
+    {
+     "key": "mcu",
+     "pin": "34"
+    },
+    {
+     "key": "j_swd",
+     "pin": "2"
+    }
+   ]
+  },
+  {
+   "net": "SWCLK",
+   "global": false,
+   "class": "debug",
+   "pins": [
+    {
+     "key": "mcu",
+     "pin": "37"
+    },
+    {
+     "key": "j_swd",
+     "pin": "3"
+    }
+   ]
+  }
+ ],
+ "rules": [
+  "BOOT0 下拉 10k（从 Flash 启动）",
+  "晶振负载电容按晶体 CL 选",
+  "每个 VDD 脚就近 100nF"
+ ],
+ "verified_by": []
+}

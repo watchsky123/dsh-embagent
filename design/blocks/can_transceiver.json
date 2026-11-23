@@ -1,0 +1,154 @@
+{
+ "id": "can_transceiver",
+ "title": "CAN 收发器（TJA1050 + 120Ω 终端）",
+ "family": "can",
+ "params": {
+  "bitrate": 500000
+ },
+ "parts": [
+  {
+   "key": "xcvr",
+   "kind": "tja1050",
+   "label": "TJA1050",
+   "ref_prefix": "U",
+   "pins": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "6",
+    "7",
+    "8"
+   ],
+   "size_mm": {
+    "w": 4.9,
+    "h": 3.9,
+    "d": 1.75
+   },
+   "role": "transceiver"
+  },
+  {
+   "key": "r_term",
+   "kind": "resistor",
+   "label": "120R",
+   "ref_prefix": "R",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 3.2,
+    "h": 1.6,
+    "d": 0.55
+   },
+   "role": "termination"
+  },
+  {
+   "key": "c_vcc",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling"
+  }
+ ],
+ "nets": [
+  {
+   "net": "CAN_TX",
+   "global": false,
+   "class": "can",
+   "pins": [
+    {
+     "key": "xcvr",
+     "pin": "1"
+    }
+   ],
+   "port": true
+  },
+  {
+   "net": "CAN_RX",
+   "global": false,
+   "class": "can",
+   "pins": [
+    {
+     "key": "xcvr",
+     "pin": "4"
+    }
+   ],
+   "port": true
+  },
+  {
+   "net": "CANH",
+   "global": false,
+   "class": "can",
+   "pins": [
+    {
+     "key": "xcvr",
+     "pin": "7"
+    },
+    {
+     "key": "r_term",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "CANL",
+   "global": false,
+   "class": "can",
+   "pins": [
+    {
+     "key": "xcvr",
+     "pin": "6"
+    },
+    {
+     "key": "r_term",
+     "pin": "2"
+    }
+   ]
+  },
+  {
+   "net": "5V",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "xcvr",
+     "pin": "3"
+    },
+    {
+     "key": "c_vcc",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "xcvr",
+     "pin": "2"
+    },
+    {
+     "key": "c_vcc",
+     "pin": "2"
+    }
+   ]
+  }
+ ],
+ "rules": [
+  "终端 120Ω 只在总线两端各一个",
+  "CANH/CANL 差分 90Ω"
+ ],
+ "verified_by": []
+}

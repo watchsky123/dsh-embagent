@@ -3610,6 +3610,44 @@ python -m hw_velxio.scripts.check_p60   # 15 项
 npm test                                # 767 项
 ```
 
+## P61 — A3 块库（2026-11-23）
+
+> 长程方案的第三块地基：`spec` 说"有块"，这一轮把块变成**真电路**。
+
+### 新增
+
+| 文件 | 内容 |
+|---|---|
+| `design/blocks.py` | 块库：load/validate/instantiate/compose/merge_into；ref 自动分配、全局网合并、实例前缀、`port` 单脚网 |
+| `design/blocks/*.json` | 6 个块：LDO(4) / DCDC(4) / MCU 最小系统(10) / USB(5) / CAN(3) / 去耦(7) |
+| `scripts/check_p61.py` | 12 项 |
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design_cli.py` | 新增 `blocks [list|show <id>|validate|compose <id> --plan=... [--write]]` |
+| `docs/runbook.md` | 新增 §23 |
+| `docs/roadmap.md` | A3 状态 ✅；现状表更新 |
+| `AGENTS.md` | 指针行合并 §21–§23 |
+
+### 实测
+
+```
+6/6 结构通过；verified=0 / unverified=6（**没有块被标成已验证**）
+3 块组合：19 件 / 15 网；GND/3V3/VBUS 各一条；位号无重复
+6 块组合：33 件（28→33 第一步）；V0 阶梯 pass（网表引用完整）
+位号冲突：失败并列出（不覆盖已有元件）
+退化：网表引用不存在的 key / 重复 key → validate 报错
+```
+
+### 诚实边界
+
+* 6 个块**全是 unverified**：来自参考电路，没在真板上验过
+* 只有 STM32F103C8 最小系统；换 MCU 要新块
+* 参数只有 `{vin,vout,iout}`，没有参数扫描/自动选料
+* 块内 `rules` 还是文字（A5 约束账本才进检查）
+
 ---
 
 ## 后续

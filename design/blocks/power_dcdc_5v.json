@@ -1,0 +1,142 @@
+{
+ "id": "power_dcdc_5v",
+ "title": "电池 → 5V 降压模块 + 输入保护",
+ "family": "power",
+ "params": {
+  "vin_min": 7.4,
+  "vin_max": 16.8,
+  "vout": 5.0,
+  "iout_ma": 3000
+ },
+ "parts": [
+  {
+   "key": "module",
+   "kind": "dcdc_module_5v",
+   "label": "MP1584 模块 5V",
+   "ref_prefix": "U",
+   "pins": [
+    "VIN",
+    "GND",
+    "VOUT"
+   ],
+   "size_mm": {
+    "w": 22.0,
+    "h": 17.0,
+    "d": 4.0
+   },
+   "role": "regulator"
+  },
+  {
+   "key": "cin",
+   "kind": "capacitor",
+   "label": "100uF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 5.0,
+    "h": 5.4,
+    "d": 5.4
+   },
+   "role": "bulk"
+  },
+  {
+   "key": "cout",
+   "kind": "capacitor",
+   "label": "100uF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 5.0,
+    "h": 5.4,
+    "d": 5.4
+   },
+   "role": "bulk"
+  },
+  {
+   "key": "ctv",
+   "kind": "tvs_diode",
+   "label": "SMBJ16A",
+   "ref_prefix": "D",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 4.3,
+    "h": 3.6,
+    "d": 2.3
+   },
+   "role": "protection"
+  }
+ ],
+ "nets": [
+  {
+   "net": "VBAT",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "module",
+     "pin": "VIN"
+    },
+    {
+     "key": "cin",
+     "pin": "1"
+    },
+    {
+     "key": "ctv",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "5V",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "module",
+     "pin": "VOUT"
+    },
+    {
+     "key": "cout",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "module",
+     "pin": "GND"
+    },
+    {
+     "key": "cin",
+     "pin": "2"
+    },
+    {
+     "key": "cout",
+     "pin": "2"
+    },
+    {
+     "key": "ctv",
+     "pin": "2"
+    }
+   ]
+  }
+ ],
+ "rules": [
+  "输入 TVS 反向截止电压 > 最大输入",
+  "模块下方不走信号线"
+ ],
+ "verified_by": []
+}

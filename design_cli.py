@@ -1588,6 +1588,93 @@ def cmd_capability(args: list[str]) -> dict[str, Any]:
             "role": role, "constraints": constraints}
 
 
+def cmd_blocks(args: list[str]) -> dict[str, Any]:
+    """``blocks [list|show <id>|validate|compose <id> --plan=INST:BLOCK,... [--write]]``
+    —— 块库（A3）。
+
+    一个块 = 网表片段 + 参数 + 验证记录。实例化时 ref 自动分配（跳过已用），
+    全局网（GND/3V3/5V…）跨块合并，局部网加实例前缀。`verified_by` 为空
+    单独记 `unverified`，**不算通过**。
+    """
+    from .design import blocks as blocks_module
+
+    if not args or args[0] == "list":
+        library = blocks_module.load_all()
+        rows = []
+        for block_id, block in library.items():
+            rows.append({"id": block_id, "title": block.get("title"),
+                         "family": block.get("family"),
+                         "parts": len(block.get("parts") or []),
+                         "nets": len(block.get("nets") or []),
+                         "verified": bool(block.get("verified_by") or [])})
+        verified = [row for row in rows if row["verified"]]
+        return {"status": "ok" if rows else "not_ready", "blocks": rows,
+                "counts": {"blocks": len(rows), "verified": len(verified),
+                           "unverified": len(rows) - len(verified)},
+                "note": "unverified 不算通过；块来自参考电路，需真板验证后才进 verified"}
+
+    action = args[0]
+    if action == "show":
+        if len(args) < 2:
+            return {"status": "not_ready", "reason": "给块 id：blocks show <id>"}
+        block = blocks_module.get(args[1])
+        if block is None:
+            return {"status": "not_ready", "reason": f"块库没有 {args[1]}"}
+        return {"status": "ok", **block}
+
+    if action == "validate":
+        library = blocks_module.load_all()
+        rows = [{"id": block_id, "problems": blocks_module.validate(block)}
+                for block_id, block in library.items()]
+        bad = [row for row in rows if row["problems"]]
+        return {"status": "ok" if rows and not bad else "failed",
+                "rows": rows, "counts": {"blocks": len(rows), "bad": len(bad)}}
+
+    if action == "compose":
+        if len(args) < 2:
+            return {"status": "not_ready", "reason": "给工程 id：blocks compose <id> --plan=..."}
+        store, design = _load(args[1])
+        plan: list[dict[str, str]] = []
+        write = False
+        for item in args[2:]:
+            if item.startswith("--plan="):
+                for chunk in item.split("=", 1)[1].split(","):
+                    chunk = chunk.strip()
+                    if not chunk:
+                        continue
+                    if ":" in chunk:
+                        instance, block_id = chunk.split(":", 1)
+                    else:
+                        instance, block_id = chunk, chunk
+                    plan.append({"instance": instance.strip(), "block": block_id.strip()})
+            if item == "--write":
+                write = True
+        if not plan:
+            return {"status": "not_ready", "reason": "缺 --plan=INST:BLOCK,..."}
+        board_id = design.boards[0].id if design.boards else design.board.id
+        first = design.boards[0] if design.boards else design.board
+        width = float((getattr(first, "size_mm", {}) or {}).get("w") or 0.0)
+        result = blocks_module.compose(plan, board_id=board_id, max_x_mm=width)
+        if not write or result["status"] != "ok":
+            return {"status": result["status"], "project_id": args[1], **result}
+        merged = blocks_module.merge_into(design, result["parts"], result["nets"])
+        if not merged.get("ok"):
+            return {"status": "failed", "reason": merged.get("reason"),
+                    "project_id": args[1]}
+        problems = design.validate()
+        if problems:
+            return {"status": "failed", "reason": "合并后设计校验不过",
+                    "problems": problems[:8], "project_id": args[1]}
+        store.save(design)
+        return {"status": "ok", "project_id": args[1],
+                "counts": {**result["counts"], "parts_in_design": len(design.parts),
+                           "nets_in_design": len(design.nets)},
+                "merged": merged, "blocks": result["blocks"],
+                "note": result["note"]}
+
+    return {"status": "not_ready", "reason": f"不认识的动作 {action}"}
+
+
 def cmd_spec(args: list[str]) -> dict[str, Any]:
     """``spec <id> [--build] [--req=PATH]`` —— 规格层（A1）。
 
@@ -4639,6 +4726,7 @@ COMMANDS = {
     "ioc-links": cmd_ioc_links,
     "renode": cmd_renode,
     "capability": cmd_capability,
+    "blocks": cmd_blocks,
     "spec": cmd_spec,
     "generate": cmd_generate,
     "budget": cmd_budget,

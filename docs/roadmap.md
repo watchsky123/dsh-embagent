@@ -47,15 +47,19 @@ L5 验证    → ladder/electrical/mech/fw/emit/audit/handoff；不达标回 L2/
 | 层 | 状态 | 证据 / 缺口 |
 |---|---|---|
 | L0 需求 | ✅ 可用 | `req-draft` → `req.json`（人确认才 apply）|
-| L1 子系统 | 🟡 骨架 | `spec/vN.json`：块/契约/约束/覆盖率；**块还不是电路** |
-| L2 拓扑 | 🟡 总线级 | `bus.py`：SPI 4 / I2C 2 / UART 交叉 / CAN / USB / power；**规则是文字** |
+| L1 子系统 | 🟢 有电路 | `spec` + `design/blocks/*.json`（6 块可实例化）；**6 块全 unverified** |
+| L2 拓扑 | 🟡 总线级 | `bus.py` + 块内网表；**规则仍是文字**（A5 才进检查）|
 | L3 选型 | 🟡 单型号 | 能力表 14 型号；AF 表 4 型号；**无供货/价格/裕量** |
 | L4 实现 | ✅ 骨架 | `emit` 8 段真跑；`generate` 仍是"每链路 1 脚"退化路径存在 |
 | L5 验证 | ✅ 强 | 48 个 check、767 单测、阶梯 V0–V6、六段 audit |
 | 变更传播 | ❌ 无 | 改 MCU/电源不会联动重算网表/固件/机械/BOM |
 
 **上一轮（P60 / A1+A2）新增**：`spec`（块/契约/版本）、`bus`（总线级网表，
-引脚按 AF 表挑，凑不出就退回并标 `bus_partial`）、`to_design` 接入。
+引脚按 AF 表挑，凑不出就退回并标 `bus_partial`）。
+
+**本轮（P61 / A3）新增**：`design/blocks/*.json`（6 个块）+ `blocks` 命令
+（list/show/validate/compose）；实例化保留 `block=` 来源、全局网合并、
+局部网加前缀、单脚网 = 块端口；3 块组合 19 件、6 块 33 件、V0 阶梯 pass。
 
 ---
 
@@ -67,7 +71,7 @@ L5 验证    → ladder/electrical/mech/fw/emit/audit/handoff；不达标回 L2/
 |---|---|---|---|---|
 | A1 | 规格层：需求→块/契约/约束 | `spec/vN.json` + `spec.md` | 角色 100% 落块；缺模板进 missing | ✅ P60 |
 | A2 | 总线级网表 | `design/bus.py` | 网名 == 脚的功能名（AF 核对）| ✅ P60 |
-| A3 | **块库**：块=网表片段+参数+验证记录 | `design/blocks/*.json` + `blocks` 命令 | 每个块能实例化、过 validate；`verified_by` 指向真实工程 | ⬜ 本轮 |
+| A3 | **块库**：块=网表片段+参数+验证记录 | `design/blocks/*.json` + `blocks` 命令 | 每个块能实例化、过 validate；`verified_by` 指向真实工程 | ✅ P61 |
 | A4 | `generate` 吃 spec：按块选型，不再"角色→型号" | `generate` 改路径 + 回归 | 生成件数/网表数随块增长；旧模板回归不退化 | ⬜ |
 | A5 | 约束账本：每块/每网一条可测约束 | `constraints.json` | `ladder/coverify/plan` 读同一份 | ⬜ |
 

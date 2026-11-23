@@ -1,0 +1,199 @@
+{
+ "id": "decoupling_bank",
+ "title": "电源轨去耦阵列（6×100nF + 1×10µF）",
+ "family": "power",
+ "params": {
+  "count": 6
+ },
+ "parts": [
+  {
+   "key": "c1",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling"
+  },
+  {
+   "key": "c2",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling"
+  },
+  {
+   "key": "c3",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling"
+  },
+  {
+   "key": "c4",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling"
+  },
+  {
+   "key": "c5",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling"
+  },
+  {
+   "key": "c6",
+   "kind": "capacitor",
+   "label": "100nF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 1.6,
+    "h": 0.8,
+    "d": 0.8
+   },
+   "role": "decoupling"
+  },
+  {
+   "key": "cbulk",
+   "kind": "capacitor",
+   "label": "10uF",
+   "ref_prefix": "C",
+   "pins": [
+    "1",
+    "2"
+   ],
+   "size_mm": {
+    "w": 3.2,
+    "h": 1.6,
+    "d": 1.6
+   },
+   "role": "bulk"
+  }
+ ],
+ "nets": [
+  {
+   "net": "3V3",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "c1",
+     "pin": "1"
+    },
+    {
+     "key": "c2",
+     "pin": "1"
+    },
+    {
+     "key": "c3",
+     "pin": "1"
+    },
+    {
+     "key": "c4",
+     "pin": "1"
+    },
+    {
+     "key": "c5",
+     "pin": "1"
+    },
+    {
+     "key": "c6",
+     "pin": "1"
+    },
+    {
+     "key": "cbulk",
+     "pin": "1"
+    }
+   ]
+  },
+  {
+   "net": "GND",
+   "global": true,
+   "class": "power",
+   "pins": [
+    {
+     "key": "c1",
+     "pin": "2"
+    },
+    {
+     "key": "c2",
+     "pin": "2"
+    },
+    {
+     "key": "c3",
+     "pin": "2"
+    },
+    {
+     "key": "c4",
+     "pin": "2"
+    },
+    {
+     "key": "c5",
+     "pin": "2"
+    },
+    {
+     "key": "c6",
+     "pin": "2"
+    },
+    {
+     "key": "cbulk",
+     "pin": "2"
+    }
+   ]
+  }
+ ],
+ "rules": [
+  "每颗 VDD 脚一个 100nF",
+  "每 5–10 颗 100nF 配一个 10µF"
+ ],
+ "verified_by": []
+}

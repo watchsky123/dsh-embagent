@@ -1228,3 +1228,58 @@ PNL_Document 方法列表                    → 只有 save()
 * 总线只覆盖 **AF 表里的 4 个型号**；其余型号退回单脚示意（可见的 `bus_partial`）
 * 规则（上拉/端接/串阻）是**文字约束**，还没有落到实际元件（A3 块库才补）
 * `spec` 还没有被 `generate` 消费（A3 会接）；现在两者共享 `bus.BUSES` 一份事实
+
+## 23. 块库（A3）：块 = 网表片段 + 参数 + 验证记录
+
+### 23.1 为什么
+
+`spec`（P60）只说到"这里有个块"，块里是空的；`generate` 仍然是"角色 → 一个
+型号 + 每链路 1 脚"。块库把**常见电路**做成可实例化的数据，才有"从 28 件长到
+300 件"的地基。`synth` 的 7 个整板模板是另一条路（不可组合），没有替代它。
+
+### 23.2 数据与规则
+
+`design/blocks/*.json`（实测 6 个：LDO / DCDC / MCU 最小系统 / USB / CAN / 去耦）。
+
+```
+parts: key, kind, label, ref_prefix, pins[], size_mm
+nets : net, global, class, pins[{key, pin}], port?
+rules: 文字约束（上拉/端接/贴近器件）
+verified_by: [{project, ladder, date}]
+```
+
+实例化（`blocks.instantiate`）：
+
+| 规则 | 说明 |
+|---|---|
+| ref 分配 | 按 `ref_prefix` + 递增，**跳过已用位号**（组合时不撞）|
+| 全局网 | `GND/3V3/5V/VBUS/VIN/VOUT/VBAT` 标 `global`，跨块**合并成一条** |
+| 局部网 | 加实例前缀（`USB1_USB_DP`），不制造假并联 |
+| 单脚网 | 是**块的对外端口**，必须标 `"port": true`（如 `CAN_TX` 接块外 MCU）；没标的单脚网算错 |
+| 摆放 | 栅格折行，按板宽算——`design.validate()` 会拦"足迹超出板轮廓"（实测踩过）|
+
+`compose` 组合多块，`merge_into` 并进设计：**位号冲突直接失败**（不覆盖）。
+
+### 23.3 验证状态：**6 个块全是 unverified**
+
+`verified_by` 为空 → 统计里单独记 `unverified_blocks`，**不算通过**。
+这些块来自常见参考电路（AMS1117、TJA1050、F103 最小系统、USBLC6），
+没有在任何真板上验过。要进 `verified`，得给 `verified_by` 填真实证据
+（哪个工程、哪条阶梯、哪次实测）——**不能自己给自己盖章**。
+
+### 23.4 实测
+
+```
+blocks validate  6/6 结构通过（零件/引脚/尺寸/网表引用都对）
+组合 3 块       19 件 / 15 网；GND/3V3/VBUS 各一条；位号无重复
+组合 6 块       33 件（28→33 的第一步）；V0 阶梯 pass（网表引用完整）
+位号冲突        失败并列出冲突位号
+坏块           网表引用不存在的 key / 重复 key → validate 报错
+```
+
+### 23.5 边界
+
+* 只覆盖 STM32F103C8 的最小系统；换 MCU 要新块
+* 参数只有 `{vin,vout,iout}`；**没有做参数扫描/自动选料**
+* `rules` 是文字，还没变成"检查项"（A5 约束账本）
+* 块里没有封装/焊盘；`emit` 仍按 LCSC 匹配
