@@ -381,7 +381,8 @@ TOOLS: list[ToolSpec] = [
              arg_style="eq"),
     ToolSpec("hw_interface", "judge", "interface",
              "**软硬接口契约**：从 design.json + .ioc 合成引脚↔网络契约；"
-             "唯一硬判据是逐引脚一致，时钟/中断/AF/时序标记 unknown",
+             "有 .ioc 时时钟/中断/复用功能/外设参数变成声明的（source=ioc），"
+             "AF 编号/时序/脚号对照仍 unknown；给错 .ioc = ioc.mcu_mismatch",
              {"project": "string", "ioc": "string"}, ("project",),
              arg_style="eq"),
     ToolSpec("hw_fw_algo", "judge", "fw-algo",

@@ -3337,6 +3337,60 @@ check_p54 13/13    32 个离线 check 全 exit=0     npm test 765    tsc 干净
 
 完整偏差记录见 `docs/execution-plan.md` §1.2–§1.4 与 §18。
 
+## P55 — `.ioc` → 外设配置层（时钟/中断/复用功能/参数）（2026-11-23）
+
+> 用户点的第 7 件事："把 `.ioc` 接进来补『外设配置』这一层"。
+
+### 之前的问题
+
+P50 的 `interface.json` 把时钟/中断/复用功能/时序**四类一律记 `unknown`**。
+那不是"没问题"，是"没有数据"——而 CubeMX 的 `.ioc` 里正好就是这些数据。
+
+### 新增
+
+| 文件 | 内容 |
+|---|---|
+| `design/ioc.py` | `.ioc` → 芯片身份 / 时钟 / 中断 / 复用功能 / 外设参数（**只引用，不推导**）|
+| `tests/fixtures/ioc/p55-usart.ioc` | 夹具（形状照抄实测的真实文件）|
+| `tests/fixtures/ioc/p55-usart-c6.ioc` | 同族不同型号（验 variant 只提示不判 fail）|
+| `tests/fixtures/ioc/p55-h743-wrong.ioc` | 给错 `.ioc`（验 `ioc.mcu_mismatch` 判 failed）|
+| `scripts/check_p55.py` | 29 项验收（真实文件 + 契约 + 编译期 + 退化 + CLI）|
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design/interface.py` | 接入 `ioc.py`：新增 `clock`/`nvic`/`af`/`peripheral_config`/`warnings`；`unknown` 按"有没有 `.ioc`"收窄；硬判据 `ioc.mcu_mismatch` |
+| `design/fw_build.py` | `hwv_pins.h` 带时钟/参数宏 + `HWV_CHECK_CLOCK`/`HWV_EXPECT_CFG`；负例 3 → 5 条；`fw_build.json` 记 `contract_config` |
+| `design_cli.py` | `interface` 的说明更新（`.ioc` 有/无两种形状）|
+| `docs/runbook.md` | 新增 §18 |
+| `AGENTS.md` | §3.51–3.53 指针表加 §18 |
+
+### 关键数字（实测）
+
+```
+7 个真实 .ioc：引脚 208 / 用户外设 67 / 用户中断 56，全部能读
+真实项目 复刻-示例 + F103-GPS.ioc：
+  clock 64 MHz、APB1 32 MHz、用户中断 3（DMA1_Channel4/EXTI4/USART1）
+  提示 SPI2 配了但网表无 spi 网；网表有 USB 但 .ioc 没配
+  fw-build：Machine=ARM、text 168 B、负例 5/5 编不过
+退化：HWV_CHECK_CLOCK 改空操作 → clock_wrong 编过 → 整体 failed
+```
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p55     # 29 项
+python -m hw_velxio.scripts.check_p50     # 14 项（老契约形状不变）
+python -m hw_velxio.scripts.check_p54     # 13 项（负例 5 条仍全红）
+```
+
+### 诚实边界
+
+`.ioc` 给的是**配置**：功能名有了但 **AF 编号**没有（要 datasheet）；
+时钟有了但**时序约束**没有；端口名有了但**封装脚号对照**没有；
+"配置对"不等于"外设初始化对"（`main.c` 仍是骨架）。
+
 ---
 
 ## 后续

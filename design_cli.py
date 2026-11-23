@@ -1855,11 +1855,14 @@ def cmd_params(args: list[str]) -> dict[str, Any]:
 
 
 def cmd_interface(args: list[str]) -> dict[str, Any]:
-    """``interface <id> [--ioc=PATH]`` —— 软硬接口契约（P50）。
+    """``interface <id> [--ioc=PATH]`` —— 软硬接口契约（P50 + P55）。
 
     从 `design.json` 的引脚+网表 + `.ioc` 合成 `interface.json` / `interface.md`：
-    固件侧读它，检查器也读它。**唯一硬判据是引脚↔网络逐条一致**；
-    没有 `.ioc` 时外设分组标 `inferred`；时钟/中断/AF/时序一律 `unknown`。
+    固件侧读它，检查器也读它。**唯一硬判据是引脚↔网络逐条一致**。
+
+    * 没有 `.ioc`：外设分组标 `inferred`，时钟/中断/AF/时序一律 `unknown`
+    * 有 `.ioc`：时钟/中断/复用功能/外设参数变成**声明的**（`source=ioc`），
+      AF **编号**/时序/脚号对照仍 `unknown`；芯片身份（族/封装）不符 = `failed`
     """
     from .design import interface as iface_module
 

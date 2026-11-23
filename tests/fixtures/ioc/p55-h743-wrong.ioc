@@ -1,0 +1,14 @@
+#MicroXplorer Configuration settings - do not modify
+File.Version=6
+Mcu.CPN=STM32H743IIT6
+Mcu.Family=STM32H7
+Mcu.IP0=NVIC
+Mcu.IP1=RCC
+Mcu.IPNb=2
+Mcu.Name=STM32H743IITx
+Mcu.Package=LQFP176
+Mcu.UserName=STM32H743IITx
+NVIC.PriorityGroup=NVIC_PRIORITYGROUP_4
+RCC.HCLKFreq_Value=120000000
+RCC.SYSCLKSource=RCC_SYSCLKSOURCE_PLLCLK
+RCC.SYSCLKFreq_VALUE=480000000

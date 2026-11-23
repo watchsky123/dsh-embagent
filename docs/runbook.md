@@ -782,3 +782,117 @@ P52 的骨架里引脚是**两套来源**：`main.c` 里的 TODO 注释 vs `inte
 
 `hwv_pins.h` 只保证**引脚这一层**一致。它不能证明：外设寄存器配置对、
 时序对、功能对。那些要靠 `.ioc`/datasheet 和台架。
+
+## 18. `.ioc` → 外设配置层（P55）
+
+### 18.1 之前的问题
+
+P50 的 `interface.json` 把**时钟 / 中断 / 复用功能 / 时序**四类一律记 `unknown`。
+那不是"没问题"，是"没有数据"。而 CubeMX 的 `.ioc` 里**就是这些数据**——
+只是从来没人读进契约。
+
+### 18.2 现在读什么（`design/ioc.py`）
+
+| 事实 | 从哪来 | 本模块做什么 |
+|---|---|---|
+| 时钟树 | `RCC.*Freq_Value` / `PLL*` / `DIV*` / `HPRE` | **原样引用**（不重算倍频链）|
+| 中断 | `NVIC.<IRQ>_IRQn=true\:抢占\:子\:…` | 拆开；**内核异常与用户中断分开** |
+| 复用功能 | `P<端口><n>.Signal` | 给**功能名**（`PA9=USART1_TX`），**不给 AF 编号** |
+| 外设参数 | `<IP>.<参数>=值` + `<IP>.IPParameters` | 只收**写出来的**行 |
+| 芯片身份 | `Mcu.Family/Package/UserName/CPN` | 与 `design.json` 的 kind 对 |
+
+实测 7 个真实文件（`check_p55` 1a 复核）：
+
+```
+文件                       引脚  用户外设  用户中断  时钟    封装
+F103-GPS.ioc                19     4        3     64 MHz  LQFP48
+F401-Bottom.ioc             25     8        7     72 MHz  LQFP64
+F401-Front.ioc              16     4        3     72 MHz  LQFP64
+F405-Joystick-Screen.ioc    36    13       10    168 MHz  LQFP64
+F405Joystick.ioc            35    11       12     96 MHz  LQFP64
+H743PilotX.ioc              63    22       17    480 MHz  LQFP176
+f103c6-car.ioc              14     5        4     64 MHz  LQFP48
+```
+
+### 18.3 三条纪律（每条都对应一个真坑）
+
+1. **`.ioc` 只写非默认值。** 实测：`USART1.BaudRate` 只出现在 7 个文件里的 5 个
+   （值都是 115200），`I2C1.ClockSpeed` **一个都没有**。所以"没写" ≠ "没配置"
+   ≠ "默认值"。`IPParameters` 记的是 CubeMX **跟踪**了哪些项；跟踪了但没写值 →
+   `tracked_not_written`，**明确标成推断**，不当事实。
+2. **不给 AF 编号。** `.ioc` 说"PA9 做 USART1_TX"，没说那是 AF7。编号在 datasheet
+   的复用表里 → `af_number` 恒 `unknown`，`unknown` 清单里保留这一条。
+3. **不逐脚对账。** `.ioc` 用端口名（`PA9`），网表用封装脚号（`30`），中间缺一张
+   datasheet 的引脚定义表 → `af.join="unknown"`，**不编表**。
+
+### 18.4 硬判据：给错 `.ioc` 要炸
+
+| 判据 | 级别 | 例子（实测） |
+|---|---|---|
+| `ioc.mcu_mismatch` | **硬** | F103 的板配 H743 文件 → `failed`：`.ioc 的芯片是 STM32H743IIT6（STM32H7/LQFP176），design.json 的 MCU 是 stm32f103c8t6（stm32f1/LQFP-48）` |
+| `ioc.mcu_variant` | 软 | C8 的板配 C6 的文件 → 同族同封装，引脚兼容，但闪存不同 |
+| `ioc.peripheral_unrouted` | 软 | `.ioc` 配了 I2C1，网表里没有任何 i2c 网 |
+| `ioc.peripheral_unconfigured` | 软 | 网表有 USB 网，`.ioc` 没配 USB 外设 |
+
+判 fail 的只有**族/封装不符**（那一定是给错文件）；同族不同型号判 fail 会误伤
+（C6/C8 引脚一样）。
+
+### 18.5 固件侧：配置也进编译期检查
+
+`hwv_pins.h` 多出两类宏 + 两个检查宏：
+
+```c
+#define HWV_SYSCLK_HZ    64000000u
+#define HWV_APB1_HZ      32000000u
+#define HWV_CFG_USART1_BAUDRATE  115200u
+
+#define HWV_CHECK_CLOCK(hz)          _Static_assert((hz) == HWV_SYSCLK_HZ, ...)
+#define HWV_EXPECT_CFG(ip, param, v) _Static_assert(HWV_CAT(HWV_CFG_, ...) == (v), ...)
+```
+
+负例从 3 条变 **5 条**（都**必须编不过**）：
+
+```
+power_as_gpio        → "HWV_CHECK_GPIO: pin GND is power/ground ..."
+pin_out_of_range     → "HWV_CHECK_PIN_NUMBER: pin number out of MCU range"
+name_not_in_contract → 'HWV_PIN_NOSUCH_NET' undeclared
+clock_wrong          → "HWV_CHECK_CLOCK: SYSCLK differs from .ioc (interface.json)"
+cfg_wrong            → "HWV_EXPECT_CFG: USART1.BAUDRATE differs from .ioc ..."
+```
+
+**没给 `.ioc` 时**：不生成 `HWV_SYSCLK_HZ`，于是 `HWV_CHECK_CLOCK(8000000)` 编不过
+（`HWV_SYSCLK_HZ undeclared`）——"缺契约"不会悄悄变成"默认 8 MHz"。
+
+### 18.6 三个坑
+
+1. **带后缀的端口名会被严格正则漏掉。** `.ioc` 里晶振/SWD/BOOT 脚写作
+   `PH0 - OSC_IN`、`PA0-WKUP`、`PC13-ANTI_TAMP`、`PB3 (JTDO/TRACESWO)`。
+   第一版用 `^(P[A-Z]\d+)\.` → 每个文件少 3–4 个脚（合计 22 个），
+   少的恰好是**晶振与调试脚**。修法：`^(P[A-Z]\d{1,2})(?!\d)[^.]*\.`，
+   端口名取第一组，原样名存 `name_raw`。
+2. **NVIC 里的内核异常混进用户中断。** `NVIC.SysTick_IRQn`、`HardFault_IRQn` 等
+   9 个也是 `true`；不拆开就会把"3 个用户中断"报成"12 个中断"。修法：
+   `nvic.irqs` / `nvic.core` 分开，两边都报。
+3. **收窄 `unknown` 时别把 AF 编号也删掉。** 有 `.ioc` 后"AF map"确实不再是
+   unknown，但"**编号**"仍是 —— 它只能从 datasheet 来。`unknown` 清单要写
+   "AF 编号"，不是整条删掉。
+
+### 18.7 实测（真实项目 `复刻-示例` + `F103-GPS.ioc`）
+
+```
+clock：SYSCLK 64 MHz / HCLK 64 MHz / APB1 32 MHz（源 PLL）
+nvic ：GROUP_4，用户中断 3（DMA1_Channel4 / EXTI4 / USART1），内核异常 9
+外设 ：uart ← ioc（USART1/USART2）；usb ← net（网表有、.ioc 没配）
+提示 ：SPI2 配了但网表没有 spi 网；网表有 USB 但 .ioc 没配
+固件 ：Machine=ARM Entry=0x8000045 text 168 B；负例 5/5 全部编不过
+退化：HWV_CHECK_CLOCK 改空操作 → clock_wrong 编过 → 整体 failed
+```
+
+### 18.8 边界（诚实）
+
+`.ioc` 给的是**配置**，不是**物理对照**，也不是**功能正确**：
+
+* 功能名有了，AF **编号**没有（要 datasheet 的复用表）
+* 时钟频率有了，**时序约束**（建立/保持/采样时刻）没有（要器件 datasheet）
+* 端口名有了，**封装脚号对照**没有（要 datasheet 的引脚定义表；缺它就只能按名字对）
+* "配置对"不等于"外设初始化对"——`main.c` 仍是骨架，寄存器配置是 TODO

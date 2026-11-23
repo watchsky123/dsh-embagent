@@ -179,6 +179,32 @@ def _c_name(net: str) -> str:
     return cleaned if not cleaned[0].isdigit() else f"NET_{cleaned}"
 
 
+def _c_ident(text: str) -> str:
+    """参数名 → C 标识符片段（`BaudRate` → `BAUDRATE`，`I2C_Mode` → `I2C_MODE`）。"""
+    cleaned = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in str(text))
+    cleaned = cleaned.strip("_") or "X"
+    return cleaned.upper() if not cleaned[0].isdigit() else f"N_{cleaned}".upper()
+
+
+def _config_macros(interface: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """`peripheral_config` → `[(IP, PARAM, 值)]`，**只收 C 能比较的数值**（P55）。
+
+    `.ioc` 的 `BaudRate=115200` 能进宏；`VirtualMode=VM_ASYNC` 这种枚举不进
+    （`HWV_EXPECT_CFG` 比的是数值）。**没写进 .ioc 的参数不生成宏** ——
+    用它就是"未声明标识符"，这比"默认 115200"诚实（`.ioc` 只写非默认值）。
+    """
+    rows: list[tuple[str, str, str]] = []
+    config = interface.get("peripheral_config") or {}
+    for ip, info in sorted(config.items()):
+        if not isinstance(info, dict):
+            continue
+        for key, value in sorted((info.get("params") or {}).items()):
+            text = str(value).strip()
+            if not re.fullmatch(r"0[xX][0-9a-fA-F]+|\d+", text):
+                continue
+            rows.append((_c_ident(ip), _c_ident(key), text))
+    return rows
+
 def _pins_header(interface: dict[str, Any]) -> str:
     """把 `interface.json` 的引脚契约变成**编译期可判**的头文件（P54）。
 
@@ -240,9 +266,31 @@ def _pins_header(interface: dict[str, Any]) -> str:
         usable = "0" if kind in ("power", "ground") else "1"
         note = f"  /* {kind or '?'} {row.get('net') or ''} */" if usable == "0" else ""
         lines.append(f"#define HWV_PIN_GPIO_{pin:<6} {usable}{note}")
+    # ---- 外设配置（P55）：`.ioc` 的时钟与外设参数进宏 ----
+    clock = interface.get("clock") or {}
+    config_rows = _config_macros(interface)
+    lines += ["", "/* ---- 外设配置（来自 .ioc：时钟 + 外设参数）。**没写进 .ioc 的"
+              "参数不生成宏** —— 用它就是未声明标识符 ---- */"]
+    if clock.get("status") == "declared":
+        for macro, key in (("HWV_SYSCLK_HZ", "sysclk_hz"),
+                           ("HWV_HCLK_HZ", "hclk_hz"),
+                           ("HWV_APB1_HZ", "apb1_hz"),
+                           ("HWV_APB2_HZ", "apb2_hz")):
+            if clock.get(key):
+                lines.append(f"#define {macro:<16} {int(clock[key])}u")
+        if not any(clock.get(k) for k in ("sysclk_hz", "hclk_hz")):
+            lines.append("/* .ioc 里有时钟段，但既没有 SYSCLK 也没有 HCLK */")
+    else:
+        lines.append("/* 契约里没有时钟（没给 .ioc）—— 用 HWV_CHECK_CLOCK 会因此"
+                     "编不过，这是**有意的**：没有契约就别假设频率 */")
+    for ip, param, value in config_rows:
+        lines.append(f"#define {('HWV_CFG_' + ip + '_' + param):<24} {value}u")
+    if not config_rows:
+        lines.append("/* 契约里没有数值型外设参数（.ioc 只写非默认值，"
+                     "波特率常常没写）*/")
     lines += [
         "",
-        "/* ---- 四个检查宏（必须在**函数体内**用；`_Static_assert` 是块作用域的）---- */",
+        "/* ---- 六个检查宏（必须在**函数体内**用；`_Static_assert` 是块作用域的）---- */",
         "",
         "/* ① 名字在契约里吗：HWV_PIN_NOSUCH 未定义 → 未声明标识符，编译期报错 */",
         "#define HWV_PIN(name) (HWV_PIN_ ## name)",
@@ -267,6 +315,19 @@ def _pins_header(interface: dict[str, Any]) -> str:
         '                   "HWV_EXPECT: interface.json moved " #name \\',
         '                   " away from the pin this firmware assumes")',
         "",
+        "/* ⑤ 固件假设的 SYSCLK 和 .ioc 一致吗。**没有 .ioc → HWV_SYSCLK_HZ 不存在",
+        " * → 这个宏编不过**，而不是悄悄跳过检查 */",
+        "#define HWV_CHECK_CLOCK(hz) \\",
+        '    _Static_assert((hz) == HWV_SYSCLK_HZ, \\',
+        '                   "HWV_CHECK_CLOCK: SYSCLK differs from .ioc (interface.json)")',
+        "",
+        "/* ⑥ 外设参数（波特率…）和 .ioc 一致吗。.ioc 没写这个参数 → 宏不存在",
+        " * → 未声明标识符（**不替它填默认值**）*/",
+        "#define HWV_EXPECT_CFG(ip, param, v) \\",
+        '    _Static_assert(HWV_CAT(HWV_CFG_, HWV_CAT(ip, HWV_CAT(_, param))) == (v), \\',
+        '                   "HWV_EXPECT_CFG: " #ip "." #param \\',
+        '                   " differs from .ioc (interface.json)")',
+        "",
         "#endif",
         "",
     ]
@@ -290,8 +351,15 @@ def _main_c(interface: dict[str, Any]) -> str:
         "",
         "/* 定义（不是 extern）：第一版写成 extern 又在函数里赋值，链接报",
         " * `undefined reference to SystemCoreClock` —— 声明≠定义。 */",
+        "#ifdef HWV_SYSCLK_HZ",
+        "/* 时钟来自 .ioc（interface.json）—— 不再写死一个 8 MHz */",
+        "uint32_t SystemCoreClock = HWV_SYSCLK_HZ;",
+        "void SystemInit(void) { SystemCoreClock = HWV_SYSCLK_HZ; }",
+        "#else",
+        "/* 契约里没有时钟：保留 8 MHz 占位，main 里也就**不**做时钟断言 */",
         "uint32_t SystemCoreClock = 8000000u;",
         "void SystemInit(void) { SystemCoreClock = 8000000u; }",
+        "#endif",
         "",
         "volatile uint32_t g_ticks;",
         "",
@@ -322,6 +390,21 @@ def _main_c(interface: dict[str, Any]) -> str:
             f"    HWV_CHECK_PIN_NUMBER(HWV_MCU_PINS);   /* 契约里记的引脚总数，{pin} 也在范围内 */",
             f"    HWV_CHECK_GPIO({name});",
             f"    HWV_EXPECT({name}, {pin});",
+        ]
+        clock = interface.get("clock") or {}
+        if clock.get("status") == "declared" and clock.get("sysclk_hz"):
+            lines += [
+                "    /* 时钟契约（.ioc → interface.json → 这里）：写错频率编译期就炸 */",
+                f"    HWV_CHECK_CLOCK({int(clock['sysclk_hz'])}u);",
+            ]
+        cfg = _config_macros(interface)
+        if cfg:
+            ip, param, value = cfg[0]
+            lines += [
+                f"    /* 外设参数契约：{ip}.{param} = {value}（.ioc） */",
+                f"    HWV_EXPECT_CFG({ip}, {param}, {value}u);",
+            ]
+        lines += [
             "    (void)hwv_pin_probe();",
             "",
         ]
@@ -402,8 +485,19 @@ def generate(store: Any, design: DesignModel, interface: dict[str, Any],
     signal_names = sorted({_c_name(str(row.get("net"))) for row in pins
                            if str(row.get("net") or "")
                            and str(row.get("kind") or "") in ("signal", "unconnected")})
+    # **契约配置也要在生成时记下来**（同 contract_pins 的理由）：负例不能从
+    # 生成物里正则找样本 —— 退化实验一改生成物，负例就跟着消失（自指脆性）。
+    clock = (interface or {}).get("clock") or {}
+    contract_config = {
+        "sysclk_hz": (int(clock["sysclk_hz"])
+                      if clock.get("status") == "declared" and clock.get("sysclk_hz")
+                      else 0),
+        "peripherals": [{"ip": ip, "param": param, "value": value}
+                        for ip, param, value in _config_macros(interface or {})],
+    }
     return {"status": "ok", "mcu": key, "ref": ref, "core": mem["core"],
             "contract_pins": {"power": power_names, "signal": signal_names},
+            "contract_config": contract_config,
             "memory": {"flash_kb": mem["flash_kb"], "ram_kb": mem["ram_kb"],
                        "basis": mem["basis"]},
             "dir": out_dir, "files": written}
@@ -439,6 +533,27 @@ def _negative_cases(target: Path, cc: str, cpu: str, env: dict[str, str],
     specs.append(("name_not_in_contract",
                   "unsigned long t(void) { return (unsigned long)HWV_PIN(NOSUCH_NET); }",
                   "契约里没有这个网名，必须编不过"))
+    # P55：有 .ioc 时再加两条 —— 时钟写错、外设参数写错。
+    # 样本同样取自 `fw_build.json` 的 `contract_config`，不从生成物里找。
+    config = (record or {}).get("contract_config") or {}
+    sysclk = int(config.get("sysclk_hz") or 0)
+    if sysclk:
+        specs.append(("clock_wrong",
+                      f"void t(void) {{ HWV_CHECK_CLOCK({sysclk + 1000}u); }}",
+                      f"`{sysclk} Hz` 是 .ioc 的值；固件按别的数写必须编不过"))
+    periphs = [row for row in (config.get("peripherals") or [])
+               if isinstance(row, dict) and row.get("ip") and row.get("param")]
+    if periphs:
+        row = periphs[0]
+        try:
+            value = int(str(row.get("value")), 0)
+        except ValueError:
+            value = 0
+        if value:
+            specs.append(("cfg_wrong",
+                          f"void t(void) {{ HWV_EXPECT_CFG({row['ip']}, {row['param']}, "
+                          f"{value + 1}u); }}",
+                          f".ioc 是 {row['ip']}.{row['param']}={value}；写错必须编不过"))
 
     for name, body, why in specs:
         source = target / f"neg_{name}.c"
@@ -616,7 +731,11 @@ def describe() -> dict[str, Any]:
         "generates": ["startup.c", "link.ld", "main.c", "hwv_pins.h", "Makefile"],
         "hard_checks": ["编译返回 0", "Machine=ARM", "Entry 在 FLASH",
                         "text+data <= FLASH 且 data+bss <= RAM", "能出 .bin",
-                        "**三条编译期负例都必须编不过**（用错脚/超范围/名字不在契约）"],
+                        "**三条编译期负例都必须编不过**（用错脚/超范围/名字不在契约）",
+                        "**有 .ioc 时再加两条**：时钟写错、外设参数写错也必须编不过"],
+        "config_contract": ("hwv_pins.h 还带 .ioc 的时钟与外设参数："
+                            "HWV_CHECK_CLOCK 挡时钟不符、HWV_EXPECT_CFG 挡波特率等参数不符；"
+                            "参数没写进 .ioc → 宏不存在 → 未声明标识符（不填默认值）"),
         "pin_contract": ("hwv_pins.h 由 interface.json 生成；"
                          "HWV_PIN 用名字、HWV_CHECK_GPIO 挡电源脚、"
                          "HWV_CHECK_PIN_NUMBER 挡超范围、HWV_EXPECT 挡线被挪走"),
