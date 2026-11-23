@@ -4154,6 +4154,91 @@ export function registerTools(ctx: Context): Array<() => void> {
 
   // ---- 3h. hw_plan ------------------------------------------------------
   // ---- 3j. hw_pinout（引脚定义表：PA9 ↔ 30）--------------------------
+  // ---- 3k. hw_afmap（AF 复用表：这个脚能做哪些功能）--------------------
+  disposers.push(tools.register(defineTool({
+    name: 'hw_afmap',
+    description:
+      '**AF 复用表**：这个脚能做哪些复用功能、AF 编号是几。'
+      + 'F4/H7 给 AF0..15；**F1（F103）没有 AF 编号**，给固定功能 + AFIO 重映射。'
+      + '`action=list/show/can/validate`，`show` 用 `pin=PA9` 或 `signal=I2C1_SCL`（反查）。'
+      + '`build --part=` 从 ST 官方 open pin data（CubeMX 同源）建表。',
+    parameters: {
+      action: { type: 'string', description: 'list（默认）/ show / can / validate' },
+      part: { type: 'string', description: '型号，如 stm32f401rct6' },
+      pin: { type: 'string', description: 'show 时看某个脚，如 PA9' },
+      signal: { type: 'string', description: 'can/show 时反查某个信号，如 I2C1_SCL' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          status: { type: 'string' }, rows: { type: 'string' },
+          summary: { type: 'string' },
+        },
+      },
+      render: (_args, value) => text(
+        `# AF 复用表：${(value as { status: string }).status}`,
+        ...(value as { rows: string }).rows.split('\n').filter((x) => x !== ''),
+        (value as { summary: string }).summary),
+    },
+    execute: async (args) => {
+      const a = args as { action?: unknown; part?: unknown; pin?: unknown; signal?: unknown }
+      const action = str(a.action) || 'list'
+      const cliArgs: string[] = [`--action=${action}`]
+      if (str(a.part) !== '') cliArgs.push(`--part=${str(a.part)}`)
+      if (str(a.pin) !== '') cliArgs.push(`--pin=${str(a.pin)}`)
+      if (str(a.signal) !== '') cliArgs.push(`--signal=${str(a.signal)}`)
+      const payload = await design('afmap', ...cliArgs)
+      if (payload.status === 'not_ready') {
+        throw new Error(findings(payload).join('；') || str(payload.reason) || '没有这张表')
+      }
+      if (payload.status === 'failed') {
+        const problems = Array.isArray(payload.problems) ? payload.problems : []
+        throw new Error(problems.map((x) => str(x)).join('；') || 'AF 表校验失败')
+      }
+      const rows: string[] = []
+      if (action === 'show' && payload.pin) {
+        const pin = payload.pin as Record<string, unknown>
+        const funcs = Array.isArray(pin.functions) ? pin.functions : []
+        for (const raw of funcs.slice(0, 40)) {
+          const f = (raw ?? {}) as Record<string, unknown>
+          const af = f.af === null || f.af === undefined ? '——' : `AF${num(f.af)}`
+          rows.push(`* ${f.signal}: ${af}`)
+        }
+        return {
+          status: str(payload.status),
+          rows: rows.join('\n'),
+          summary: `${str(payload.part)} ${str(payload.style)}：${str(pin.pin)} 共 ${funcs.length} 个功能`,
+        }
+      }
+      if (action === 'can') {
+        const pins = Array.isArray(payload.pins) ? payload.pins : []
+        for (const raw of pins) {
+          const r = (raw ?? {}) as Record<string, unknown>
+          rows.push(`* ${str(r.pin)}（脚 ${num(r.position)}）`
+            + `${r.af === null || r.af === undefined ? '' : ` AF${num(r.af)}`}`)
+        }
+        return {
+          status: str(payload.status),
+          rows: rows.join('\n'),
+          summary: `${str(payload.part)} 上能做 ${str(payload.signal)} 的脚：${pins.length} 个（表里没有 = 不知道，不是不能）`,
+        }
+      }
+      const tables = Array.isArray(payload.tables)
+        ? payload.tables
+        : (Array.isArray(payload.tables_detail) ? payload.tables_detail : [])
+      for (const raw of tables) {
+        const t = (raw ?? {}) as Record<string, unknown>
+        rows.push(`* ${str(t.part)}：${str(t.family)} / ${str(t.style)}`
+          + `，${num(t.count)} 脚（${num(t.io_count)} 个 I/O），AF ${num(t.af_functions)} 条`)
+      }
+      return {
+        status: str(payload.status),
+        rows: rows.join('\n'),
+        summary: `共 ${tables.length} 张 AF 表；来源 ST 官方 open pin data（BSD-3-Clause）`,
+      }
+    },
+  })))
   disposers.push(tools.register(defineTool({
     name: 'hw_pinout',
     description:

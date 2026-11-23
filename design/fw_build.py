@@ -179,6 +179,28 @@ def _c_name(net: str) -> str:
     return cleaned if not cleaned[0].isdigit() else f"NET_{cleaned}"
 
 
+def _af_macros(interface: dict[str, Any]) -> list[tuple[str, int]]:
+    """`interface.af.details` → `[(C 名, AF 编号)]`（P57）。
+
+    F1 没有 AF 编号（用 AFIO 重映射），所以这里自然为空 —— 不生成宏，
+    也就不会有"假装 F1 有 AF7"的假约束。
+    """
+    rows: list[tuple[str, int]] = []
+    seen: set[str] = set()
+    details = ((interface.get("af") or {}).get("details") or {})
+    for pin in sorted(details):
+        for item in details[pin] or []:
+            signal = str(item.get("signal") or "")
+            af = item.get("af")
+            if not signal or af is None:
+                continue
+            name = _c_name(signal)
+            if name in seen:
+                continue
+            seen.add(name)
+            rows.append((name, int(af)))
+    return rows
+
 def _c_ident(text: str) -> str:
     """参数名 → C 标识符片段（`BaudRate` → `BAUDRATE`，`I2C_Mode` → `I2C_MODE`）。"""
     cleaned = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in str(text))
@@ -288,6 +310,16 @@ def _pins_header(interface: dict[str, Any]) -> str:
     if not config_rows:
         lines.append("/* 契约里没有数值型外设参数（.ioc 只写非默认值，"
                      "波特率常常没写）*/")
+    af_rows = _af_macros(interface)
+    if af_rows:
+        lines += ["", "/* ---- 复用功能编号（.ioc 的功能 → ST 官方 AF 表）---- */"]
+        for name, number in af_rows:
+            lines.append(f"#define {('HWV_AF_' + name):<26} {number}")
+    else:
+        style = str((interface.get("af") or {}).get("style") or "")
+        lines.append("/* 没有 AF 编号" + ("（这颗芯片用 AFIO 重映射，F1 没有 AF0..15）"
+                                         if style == "F1_REMAP" else "（没有 AF 表）")
+                     + " —— 不生成 HWV_AF_* / HWV_EXPECT_AF */")
     lines += [
         "",
         "/* ---- 六个检查宏（必须在**函数体内**用；`_Static_assert` 是块作用域的）---- */",
@@ -327,6 +359,12 @@ def _pins_header(interface: dict[str, Any]) -> str:
         '    _Static_assert(HWV_CAT(HWV_CFG_, HWV_CAT(ip, HWV_CAT(_, param))) == (v), \\',
         '                   "HWV_EXPECT_CFG: " #ip "." #param \\',
         '                   " differs from .ioc (interface.json)")',
+        "",
+        "/* ⑦ 复用功能编号（AF）和 ST 官方引脚库一致吗。**F1 没有这个宏**",
+        " * （它用 AFIO 重映射）—— 用了就编不过，那是对的 */",
+        "#define HWV_EXPECT_AF(name, n) \\",
+        '    _Static_assert(HWV_AF_ ## name == (n), \\',
+        '                   "HWV_EXPECT_AF: " #name " AF number differs from ST pin data")',
         "",
         "#endif",
         "",
@@ -403,6 +441,13 @@ def _main_c(interface: dict[str, Any]) -> str:
             lines += [
                 f"    /* 外设参数契约：{ip}.{param} = {value}（.ioc） */",
                 f"    HWV_EXPECT_CFG({ip}, {param}, {value}u);",
+            ]
+        afs = _af_macros(interface)
+        if afs:
+            name, number = afs[0]
+            lines += [
+                f"    /* 复用功能契约：{name} = AF{number}（ST 官方引脚库） */",
+                f"    HWV_EXPECT_AF({name}, {number});",
             ]
         lines += [
             "    (void)hwv_pin_probe();",
@@ -494,6 +539,8 @@ def generate(store: Any, design: DesignModel, interface: dict[str, Any],
                       else 0),
         "peripherals": [{"ip": ip, "param": param, "value": value}
                         for ip, param, value in _config_macros(interface or {})],
+        "af": [{"name": name, "af": number}
+               for name, number in _af_macros(interface or {})],
     }
     return {"status": "ok", "mcu": key, "ref": ref, "core": mem["core"],
             "contract_pins": {"power": power_names, "signal": signal_names},
@@ -541,6 +588,14 @@ def _negative_cases(target: Path, cc: str, cpu: str, env: dict[str, str],
         specs.append(("clock_wrong",
                       f"void t(void) {{ HWV_CHECK_CLOCK({sysclk + 1000}u); }}",
                       f"`{sysclk} Hz` 是 .ioc 的值；固件按别的数写必须编不过"))
+    afs = [row for row in (config.get("af") or [])
+           if isinstance(row, dict) and row.get("name") and row.get("af") is not None]
+    if afs:
+        row = afs[0]
+        wrong = (int(row["af"]) + 1) if int(row["af"]) < 15 else int(row["af"]) - 1
+        specs.append(("af_wrong",
+                      f"void t(void) {{ HWV_EXPECT_AF({row['name']}, {wrong}); }}",
+                      f"{row['name']} 是 AF{row['af']}；固件写别的编号必须编不过"))
     periphs = [row for row in (config.get("peripherals") or [])
                if isinstance(row, dict) and row.get("ip") and row.get("param")]
     if periphs:
@@ -733,6 +788,8 @@ def describe() -> dict[str, Any]:
                         "text+data <= FLASH 且 data+bss <= RAM", "能出 .bin",
                         "**三条编译期负例都必须编不过**（用错脚/超范围/名字不在契约）",
                         "**有 .ioc 时再加两条**：时钟写错、外设参数写错也必须编不过"],
+        "af_contract": ("hwv_pins.h 带 `HWV_AF_<功能>` 与 `HWV_EXPECT_AF`："
+                        "固件里 AF 编号写错 → 编译期炸；F1 没有 AF 编号，不生成宏"),
         "config_contract": ("hwv_pins.h 还带 .ioc 的时钟与外设参数："
                             "HWV_CHECK_CLOCK 挡时钟不符、HWV_EXPECT_CFG 挡波特率等参数不符；"
                             "参数没写进 .ioc → 宏不存在 → 未声明标识符（不填默认值）"),

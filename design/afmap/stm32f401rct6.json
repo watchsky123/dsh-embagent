@@ -1,0 +1,1053 @@
+{
+ "af_functions": 141,
+ "count": 64,
+ "family": "STM32F4",
+ "io_count": 50,
+ "license": "BSD-3-Clause © 2020 STMicroelectronics (STM32_open_pin_data)",
+ "mpn": "STM32F401RCT6",
+ "package": "LQFP64",
+ "part": "stm32f401rct6",
+ "pins": {
+  "PA0": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN0"
+    },
+    {
+     "af": null,
+     "signal": "SYS_WKUP"
+    },
+    {
+     "af": 1,
+     "signal": "TIM2_CH1"
+    },
+    {
+     "af": 1,
+     "signal": "TIM2_ETR"
+    },
+    {
+     "af": 2,
+     "signal": "TIM5_CH1"
+    },
+    {
+     "af": 7,
+     "signal": "USART2_CTS"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 14,
+   "type": "I/O"
+  },
+  "PA1": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN1"
+    },
+    {
+     "af": 1,
+     "signal": "TIM2_CH2"
+    },
+    {
+     "af": 2,
+     "signal": "TIM5_CH2"
+    },
+    {
+     "af": 7,
+     "signal": "USART2_RTS"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 15,
+   "type": "I/O"
+  },
+  "PA10": {
+   "functions": [
+    {
+     "af": 1,
+     "signal": "TIM1_CH3"
+    },
+    {
+     "af": 7,
+     "signal": "USART1_RX"
+    },
+    {
+     "af": 10,
+     "signal": "USB_OTG_FS_ID"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 43,
+   "type": "I/O"
+  },
+  "PA11": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_EXTI11"
+    },
+    {
+     "af": 1,
+     "signal": "TIM1_CH4"
+    },
+    {
+     "af": 7,
+     "signal": "USART1_CTS"
+    },
+    {
+     "af": 8,
+     "signal": "USART6_TX"
+    },
+    {
+     "af": 10,
+     "signal": "USB_OTG_FS_DM"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 44,
+   "type": "I/O"
+  },
+  "PA12": {
+   "functions": [
+    {
+     "af": 1,
+     "signal": "TIM1_ETR"
+    },
+    {
+     "af": 7,
+     "signal": "USART1_RTS"
+    },
+    {
+     "af": 8,
+     "signal": "USART6_RX"
+    },
+    {
+     "af": 10,
+     "signal": "USB_OTG_FS_DP"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 45,
+   "type": "I/O"
+  },
+  "PA13": {
+   "functions": [
+    {
+     "af": 0,
+     "signal": "SYS_JTMS-SWDIO"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 46,
+   "type": "I/O"
+  },
+  "PA14": {
+   "functions": [
+    {
+     "af": 0,
+     "signal": "SYS_JTCK-SWCLK"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 49,
+   "type": "I/O"
+  },
+  "PA15": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_EXTI15"
+    },
+    {
+     "af": 6,
+     "signal": "I2S3_WS"
+    },
+    {
+     "af": 5,
+     "signal": "SPI1_NSS"
+    },
+    {
+     "af": 6,
+     "signal": "SPI3_NSS"
+    },
+    {
+     "af": 0,
+     "signal": "SYS_JTDI"
+    },
+    {
+     "af": 1,
+     "signal": "TIM2_CH1"
+    },
+    {
+     "af": 1,
+     "signal": "TIM2_ETR"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 50,
+   "type": "I/O"
+  },
+  "PA2": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN2"
+    },
+    {
+     "af": 1,
+     "signal": "TIM2_CH3"
+    },
+    {
+     "af": 2,
+     "signal": "TIM5_CH3"
+    },
+    {
+     "af": 3,
+     "signal": "TIM9_CH1"
+    },
+    {
+     "af": 7,
+     "signal": "USART2_TX"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 16,
+   "type": "I/O"
+  },
+  "PA3": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN3"
+    },
+    {
+     "af": 1,
+     "signal": "TIM2_CH4"
+    },
+    {
+     "af": 2,
+     "signal": "TIM5_CH4"
+    },
+    {
+     "af": 3,
+     "signal": "TIM9_CH2"
+    },
+    {
+     "af": 7,
+     "signal": "USART2_RX"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 17,
+   "type": "I/O"
+  },
+  "PA4": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN4"
+    },
+    {
+     "af": 6,
+     "signal": "I2S3_WS"
+    },
+    {
+     "af": 5,
+     "signal": "SPI1_NSS"
+    },
+    {
+     "af": 6,
+     "signal": "SPI3_NSS"
+    },
+    {
+     "af": 7,
+     "signal": "USART2_CK"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 20,
+   "type": "I/O"
+  },
+  "PA5": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN5"
+    },
+    {
+     "af": 5,
+     "signal": "SPI1_SCK"
+    },
+    {
+     "af": 1,
+     "signal": "TIM2_CH1"
+    },
+    {
+     "af": 1,
+     "signal": "TIM2_ETR"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 21,
+   "type": "I/O"
+  },
+  "PA6": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN6"
+    },
+    {
+     "af": 5,
+     "signal": "SPI1_MISO"
+    },
+    {
+     "af": 1,
+     "signal": "TIM1_BKIN"
+    },
+    {
+     "af": 2,
+     "signal": "TIM3_CH1"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 22,
+   "type": "I/O"
+  },
+  "PA7": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN7"
+    },
+    {
+     "af": 5,
+     "signal": "SPI1_MOSI"
+    },
+    {
+     "af": 1,
+     "signal": "TIM1_CH1N"
+    },
+    {
+     "af": 2,
+     "signal": "TIM3_CH2"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 23,
+   "type": "I/O"
+  },
+  "PA8": {
+   "functions": [
+    {
+     "af": 4,
+     "signal": "I2C3_SCL"
+    },
+    {
+     "af": 0,
+     "signal": "RCC_MCO_1"
+    },
+    {
+     "af": 1,
+     "signal": "TIM1_CH1"
+    },
+    {
+     "af": 7,
+     "signal": "USART1_CK"
+    },
+    {
+     "af": 10,
+     "signal": "USB_OTG_FS_SOF"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 41,
+   "type": "I/O"
+  },
+  "PA9": {
+   "functions": [
+    {
+     "af": 4,
+     "signal": "I2C3_SMBA"
+    },
+    {
+     "af": 1,
+     "signal": "TIM1_CH2"
+    },
+    {
+     "af": 7,
+     "signal": "USART1_TX"
+    },
+    {
+     "af": null,
+     "signal": "USB_OTG_FS_VBUS"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 42,
+   "type": "I/O"
+  },
+  "PB0": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN8"
+    },
+    {
+     "af": 1,
+     "signal": "TIM1_CH2N"
+    },
+    {
+     "af": 2,
+     "signal": "TIM3_CH3"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 26,
+   "type": "I/O"
+  },
+  "PB1": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN9"
+    },
+    {
+     "af": 1,
+     "signal": "TIM1_CH3N"
+    },
+    {
+     "af": 2,
+     "signal": "TIM3_CH4"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 27,
+   "type": "I/O"
+  },
+  "PB10": {
+   "functions": [
+    {
+     "af": 4,
+     "signal": "I2C2_SCL"
+    },
+    {
+     "af": 5,
+     "signal": "I2S2_CK"
+    },
+    {
+     "af": 5,
+     "signal": "SPI2_SCK"
+    },
+    {
+     "af": 1,
+     "signal": "TIM2_CH3"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 29,
+   "type": "I/O"
+  },
+  "PB12": {
+   "functions": [
+    {
+     "af": 4,
+     "signal": "I2C2_SMBA"
+    },
+    {
+     "af": 5,
+     "signal": "I2S2_WS"
+    },
+    {
+     "af": 5,
+     "signal": "SPI2_NSS"
+    },
+    {
+     "af": 1,
+     "signal": "TIM1_BKIN"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 33,
+   "type": "I/O"
+  },
+  "PB13": {
+   "functions": [
+    {
+     "af": 5,
+     "signal": "I2S2_CK"
+    },
+    {
+     "af": 5,
+     "signal": "SPI2_SCK"
+    },
+    {
+     "af": 1,
+     "signal": "TIM1_CH1N"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 34,
+   "type": "I/O"
+  },
+  "PB14": {
+   "functions": [
+    {
+     "af": 6,
+     "signal": "I2S2_ext_SD"
+    },
+    {
+     "af": 5,
+     "signal": "SPI2_MISO"
+    },
+    {
+     "af": 1,
+     "signal": "TIM1_CH2N"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 35,
+   "type": "I/O"
+  },
+  "PB15": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_EXTI15"
+    },
+    {
+     "af": 5,
+     "signal": "I2S2_SD"
+    },
+    {
+     "af": 0,
+     "signal": "RTC_REFIN"
+    },
+    {
+     "af": 5,
+     "signal": "SPI2_MOSI"
+    },
+    {
+     "af": 1,
+     "signal": "TIM1_CH3N"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 36,
+   "type": "I/O"
+  },
+  "PB2": {
+   "functions": [],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 28,
+   "type": "I/O"
+  },
+  "PB3": {
+   "functions": [
+    {
+     "af": 9,
+     "signal": "I2C2_SDA"
+    },
+    {
+     "af": 6,
+     "signal": "I2S3_CK"
+    },
+    {
+     "af": 5,
+     "signal": "SPI1_SCK"
+    },
+    {
+     "af": 6,
+     "signal": "SPI3_SCK"
+    },
+    {
+     "af": 0,
+     "signal": "SYS_JTDO-SWO"
+    },
+    {
+     "af": 1,
+     "signal": "TIM2_CH2"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 55,
+   "type": "I/O"
+  },
+  "PB4": {
+   "functions": [
+    {
+     "af": 9,
+     "signal": "I2C3_SDA"
+    },
+    {
+     "af": 7,
+     "signal": "I2S3_ext_SD"
+    },
+    {
+     "af": 5,
+     "signal": "SPI1_MISO"
+    },
+    {
+     "af": 6,
+     "signal": "SPI3_MISO"
+    },
+    {
+     "af": 0,
+     "signal": "SYS_JTRST"
+    },
+    {
+     "af": 2,
+     "signal": "TIM3_CH1"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 56,
+   "type": "I/O"
+  },
+  "PB5": {
+   "functions": [
+    {
+     "af": 4,
+     "signal": "I2C1_SMBA"
+    },
+    {
+     "af": 6,
+     "signal": "I2S3_SD"
+    },
+    {
+     "af": 5,
+     "signal": "SPI1_MOSI"
+    },
+    {
+     "af": 6,
+     "signal": "SPI3_MOSI"
+    },
+    {
+     "af": 2,
+     "signal": "TIM3_CH2"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 57,
+   "type": "I/O"
+  },
+  "PB6": {
+   "functions": [
+    {
+     "af": 4,
+     "signal": "I2C1_SCL"
+    },
+    {
+     "af": 2,
+     "signal": "TIM4_CH1"
+    },
+    {
+     "af": 7,
+     "signal": "USART1_TX"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 58,
+   "type": "I/O"
+  },
+  "PB7": {
+   "functions": [
+    {
+     "af": 4,
+     "signal": "I2C1_SDA"
+    },
+    {
+     "af": 2,
+     "signal": "TIM4_CH2"
+    },
+    {
+     "af": 7,
+     "signal": "USART1_RX"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 59,
+   "type": "I/O"
+  },
+  "PB8": {
+   "functions": [
+    {
+     "af": 4,
+     "signal": "I2C1_SCL"
+    },
+    {
+     "af": 12,
+     "signal": "SDIO_D4"
+    },
+    {
+     "af": 3,
+     "signal": "TIM10_CH1"
+    },
+    {
+     "af": 2,
+     "signal": "TIM4_CH3"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 61,
+   "type": "I/O"
+  },
+  "PB9": {
+   "functions": [
+    {
+     "af": 4,
+     "signal": "I2C1_SDA"
+    },
+    {
+     "af": 5,
+     "signal": "I2S2_WS"
+    },
+    {
+     "af": 12,
+     "signal": "SDIO_D5"
+    },
+    {
+     "af": 5,
+     "signal": "SPI2_NSS"
+    },
+    {
+     "af": 3,
+     "signal": "TIM11_CH1"
+    },
+    {
+     "af": 2,
+     "signal": "TIM4_CH4"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 62,
+   "type": "I/O"
+  },
+  "PC0": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN10"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 8,
+   "type": "I/O"
+  },
+  "PC1": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN11"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 9,
+   "type": "I/O"
+  },
+  "PC10": {
+   "functions": [
+    {
+     "af": 6,
+     "signal": "I2S3_CK"
+    },
+    {
+     "af": 12,
+     "signal": "SDIO_D2"
+    },
+    {
+     "af": 6,
+     "signal": "SPI3_SCK"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 51,
+   "type": "I/O"
+  },
+  "PC11": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_EXTI11"
+    },
+    {
+     "af": 5,
+     "signal": "I2S3_ext_SD"
+    },
+    {
+     "af": 12,
+     "signal": "SDIO_D3"
+    },
+    {
+     "af": 6,
+     "signal": "SPI3_MISO"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 52,
+   "type": "I/O"
+  },
+  "PC12": {
+   "functions": [
+    {
+     "af": 6,
+     "signal": "I2S3_SD"
+    },
+    {
+     "af": 12,
+     "signal": "SDIO_CK"
+    },
+    {
+     "af": 6,
+     "signal": "SPI3_MOSI"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 53,
+   "type": "I/O"
+  },
+  "PC13": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "RTC_AF1"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 2,
+   "type": "I/O"
+  },
+  "PC14": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "RCC_OSC32_IN"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 3,
+   "type": "I/O"
+  },
+  "PC15": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_EXTI15"
+    },
+    {
+     "af": null,
+     "signal": "RCC_OSC32_OUT"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 4,
+   "type": "I/O"
+  },
+  "PC2": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN12"
+    },
+    {
+     "af": 6,
+     "signal": "I2S2_ext_SD"
+    },
+    {
+     "af": 5,
+     "signal": "SPI2_MISO"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 10,
+   "type": "I/O"
+  },
+  "PC3": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN13"
+    },
+    {
+     "af": 5,
+     "signal": "I2S2_SD"
+    },
+    {
+     "af": 5,
+     "signal": "SPI2_MOSI"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 11,
+   "type": "I/O"
+  },
+  "PC4": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN14"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 24,
+   "type": "I/O"
+  },
+  "PC5": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "ADC1_IN15"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 25,
+   "type": "I/O"
+  },
+  "PC6": {
+   "functions": [
+    {
+     "af": 5,
+     "signal": "I2S2_MCK"
+    },
+    {
+     "af": 12,
+     "signal": "SDIO_D6"
+    },
+    {
+     "af": 2,
+     "signal": "TIM3_CH1"
+    },
+    {
+     "af": 8,
+     "signal": "USART6_TX"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 37,
+   "type": "I/O"
+  },
+  "PC7": {
+   "functions": [
+    {
+     "af": 6,
+     "signal": "I2S3_MCK"
+    },
+    {
+     "af": 12,
+     "signal": "SDIO_D7"
+    },
+    {
+     "af": 2,
+     "signal": "TIM3_CH2"
+    },
+    {
+     "af": 8,
+     "signal": "USART6_RX"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 38,
+   "type": "I/O"
+  },
+  "PC8": {
+   "functions": [
+    {
+     "af": 12,
+     "signal": "SDIO_D0"
+    },
+    {
+     "af": 2,
+     "signal": "TIM3_CH3"
+    },
+    {
+     "af": 8,
+     "signal": "USART6_CK"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 39,
+   "type": "I/O"
+  },
+  "PC9": {
+   "functions": [
+    {
+     "af": 4,
+     "signal": "I2C3_SDA"
+    },
+    {
+     "af": 5,
+     "signal": "I2S_CKIN"
+    },
+    {
+     "af": 0,
+     "signal": "RCC_MCO_2"
+    },
+    {
+     "af": 12,
+     "signal": "SDIO_D1"
+    },
+    {
+     "af": 2,
+     "signal": "TIM3_CH4"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 40,
+   "type": "I/O"
+  },
+  "PD2": {
+   "functions": [
+    {
+     "af": 12,
+     "signal": "SDIO_CMD"
+    },
+    {
+     "af": 2,
+     "signal": "TIM3_ETR"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 54,
+   "type": "I/O"
+  },
+  "PH0": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "RCC_OSC_IN"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 5,
+   "type": "I/O"
+  },
+  "PH1": {
+   "functions": [
+    {
+     "af": null,
+     "signal": "RCC_OSC_OUT"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 6,
+   "type": "I/O"
+  }
+ },
+ "retrieved": "2026-11-23",
+ "source": "catalog",
+ "source_kind": "ST 官方 open pin data（CubeMX 同源，BSD-3-Clause）",
+ "sources": {
+  "gpio": {
+   "path": "mcu/IP/GPIO-STM32F401_gpio_v1_0_Modes.xml",
+   "sha256": "4491b4ee54faa9d6ccf722f6e79ca752b2dcd168f5279ad249959a561db4fbff",
+   "url": "https://github.com/STMicroelectronics/STM32_open_pin_data/blob/master/mcu/IP/GPIO-STM32F401_gpio_v1_0_Modes.xml"
+  },
+  "mcu": {
+   "path": "mcu/STM32F401R(B-C)Tx.xml",
+   "sha256": "a37f14996c23131c1d8b3cb2b8b3bed3f75ee68771c7f8712bf37e1a04553c3c",
+   "url": "https://github.com/STMicroelectronics/STM32_open_pin_data/blob/master/mcu/STM32F401R(B-C)Tx.xml"
+  }
+ },
+ "style": "AF"
+}

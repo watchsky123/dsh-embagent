@@ -1861,8 +1861,9 @@ def cmd_interface(args: list[str]) -> dict[str, Any]:
     固件侧读它，检查器也读它。**唯一硬判据是引脚↔网络逐条一致**。
 
     * 没有 `.ioc`：外设分组标 `inferred`，时钟/中断/AF/时序一律 `unknown`
-    * 有 `.ioc`：时钟/中断/复用功能/外设参数变成**声明的**（`source=ioc`），
-      AF **编号**/时序/脚号对照仍 `unknown`；芯片身份（族/封装）不符 = `failed`
+    * 有 `.ioc`：时钟/中断/复用功能/外设参数变成**声明的**（`source=ioc`）
+    * 有引脚表（P56）→ 逐脚对账；有 AF 表（P57）→ 功能是否真在这根脚上
+    * 有 AF 表后 `unknown` 只剩「时序」；芯片身份（族/封装）不符 = `failed`
     """
     from .design import interface as iface_module
 
@@ -1945,6 +1946,87 @@ def cmd_pinout(args: list[str]) -> dict[str, Any]:
                 "count": len(rows), "checked": len(rows), "failed": len(bad)}
     return {"status": "not_ready", "reason": f"不认识的 action {action!r}",
             "known": ["list", "show", "build", "validate"]}
+
+
+def cmd_afmap(args: list[str]) -> dict[str, Any]:
+    """``afmap`` / ``list`` / ``show <part> [--pin=PA9|--signal=I2C1_SCL]`` / ``build --part=…``
+
+    **AF 复用表**（P57）：这个脚能做哪些复用功能、AF 编号是几。
+    来源是 ST 官方 open pin data（CubeMX 同源，BSD-3-Clause）。
+    F1 用"固定功能 + AFIO 重映射"，**没有 AF 编号**；F4/H7 是 AF0..15。
+    """
+    from .design import afmap as afmap_module
+
+    action, part, pin, signal = "", "", "", ""
+    for item in args:
+        if item.startswith("--action="):
+            action = item.split("=", 1)[1]
+        elif item.startswith("--part="):
+            part = item.split("=", 1)[1]
+        elif item.startswith("--pin="):
+            pin = item.split("=", 1)[1]
+        elif item.startswith("--signal="):
+            signal = item.split("=", 1)[1]
+        elif not item.startswith("--"):
+            if not action:
+                action = item
+            elif not part:
+                part = item
+    if not action:
+        return {"status": "ok", **afmap_module.describe(),
+                "tables_detail": afmap_module.list_tables()}
+    if action == "list":
+        rows = afmap_module.list_tables()
+        bad = [row for row in rows if row.get("error") or row.get("problems")]
+        return {"status": "ok" if not bad else "failed", "tables": rows,
+                "count": len(rows)}
+    if action in ("show", "can"):
+        if not part:
+            return {"status": "not_ready", "reason": "缺 part 名",
+                    "known": [row.get("part") for row in afmap_module.list_tables()]}
+        table = afmap_module.load(part)
+        if table is None:
+            return {"status": "not_ready", "reason": f"没有 {part} 的表",
+                    "known": [row.get("part") for row in afmap_module.list_tables()]}
+        if signal:
+            return {"status": "ok", "part": table["part"], "signal": signal,
+                    "pins": afmap_module.pins_for_signal(table, signal),
+                    "style": table.get("style")}
+        if pin:
+            port = afmap_module._canon(pin) or pin
+            info = (table.get("pins") or {}).get(port)
+            if info is None:
+                return {"status": "not_ready",
+                        "reason": f"{part} 没有 {pin} 这个脚"}
+            got = dict(info, pin=port,
+                       matched=(afmap_module.match_signal(table, port, signal)
+                                if signal else None))
+            return {"status": "ok", "part": table["part"], "style": table.get("style"),
+                    "pin": got}
+        return {"status": "ok", **table,
+                "problems": afmap_module.validate(table)}
+    if action == "build":
+        meta = afmap_module.PARTS.get(afmap_module._norm(part), {})
+        from .design import pinout as pinout_module  # noqa: PLC0415
+        made = afmap_module.build_table(part, pinout=pinout_module.load(part))
+        if made.get("status") != "ok":
+            return {"status": made.get("status", "failed"), **made}
+        table = made["table"]
+        target = afmap_module.DIR / f"{table['part']}.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(table, ensure_ascii=False, indent=1,
+                                     sort_keys=True) + "\n", encoding="utf-8")
+        return {"status": "ok", "file": str(target), "part": table["part"],
+                "count": table["count"], "style": table["style"],
+                "af_functions": table["af_functions"],
+                "sources": table["sources"], "mpn": meta.get("mpn", "")}
+    if action == "validate":
+        rows = afmap_module.list_tables()
+        bad = [row for row in rows if row.get("error") or row.get("problems")]
+        return {"status": "ok" if not bad else "failed", "tables": rows,
+                "count": len(rows), "checked": len(rows), "failed": len(bad)}
+    return {"status": "not_ready", "reason": f"不认识的 action {action!r}",
+            "known": ["list", "show", "can", "build", "validate"]}
 
 
 def cmd_fw_algo(args: list[str]) -> dict[str, Any]:
@@ -4264,6 +4346,7 @@ COMMANDS = {
     "dfm": cmd_dfm,
     "plan": cmd_plan,
     "interface": cmd_interface,
+    "afmap": cmd_afmap,
     "pinout": cmd_pinout,
     "params": cmd_params,
     "fw-build": cmd_fw_build,

@@ -392,6 +392,14 @@ TOOLS: list[ToolSpec] = [
              "符号脚数不等于封装脚数就**拒绝**（不补猜的脚）",
              {"action": "string", "part": "string", "lcsc": "string"},
              (), arg_style="eq"),
+    ToolSpec("hw_afmap", "judge", "afmap",
+             "**AF 复用表**：这个脚能做哪些复用功能、AF 编号几（F4/H7），"
+             "或固定功能/重映射（F1，**没有 AF 编号**）。"
+             "`list`/`show --pin=PA9`/`can --signal=I2C1_SCL`/`validate`；"
+             "`build --part=` 从 ST 官方 open pin data 建表（源文件映射在 afmap.PARTS）",
+             {"action": "string", "part": "string", "pin": "string",
+              "signal": "string"},
+             (), arg_style="eq"),
     ToolSpec("hw_fw_algo", "judge", "fw-algo",
              "**纯 C 算法 + PC 侧单元测试**：用本机 gcc 真编译真跑"
              "（Renode 跑不了、没有目标板时，这是唯一能验软件的路）",

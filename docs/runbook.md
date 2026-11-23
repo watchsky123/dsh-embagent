@@ -1000,3 +1000,89 @@ unknown 只剩：AF 编号 / 时序（脚号对照已由表覆盖）
   从 datasheet 的表 5 手工录一张并标 `datasheet`
 * 表不对 → 会**误判**用户的设计；所以冲突信息里必须写出"表说脚 30=PA9，
   `.ioc` 说 PA9 是 USART1_TX，网表说 30 是 UART_TX"，让人能判断是谁错了
+
+## 20. AF 复用表：这个脚能不能做这个功能（P57）
+
+### 20.1 之前的问题
+
+P56 让 `.ioc` 的 `PA9` 对上了网表的 `30`，但"**`PA9` 能不能做 `USART1_TX`、
+AF 编号是几**"仍然只能信 `.ioc`。于是"`.ioc` 把一个 UART 放到根本做不了
+UART 的脚上"、以及"固件里 `GPIO_AF4_USART1` 写错"这两类错，都查不出来。
+
+### 20.2 数据来源
+
+**ST 官方 `STM32_open_pin_data`**（`github.com/STMicroelectronics/STM32_open_pin_data`）
+—— **CubeMX 自己用的那份库**，BSD-3-Clause（可再分发，保留版权声明）。
+
+| 文件 | 给什么 |
+|---|---|
+| `mcu/<型号>.xml` | 每个脚的 `Position`（封装脚号）、`Type`、**全部信号名** |
+| `mcu/IP/GPIO-<族>_gpio_v*_Modes.xml` | 每个信号的 `GPIO_AF`（F4/H7）或 `RemapBlock`（F1）|
+
+每条表记两个文件的 `sha256` + 仓库 URL + `retrieved` + `license`。
+
+### 20.3 F1 与 F4 必须分开（**最容易造假的地方**）
+
+| 族 | 机制 | 表里的形状 |
+|---|---|---|
+| **F1**（F103）| 固定功能 + `AFIO_MAPR` 重映射，**没有 AF0–AF15** | `af: null`，`remap: {default, macros}` |
+| **F4/H7** | `AF0..AF15` | `af: 7`，无 remap |
+
+实测（F103C8）：
+* `PA9 = USART1_TX` 是**默认功能**（`USART1_REMAP0`）
+* `PB6 = USART1_TX` 只在 **`USART1_REMAP1`** 打开时成立
+  （表里 `default=false`，`macros=[__HAL_AFIO_REMAP_USART1_ENABLE]`）
+
+所以 F1 的表**一个 AF 编号都不许出现**，`validate()` 会拒绝。
+
+### 20.4 新判据
+
+| 判据 | 级别 | 条件 |
+|---|---|---|
+| `ioc.function_not_on_pin` | **硬** | `.ioc` 把通信/显示外设放到一根**明确没有这一类功能**的脚上 |
+| `ioc.function_not_in_table` | 软 | 同类但非通信族（TIM/ADC…）缺失 —— 只提示 |
+| `ioc.function_unknown` | 软 | 信号名表里完全没有 —— **判不出**，不是冲突 |
+| `ioc.pin_not_in_afmap` | 软 | 这颗芯片没有这个脚 |
+
+有了 AF 表，`unknown` 清单**只剩「时序约束」**：时钟/中断/复用功能/参数
+是声明的，脚号对照有引脚表，AF 编号有 AF 表。
+
+### 20.5 实测
+
+```
+F103（复刻-示例 + F103-GPS.ioc）：19 个 `.ioc` 功能全部查得到
+  by_status: ok 11 / exti 2 / gpio 6；style=F1_REMAP；冲突 0
+F401：PA9 → USART1_TX = AF7（与 CubeMX 生成的 `GPIO_AF7_USART1` 一致）
+H743：41 条 CubeMX 生成的 AF 证据全部与表一致
+两个厂商源：ST 的 `Position` == P56 引脚表的封装脚号（4 张表逐脚相等）
+编译期：AF 写错 → `HWV_EXPECT_AF` 断言失败；F1 用 `HWV_EXPECT_AF` → 未声明
+```
+
+### 20.6 四个坑（都实测过）
+
+1. **`.ioc` 的信号名有四种写法**，不能只做精确匹配：
+
+   | `.ioc` | 表里 | 规则 |
+   |---|---|---|
+   | `USART1_TX` | `USART1_TX` | 精确 |
+   | `S_TIM1_CH1` | `TIM1_CH1` | 去前导 `S_` |
+   | `ADCx_IN0` | `ADC1_IN0` | `ADCx` 族通配 |
+   | `GPXTI4` | —— | EXTI 模式，任何 GPIO 脚都能，不查表 |
+   | `S_TIM2_CH1_ETR` | `TIM2_CH1` + `TIM2_ETR`（两条） | 去掉 `_ETR` 再比 |
+
+2. **CubeMX 生成的代码与它自己的引脚库外设名不一致**：代码写
+   `GPIO_AF12_SDIO1`，库里是 `SDMMC1_D0`。按前缀换名（`SDIO*` → `SDMMC*`）
+   才能对上。
+
+3. **没有 `Alternate` 的 `HAL_GPIO_Init` 块不是 AF 证据**。第一版把
+   `Init.Pin = …; HAL_GPIO_Init(GPIOE, …)` 也当证据（`af=0`、外设为空），
+   于是 H743 凭空多出 2 条假证据。判据：**见过 `Alternate` 行才算 AF**。
+
+4. **"表里没有" ≠ "芯片不能"**。非通信族（TIM/ADC/调试）缺失只给软提示，
+   因为表覆盖的是 ST 的 MCU 描述，不能替 datasheet 承诺所有可用性限制。
+
+### 20.7 边界
+
+* 表给**功能与编号**，不给电气/时序、也不给"某个 AF 只在特定批次可用"
+* 来源是厂商数据（`catalog`），不是 datasheet PDF；要更硬就手工录并标 `datasheet`
+* F405 等没有 AF 表的型号：`.ioc` 功能一律 `unknown`，**不猜**

@@ -284,11 +284,19 @@ def part_conflicts() -> None:
               short["status"] == "failed" and bool(short_msgs)
               and "电源/地" in short_msgs[0], str(short_msgs)[:130])
 
-        rx = _ioc_with("USART1_RX", "USART1_RX")
-        made.append(rx)
-        role = iface_module.build(_design(), ioc_path=rx)
+        # 方向反了用**网表**制造（`.ioc` 保持合法）：脚 30 是 PA9=USART1_TX，
+        # 网表却把 30 叫 UART_RX。若改 `.ioc` 的 PA9=USART1_RX，那不是"方向反了"，
+        # 而是"PA9 根本做不了 RX"——那是 AF 表的硬冲突（P57）。
+        swapped = _design([
+            {"net": "3V3", "pins": [{"ref": "U1", "pin": "1"}]},
+            {"net": "GND", "pins": [{"ref": "U1", "pin": "8"}]},
+            {"net": "UART_RX", "pins": [{"ref": "U1", "pin": "30"}]},
+            {"net": "UART_TX", "pins": [{"ref": "U1", "pin": "31"}]},
+        ])
+        role = iface_module.build(swapped, ioc_path=IOC_GOOD)
         soft = [w["check"] for w in role.get("warnings") or []]
-        check("3d. **方向只软提示**：`.ioc` 说 RX、网表是 TX → `ioc.pin_role_conflict`，不判 fail",
+        check("3d. **方向只软提示**：网表把 PA9 的 TX 叫成 UART_RX → "
+              "`ioc.pin_role_conflict`，不判 fail",
               role["status"] == "ok" and "ioc.pin_role_conflict" in soft
               and not _conflicts(role), str(soft))
 

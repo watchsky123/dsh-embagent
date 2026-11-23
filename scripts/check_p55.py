@@ -280,23 +280,27 @@ def part_contract() -> None:
               and uart[0]["ioc_instances"] == ["USART1"], str(uart[:1]))
 
         what = [u["what"] for u in contract["unknown"]]
-        # 有引脚表（P56）时「脚号对照」不再是 unknown；**把表拿掉必须回来** ——
+        # 有引脚表（P56）/ AF 表（P57）时对应缺口消失；**把表拿掉必须回来** ——
         # 否则"收窄"就变成了"悄悄删掉一条缺口"。
         original_find = iface_module.pinout_module.find
+        original_af = iface_module.afmap_module.find
         try:
             iface_module.pinout_module.find = lambda *a, **k: None  # type: ignore[assignment]
+            iface_module.afmap_module.find = lambda *a, **k: None  # type: ignore[assignment]
             no_table = iface_module.build(_design(), ioc_path=IOC_GOOD)
         finally:
             iface_module.pinout_module.find = original_find  # type: ignore[assignment]
+            iface_module.afmap_module.find = original_af  # type: ignore[assignment]
         what_no_table = [u["what"] for u in no_table["unknown"]]
-        check("2f. **unknown 收窄**：无「时钟树」与「中断」；"
-              "有引脚表时「脚号对照」消失、把表拿掉它**必须回来**",
+        check("2f. **unknown 收窄**：无「时钟树」/「中断」；有引脚表与 AF 表时"
+              "「脚号对照」「AF 编号」消失，**把表拿掉它们必须回来**",
               not any("时钟树" in w for w in what)
               and not any(w.startswith("中断") for w in what)
-              and any("AF 编号" in w for w in what)
+              and not any("AF 编号" in w for w in what)
               and any("时序" in w for w in what)
               and not any("封装脚号" in w for w in what)
-              and any("封装脚号" in w for w in what_no_table),
+              and any("封装脚号" in w for w in what_no_table)
+              and any("AF 编号" in w for w in what_no_table),
               f"有表={what} 无表={what_no_table}")
 
         checks = [w["check"] for w in contract["warnings"]]

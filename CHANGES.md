@@ -3456,6 +3456,68 @@ node hw_velxio/scripts/check_tools.mjs    # 59 个工具
 * **表错了会误判**：冲突信息里同时写出"表说脚 30=PA9、`.ioc` 说 PA9 是 USART1_TX、
   网表说 30 是 UART_TX"，让人能判断是谁错了
 
+## P57 — AF 复用表：这个脚能不能做这个功能（AF 编号）（2026-11-23）
+
+> 用户点的第 9 件事：AF 复用表 —— `pins.h` 最后一块"不能判"的东西。
+
+### 之前的问题
+
+P56 让 `PA9` 对上了 `30`，但"`PA9` 能不能做 `USART1_TX`、AF 几号"仍然只能信 `.ioc`。
+于是"`.ioc` 把 UART 放到做不了 UART 的脚上"和"固件 `GPIO_AF4_USART1` 写错"
+这两类错都查不出来。
+
+### 新增
+
+| 文件 | 内容 |
+|---|---|
+| `design/afmap.py` | ST 官方 open pin data → AF 表：建表/自检/与引脚表交叉/查询（`match_signal`/`pins_for_signal`）|
+| `design/afmap/stm32f103c8t6.json` | F1：48 脚，0 个 AF 编号（固定功能 + 重映射）|
+| `design/afmap/stm32f103c6t6.json` | 同上 |
+| `design/afmap/stm32f401rct6.json` | F4：64 脚，141 条 AF |
+| `design/afmap/stm32h743iit6.json` | H7：176 脚，964 条 AF |
+| `scripts/check_p57.py` | 24 项验收（表 + 两个厂商源 + 固件证据 + 冲突 + 编译期 + CLI）|
+| `design_cli.py` `afmap` | `list` / `show --pin=` / `can --signal=` / `build --part=` / `validate` |
+| `agent_tools.py` + `src/tools.ts` | `hw_afmap` 工具（59 → 60）|
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design/interface.py` | `.ioc` 的每个功能查 AF 表：**功能不在这根脚上 = 硬冲突** `ioc.function_not_on_pin`；`af.style/af_numbers/details`；`unknown` 只剩「时序」；人读版显示 `（AF7）`/`（重映射 …）` |
+| `design/fw_build.py` | `hwv_pins.h` 生成 `HWV_AF_<功能>` + `HWV_EXPECT_AF`；负例 5 → **6 条**（含 AF 写错）；F1 不生成 AF 宏 |
+| `scripts/check_p55.py` | 2f 变成"引脚表 + AF 表"双感知 |
+| `scripts/check_p56.py` | 3d 改成"网表接反"（用 `.ioc` 造非法 AF 会被 P57 判死）|
+| `docs/runbook.md` | 新增 §20 |
+| `AGENTS.md` | §3.51–3.53 指针加 §20；§6 的"AF 表没录"改成"只有 4 个型号" |
+
+### 关键数字（实测）
+
+```
+4 张表：48 / 48 / 64 / 176 脚；AF 条数 0 / 0 / 141 / 964
+两个厂商源逐脚一致：ST Position == P56 引脚表的封装脚号（4 张表全等）
+固件证据：F401 9 条、H743 41 条 GPIO_AF* 全部与表一致
+真实项目（复刻-示例 + F103-GPS.ioc）：
+  19 个功能：ok 11 / exti 2 / gpio 6；style=F1_REMAP；冲突 0
+  F103 的 PB6=USART1_TX 只在 USART1_REMAP1 下成立（default=false）
+F401 夹具：PA9→AF7；负例 6/6 全部编不过
+退化：表里删掉 PA9=USART1_TX → 真实 `.ioc` 变红；拿掉表 → AF 编号回到 unknown
+```
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_p57     # 24 项
+python -m hw_velxio.scripts.check_p55/p56 # 全绿（已改成表感知）
+npm test / npm run check / build / check_tools
+```
+
+### 诚实边界
+
+* 来源是 ST 官方引脚库（`catalog`），不是 datasheet PDF；要更硬就手工录并标 `datasheet`
+* 表只给**功能与编号**，不给电气/时序、也不给"某 AF 只在特定批次可用"
+* 只建了 4 个型号（F103C8/C6、F401RC、H743II）；表外型号功能一律 `unknown`
+* F1 没有 AF 编号（用 AFIO 重映射），**不要**为了"统一"给它编 AF7
+
 ---
 
 ## 后续

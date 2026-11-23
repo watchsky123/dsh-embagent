@@ -1,0 +1,1573 @@
+{
+ "af_functions": 0,
+ "count": 48,
+ "family": "STM32F1",
+ "io_count": 37,
+ "license": "BSD-3-Clause © 2020 STMicroelectronics (STM32_open_pin_data)",
+ "mpn": "STM32F103C6T6",
+ "package": "LQFP48",
+ "part": "stm32f103c6t6",
+ "pins": {
+  "PA0": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_IN0"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_IN0"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "SYS_WKUP"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM2_REMAP0"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_PARTIAL_2"
+        ],
+        "name": "TIM2_REMAP2"
+       }
+      ],
+      "default": true,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM2_PARTIAL_2"
+      ]
+     },
+     "signal": "TIM2_CH1"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM2_REMAP0"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_PARTIAL_2"
+        ],
+        "name": "TIM2_REMAP2"
+       }
+      ],
+      "default": true,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM2_PARTIAL_2"
+      ]
+     },
+     "signal": "TIM2_ETR"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "USART2_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "USART2_CTS"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 10,
+   "type": "I/O"
+  },
+  "PA1": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_IN1"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_IN1"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM2_REMAP0"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_PARTIAL_2"
+        ],
+        "name": "TIM2_REMAP2"
+       }
+      ],
+      "default": true,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM2_PARTIAL_2"
+      ]
+     },
+     "signal": "TIM2_CH2"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "USART2_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "USART2_RTS"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 11,
+   "type": "I/O"
+  },
+  "PA10": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM1_REMAP0"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+        ],
+        "name": "TIM1_REMAP1"
+       }
+      ],
+      "default": true,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+      ]
+     },
+     "signal": "TIM1_CH3"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "USART1_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "USART1_RX"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 31,
+   "type": "I/O"
+  },
+  "PA11": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_EXTI11"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_EXTI11"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "CAN_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "CAN_RX"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM1_REMAP0"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+        ],
+        "name": "TIM1_REMAP1"
+       }
+      ],
+      "default": true,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+      ]
+     },
+     "signal": "TIM1_CH4"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "USART1_CTS"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "USB_DM"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 32,
+   "type": "I/O"
+  },
+  "PA12": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "CAN_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "CAN_TX"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM1_REMAP0"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+        ],
+        "name": "TIM1_REMAP1"
+       }
+      ],
+      "default": true,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+      ]
+     },
+     "signal": "TIM1_ETR"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "USART1_RTS"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "USB_DP"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 33,
+   "type": "I/O"
+  },
+  "PA13": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "SYS_JTMS-SWDIO"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 34,
+   "type": "I/O"
+  },
+  "PA14": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "SYS_JTCK-SWCLK"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 37,
+   "type": "I/O"
+  },
+  "PA15": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_EXTI15"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_EXTI15"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_SPI1_ENABLE"
+        ],
+        "name": "SPI1_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_SPI1_ENABLE"
+      ]
+     },
+     "signal": "SPI1_NSS"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "SYS_JTDI"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_PARTIAL_1"
+        ],
+        "name": "TIM2_REMAP1"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_ENABLE"
+        ],
+        "name": "TIM2_REMAP3"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM2_PARTIAL_1",
+       "__HAL_AFIO_REMAP_TIM2_ENABLE"
+      ]
+     },
+     "signal": "TIM2_CH1"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_PARTIAL_1"
+        ],
+        "name": "TIM2_REMAP1"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_ENABLE"
+        ],
+        "name": "TIM2_REMAP3"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM2_PARTIAL_1",
+       "__HAL_AFIO_REMAP_TIM2_ENABLE"
+      ]
+     },
+     "signal": "TIM2_ETR"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 38,
+   "type": "I/O"
+  },
+  "PA2": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_IN2"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_IN2"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM2_REMAP0"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_PARTIAL_1"
+        ],
+        "name": "TIM2_REMAP1"
+       }
+      ],
+      "default": true,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM2_PARTIAL_1"
+      ]
+     },
+     "signal": "TIM2_CH3"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "USART2_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "USART2_TX"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 12,
+   "type": "I/O"
+  },
+  "PA3": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_IN3"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_IN3"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM2_REMAP0"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_PARTIAL_1"
+        ],
+        "name": "TIM2_REMAP1"
+       }
+      ],
+      "default": true,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM2_PARTIAL_1"
+      ]
+     },
+     "signal": "TIM2_CH4"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "USART2_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "USART2_RX"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 13,
+   "type": "I/O"
+  },
+  "PA4": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_IN4"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_IN4"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "SPI1_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "SPI1_NSS"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "USART2_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "USART2_CK"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 14,
+   "type": "I/O"
+  },
+  "PA5": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_IN5"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_IN5"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "SPI1_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "SPI1_SCK"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 15,
+   "type": "I/O"
+  },
+  "PA6": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_IN6"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_IN6"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "SPI1_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "SPI1_MISO"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+        ],
+        "name": "TIM1_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+      ]
+     },
+     "signal": "TIM1_BKIN"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM3_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "TIM3_CH1"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 16,
+   "type": "I/O"
+  },
+  "PA7": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_IN7"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_IN7"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "SPI1_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "SPI1_MOSI"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+        ],
+        "name": "TIM1_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+      ]
+     },
+     "signal": "TIM1_CH1N"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM3_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "TIM3_CH2"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 17,
+   "type": "I/O"
+  },
+  "PA8": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "RCC_MCO"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM1_REMAP0"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+        ],
+        "name": "TIM1_REMAP1"
+       }
+      ],
+      "default": true,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+      ]
+     },
+     "signal": "TIM1_CH1"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "USART1_CK"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 29,
+   "type": "I/O"
+  },
+  "PA9": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM1_REMAP0"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+        ],
+        "name": "TIM1_REMAP1"
+       }
+      ],
+      "default": true,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+      ]
+     },
+     "signal": "TIM1_CH2"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "USART1_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "USART1_TX"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 30,
+   "type": "I/O"
+  },
+  "PB0": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_IN8"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_IN8"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+        ],
+        "name": "TIM1_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+      ]
+     },
+     "signal": "TIM1_CH2N"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM3_REMAP0"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM3_PARTIAL"
+        ],
+        "name": "TIM3_REMAP2"
+       }
+      ],
+      "default": true,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM3_PARTIAL"
+      ]
+     },
+     "signal": "TIM3_CH3"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 18,
+   "type": "I/O"
+  },
+  "PB1": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_IN9"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_IN9"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+        ],
+        "name": "TIM1_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM1_PARTIAL"
+      ]
+     },
+     "signal": "TIM1_CH3N"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM3_REMAP0"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM3_PARTIAL"
+        ],
+        "name": "TIM3_REMAP2"
+       }
+      ],
+      "default": true,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM3_PARTIAL"
+      ]
+     },
+     "signal": "TIM3_CH4"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 19,
+   "type": "I/O"
+  },
+  "PB10": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_PARTIAL_2"
+        ],
+        "name": "TIM2_REMAP2"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_ENABLE"
+        ],
+        "name": "TIM2_REMAP3"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM2_PARTIAL_2",
+       "__HAL_AFIO_REMAP_TIM2_ENABLE"
+      ]
+     },
+     "signal": "TIM2_CH3"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 21,
+   "type": "I/O"
+  },
+  "PB11": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_EXTI11"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_EXTI11"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_PARTIAL_2"
+        ],
+        "name": "TIM2_REMAP2"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_ENABLE"
+        ],
+        "name": "TIM2_REMAP3"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM2_PARTIAL_2",
+       "__HAL_AFIO_REMAP_TIM2_ENABLE"
+      ]
+     },
+     "signal": "TIM2_CH4"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 22,
+   "type": "I/O"
+  },
+  "PB12": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM1_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "TIM1_BKIN"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 25,
+   "type": "I/O"
+  },
+  "PB13": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM1_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "TIM1_CH1N"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 26,
+   "type": "I/O"
+  },
+  "PB14": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM1_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "TIM1_CH2N"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 27,
+   "type": "I/O"
+  },
+  "PB15": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_EXTI15"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_EXTI15"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "TIM1_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "TIM1_CH3N"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 28,
+   "type": "I/O"
+  },
+  "PB2": {
+   "functions": [],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 20,
+   "type": "I/O"
+  },
+  "PB3": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_SPI1_ENABLE"
+        ],
+        "name": "SPI1_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_SPI1_ENABLE"
+      ]
+     },
+     "signal": "SPI1_SCK"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "SYS_JTDO-TRACESWO"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_PARTIAL_1"
+        ],
+        "name": "TIM2_REMAP1"
+       },
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM2_ENABLE"
+        ],
+        "name": "TIM2_REMAP3"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM2_PARTIAL_1",
+       "__HAL_AFIO_REMAP_TIM2_ENABLE"
+      ]
+     },
+     "signal": "TIM2_CH2"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 39,
+   "type": "I/O"
+  },
+  "PB4": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_SPI1_ENABLE"
+        ],
+        "name": "SPI1_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_SPI1_ENABLE"
+      ]
+     },
+     "signal": "SPI1_MISO"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "SYS_NJTRST"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM3_PARTIAL"
+        ],
+        "name": "TIM3_REMAP2"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM3_PARTIAL"
+      ]
+     },
+     "signal": "TIM3_CH1"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 40,
+   "type": "I/O"
+  },
+  "PB5": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "I2C1_SMBA"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_SPI1_ENABLE"
+        ],
+        "name": "SPI1_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_SPI1_ENABLE"
+      ]
+     },
+     "signal": "SPI1_MOSI"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_TIM3_PARTIAL"
+        ],
+        "name": "TIM3_REMAP2"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_TIM3_PARTIAL"
+      ]
+     },
+     "signal": "TIM3_CH2"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 41,
+   "type": "I/O"
+  },
+  "PB6": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "I2C1_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "I2C1_SCL"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_USART1_ENABLE"
+        ],
+        "name": "USART1_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_USART1_ENABLE"
+      ]
+     },
+     "signal": "USART1_TX"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 42,
+   "type": "I/O"
+  },
+  "PB7": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": true,
+        "macros": [],
+        "name": "I2C1_REMAP0"
+       }
+      ],
+      "default": true,
+      "macros": []
+     },
+     "signal": "I2C1_SDA"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_USART1_ENABLE"
+        ],
+        "name": "USART1_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_USART1_ENABLE"
+      ]
+     },
+     "signal": "USART1_RX"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 43,
+   "type": "I/O"
+  },
+  "PB8": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_CAN1_2"
+        ],
+        "name": "CAN_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_CAN1_2"
+      ]
+     },
+     "signal": "CAN_RX"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_I2C1_ENABLE"
+        ],
+        "name": "I2C1_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_I2C1_ENABLE"
+      ]
+     },
+     "signal": "I2C1_SCL"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 45,
+   "type": "I/O"
+  },
+  "PB9": {
+   "functions": [
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_CAN1_2"
+        ],
+        "name": "CAN_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_CAN1_2"
+      ]
+     },
+     "signal": "CAN_TX"
+    },
+    {
+     "af": null,
+     "remap": {
+      "blocks": [
+       {
+        "default": false,
+        "macros": [
+         "__HAL_AFIO_REMAP_I2C1_ENABLE"
+        ],
+        "name": "I2C1_REMAP1"
+       }
+      ],
+      "default": false,
+      "macros": [
+       "__HAL_AFIO_REMAP_I2C1_ENABLE"
+      ]
+     },
+     "signal": "I2C1_SDA"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 46,
+   "type": "I/O"
+  },
+  "PC13": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "RTC_OUT"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "RTC_TAMPER"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 2,
+   "type": "I/O"
+  },
+  "PC14": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "RCC_OSC32_IN"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 3,
+   "type": "I/O"
+  },
+  "PC15": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC1_EXTI15"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "ADC2_EXTI15"
+    },
+    {
+     "af": null,
+     "remap": null,
+     "signal": "RCC_OSC32_OUT"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 4,
+   "type": "I/O"
+  },
+  "PD0": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "RCC_OSC_IN"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 5,
+   "type": "I/O"
+  },
+  "PD1": {
+   "functions": [
+    {
+     "af": null,
+     "remap": null,
+     "signal": "RCC_OSC_OUT"
+    }
+   ],
+   "io_modes": "Input,Output,Analog,EVENTOUT,EXTI",
+   "position": 6,
+   "type": "I/O"
+  }
+ },
+ "retrieved": "2026-11-23",
+ "source": "catalog",
+ "source_kind": "ST 官方 open pin data（CubeMX 同源，BSD-3-Clause）",
+ "sources": {
+  "gpio": {
+   "path": "mcu/IP/GPIO-STM32F103x4_gpio_v1_0_Modes.xml",
+   "sha256": "e0f2c51f03e100c1a614f608f31a63aaa10325d21e98c7ba81328b5f769103ef",
+   "url": "https://github.com/STMicroelectronics/STM32_open_pin_data/blob/master/mcu/IP/GPIO-STM32F103x4_gpio_v1_0_Modes.xml"
+  },
+  "mcu": {
+   "path": "mcu/STM32F103C(4-6)Tx.xml",
+   "sha256": "f45d3a71b99ea360d80bdd11a119cc04ca7903f76505e27ba29c69687ce6b611",
+   "url": "https://github.com/STMicroelectronics/STM32_open_pin_data/blob/master/mcu/STM32F103C(4-6)Tx.xml"
+  }
+ },
+ "style": "F1_REMAP"
+}

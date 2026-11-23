@@ -46,6 +46,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from . import afmap as afmap_module
 from . import ioc as ioc_module
 from . import pinout as pinout_module
 from . import power as power_mod
@@ -294,6 +295,74 @@ def _join_ioc_pins(facts: dict[str, Any], table: dict[str, Any],
                       "retrieved": table.get("retrieved")}}
 
 
+#: 这些族的信号"缺失"才判硬冲突 —— 模拟/EXTI/调试脚缺失只算 unknown。
+_AF_HARD_FAMILIES = ("USART", "UART", "LPUART", "SPI", "I2S", "I2C", "FDCAN",
+                     "CAN", "USB", "SDMMC", "QUADSPI", "OCTOSPI", "ETH",
+                     "DCMI", "LTDC", "SAI")
+
+
+def _resolve_af(facts: dict[str, Any], table: dict[str, Any]
+                ) -> dict[str, Any]:
+    """`.ioc` 的每个功能 → AF 表里的结论（P57）。
+
+    **硬冲突只有一种**：`.ioc` 把某个通信/显示外设放到这个脚上，而这颗芯片的
+    这个脚**明确没有这一类功能**（表里同族信号一个都没有）。模拟/EXTI/调试
+    脚缺失只算 `unknown` —— 那是"表没收录"，不是"芯片不能"。
+    """
+    rows: list[dict[str, Any]] = []
+    conflicts: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    af_numbers: dict[str, int] = {}
+    details: dict[str, list[dict[str, Any]]] = {}
+    for pin, info in sorted((facts.get("pins") or {}).items()):
+        signal = str(info.get("signal") or "")
+        if not signal:
+            continue
+        got = afmap_module.match_signal(table, pin, signal)
+        status = str(got.get("status") or "unknown")
+        row = {"pin": pin, "signal": signal, "status": status,
+               "matched": got.get("signal", ""), "af": got.get("af"),
+               "remap": got.get("remap"), "via": got.get("via", "")}
+        rows.append(row)
+        if status == "ok":
+            details.setdefault(pin, []).append({
+                "signal": got.get("signal"), "af": got.get("af"),
+                "remap": got.get("remap"), "via": got.get("via", "")})
+            if got.get("af") is not None:
+                af_numbers[pin] = int(got["af"])
+        elif status == "not_on_pin":
+            family = str(got.get("family") or "")
+            same = ", ".join(got.get("pin_functions") or []) or "没有同类功能"
+            message = (f".ioc 把 {pin} 配成 {signal}，但这颗芯片（{table.get('part')}）"
+                       f"的 {pin} 只有：{same} —— 这个功能不在这根脚上")
+            if family in _AF_HARD_FAMILIES:
+                conflicts.append({"check": "ioc.function_not_on_pin",
+                                  "refs": [str(table.get("part") or "")],
+                                  "message": message})
+            else:
+                warnings.append({"check": "ioc.function_not_in_table",
+                                 "refs": [], "message": message + "（非通信族，只提示）"})
+        elif status == "no_pin":
+            warnings.append({"check": "ioc.pin_not_in_afmap", "refs": [],
+                             "message": f"{pin} 不在这颗芯片的 AF 表里（{table.get('part')}）"})
+        elif status == "unknown":
+            warnings.append({"check": "ioc.function_unknown", "refs": [],
+                             "message": (f"{pin}={signal}：AF 表里没有这个信号，"
+                                         f"**判不出**（不是冲突）")})
+        # `gpio` / `exti` 不需要查 AF 表 —— 不是缺口，也不该进 warning
+    by_status: dict[str, int] = {}
+    for row in rows:
+        by_status[row["status"]] = by_status.get(row["status"], 0) + 1
+    return {"rows": rows, "conflicts": conflicts, "warnings": warnings,
+            "af_numbers": af_numbers, "details": details,
+            "by_status": by_status,
+            "table": {"part": table.get("part"), "family": table.get("family"),
+                      "style": table.get("style"), "source": table.get("source"),
+                      "retrieved": table.get("retrieved"),
+                      "license": table.get("license"),
+                      "af_functions": table.get("af_functions")}}
+
+
 def _unknown_items(clock: dict[str, Any], nvic: dict[str, Any],
                    af: dict[str, Any], facts: dict[str, Any] | None,
                    *extra: Any) -> list[dict[str, Any]]:
@@ -303,6 +372,7 @@ def _unknown_items(clock: dict[str, Any], nvic: dict[str, Any],
     "它本来就给不出"的三类：AF 编号 / 时序 / 脚号对照。
     """
     joined = bool(extra[0]) if extra else False
+    af_resolved = bool(extra[1]) if len(extra) > 1 else False
     if not facts:
         return [
             {"what": "时钟树（HCLK/PCLK/外设时钟）",
@@ -325,12 +395,13 @@ def _unknown_items(clock: dict[str, Any], nvic: dict[str, Any],
     if nvic.get("status") != "declared":
         items.append({"what": "中断向量与优先级",
                       "need": ".ioc 里没有 NVIC 段（文件里确实没有）"})
-    if af.get("status") == "unknown":
-        items.append({"what": "GPIO 复用功能表（AF map）",
-                      "need": "datasheet 的 AF 表（本仓库未录）"})
-    else:
-        items.append({"what": "复用功能的 **AF 编号**（PA9 做 USART1_TX 是 AF7 还是 AF8）",
-                      "need": "datasheet 的复用功能表（.ioc 只给功能名，不给编号）"})
+    if not af_resolved:
+        if af.get("status") == "unknown":
+            items.append({"what": "GPIO 复用功能表（AF map）",
+                          "need": "datasheet 的 AF 表（本仓库未录）"})
+        else:
+            items.append({"what": "复用功能的 **AF 编号**（PA9 做 USART1_TX 是 AF7 还是 AF8）",
+                          "need": "datasheet 的复用功能表（.ioc 只给功能名，不给编号）"})
     items.append({"what": "时序约束（建立/保持、采样时刻）",
                   "need": "器件 datasheet 的时序章节"})
     if not joined:
@@ -496,6 +567,15 @@ def build(design: DesignModel, *, ioc_path: str | Path | None = None) -> dict[st
                                     power_nets, ground_nets)
             problems += joined["conflicts"]
             warnings += joined["warnings"]
+    # 7) **AF 复用表**（P57）：这个脚能不能做这个功能、编号几
+    af_table: dict[str, Any] | None = None
+    af_resolved: dict[str, Any] | None = None
+    if facts and mcu is not None:
+        af_table = afmap_module.find(str(getattr(mcu, "kind", "")))
+        if af_table is not None:
+            af_resolved = _resolve_af(facts, af_table)
+            problems += af_resolved["conflicts"]
+            warnings += af_resolved["warnings"]
     # 未接的 MCU 脚是正常的 —— 不报问题，只在 `pins` 里记 kind=unconnected
     status = "failed" if problems else (
         "ok" if any(p["kind"] in ("power", "signal") for p in pins) else "not_ready")
@@ -514,6 +594,12 @@ def build(design: DesignModel, *, ioc_path: str | Path | None = None) -> dict[st
                   pin_numbers={row["port"]: int(row["pin"])
                                for row in joined["rows"]},
                   table=joined["table"])
+    if af_resolved:
+        af = dict(af, resolved=True, style=af_resolved["table"].get("style"),
+                  af_numbers=af_resolved["af_numbers"],
+                  details=af_resolved["details"],
+                  by_status=af_resolved["by_status"],
+                  af_table=af_resolved["table"])
 
     counts = {
         "pins": len(pins),
@@ -525,6 +611,8 @@ def build(design: DesignModel, *, ioc_path: str | Path | None = None) -> dict[st
         "ioc_pins": len(facts["pins"]) if facts else 0,
         "ioc_peripherals": len(facts["peripherals"]) if facts else 0,
         "ioc_joined": len(joined["rows"]) if joined else 0,
+        "af_resolved": len(af_resolved["af_numbers"]) if af_resolved else 0,
+        "af_checked": len(af_resolved["rows"]) if af_resolved else 0,
     }
     return {
         "status": status,
@@ -544,9 +632,10 @@ def build(design: DesignModel, *, ioc_path: str | Path | None = None) -> dict[st
         "problems": problems,
         "warnings": warnings,
         "counts": counts,
-        "unknown": _unknown_items(clock, nvic, af, facts, bool(joined)),
+        "unknown": _unknown_items(clock, nvic, af, facts, bool(joined),
+                                  bool(af_resolved)),
         "note": ("硬判据 = 引脚↔网络逐条一致 + `.ioc` 芯片身份 + "
-                 "**逐脚协议族冲突**（有引脚表时）；"
+                 "**逐脚协议族冲突**（有引脚表时）+ 功能是否真在这根脚上（有 AF 表时）；"
                  "有 .ioc 时时钟/中断/复用功能/外设参数是声明的（source=ioc），"
                  "AF 编号/时序仍 unknown；**配置对不证明功能对**"),
     }
@@ -663,15 +752,42 @@ def render(payload: dict[str, Any]) -> str:
         lines.append("_无（没有 .ioc，也没有可识别的接口网名）_")
     lines += ["", "## 时钟", ""] + _clock_lines(payload.get("clock") or {})
     lines += ["", "## 中断", ""] + _nvic_lines(payload.get("nvic") or {})
-    lines += ["", "## 复用功能（功能名；**AF 编号仍 unknown**）", ""]
     af = payload.get("af") or {}
+    af_head = "## 复用功能（功能名"
+    if (af.get("af_numbers") or {}):
+        af_head += " + AF 编号"
+    elif af.get("style") == "F1_REMAP":
+        af_head += " + AFIO 重映射（F1 没有 AF 编号）"
+    elif af.get("resolved"):
+        af_head += "）"
+    lines += ["", af_head + "）", ""]
     functions = af.get("functions") or {}
     if functions:
-        lines.append(", ".join(f"{pin}={fn}" for pin, fn in sorted(functions.items())))
+        numbers = af.get("af_numbers") or {}
+        details = af.get("details") or {}
+        shown = []
+        for pin, fn in sorted(functions.items()):
+            tag = ""
+            if pin in numbers:
+                tag = f"（AF{numbers[pin]}）"
+            elif pin in details:
+                remaps = [d.get("remap") for d in details[pin] or []
+                          if d.get("remap")]
+                macros = [m for r in remaps for m in (r.get("macros") or [])]
+                if macros:
+                    tag = f"（重映射 {macros[0]}）"
+                elif remaps:
+                    tag = "（默认功能）"
+            shown.append(f"{pin}={fn}{tag}")
+        lines.append(", ".join(shown))
         lines.append("")
-        lines.append(f"> {af.get('note', '')}")
-    else:
-        lines.append(f"_unknown —— 需要：{af.get('need', '')}_")
+        table_info = af.get("af_table") or {}
+        if table_info:
+            lines.append(f"> 功能名/AF 来自 **{table_info.get('source_kind') or 'ST 官方引脚库'}**"
+                         f"（{table_info.get('part')}，{table_info.get('license')}）；"
+                         f"`.ioc` 的功能不在表里 = `unknown`，不在**这根脚**上 = 冲突")
+        elif af.get("resolved"):
+            lines.append(f"> {af.get('note') or ''}")
     join = payload.get("pin_join") or {}
     if join.get("rows"):
         meta = join.get("table") or {}
@@ -715,6 +831,9 @@ def describe() -> dict[str, Any]:
                         "ioc.peripheral_unconfigured（网表有但没配）",
                         "ioc.pin_unrouted / ioc.pin_family_unknown / "
                         "ioc.pin_role_conflict（逐脚对账的软结论）"],
+        "af_table": ("AF 复用表（ST 官方 pin data）：F4/H7 给 AF 编号，"
+                     "F1 给固定功能+重映射；`.ioc` 的功能不在这根脚上 → 硬冲突 "
+                     "`ioc.function_not_on_pin`"),
         "with_ioc": {"clock": "RCC.* 原样引用", "nvic": "NVIC.* + 优先级",
                      "af": "每个脚的功能名（不给 AF 编号）",
                      "peripheral_config": "<IP>.* 只收写出来的值"},
