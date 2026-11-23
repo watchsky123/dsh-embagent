@@ -1401,3 +1401,56 @@ PB6/PB7 被 I2C 占用 → `USART1_TX` 进 unassigned（PA9 被禁、PB6 已用�
 * `graph` 不含机械域/引脚级边（只到"零件—网"）
 * 引脚分配是贪心，不是全局最优（候选多时可能占掉后面要用的脚；
   可用 `--avoid`/`prefer` 引导）
+
+## 26. C 档：差异闭环 / 可选基线 / 成熟度 / ADR
+
+### 26.1 闭环（C1）：`readback --diff [--apply]`
+
+`emit` 是单向的；人在 EDA 里改了网表后，`design.json` 不知道。`--diff` 把
+PCB 网表读回来，按 **`(ref, pin) → net`** 逐脚对账（不按网名猜）：
+
+| 差异 | 自动回写？ |
+|---|---|
+| `pin_moved` | ✅ 目标网存在时 |
+| `eda_only` | ✅ 网/件/脚都在设计里时 |
+| `design_only` / `net_added` / `net_removed` / `part_added` / `part_missing` | ❌ **留给人**（删除是破坏性动作）|
+
+回写后必须过 `validate()`；不过就整份不落盘。空网表 → `not_ready`
+（"没有差异 = ok"是假绿）。
+
+### 26.2 可选基线（C2）：`baseline --record` / `baseline`
+
+**降级形态**：基线由人显式记录；对比只输出 delta、`regressions`，
+`gate=false` **不参与 pass/fail**；没有基线 → `not_ready`。
+
+指标：`stages_ok`/`maturity_level`/`constraints_pass`/`parts`/`nets`
+变小算变差；`stages_failed`/`stages_not_ready`/`constraints_fail` 变大算变差。
+
+它证明"改动没让东西变差"，**不证明"满足需求"**。
+
+### 26.3 成熟度（C3）：`maturity`
+
+六维，只读本工程产物，**不引用任何参考工程**：
+
+```
+需求(req.json) · 规格(spec/vN) · 块(blocks_list + verified_by)
+约束(constraints.json) · 证据(datasheet/measured 占比) · 发射(emit + verify)
+```
+
+`level` = pass 的维度数（0–6）；没有 req/spec → `not_ready`；
+缺产物是 `missing`（不是 0 分也不是 pass）。`audit` 的 release 段会带上
+`maturity_level`（实测 `示例-单板`：0/6，因为它没有 req/spec/约束账本）。
+
+### 26.4 ADR（C4）：`adr add|list|validate`
+
+`ADR/NNNN-slug.md`，固定四节：`## 决定` / `## 理由` / `## 被否方案` /
+`## 证据`。缺一节 → `validate` 判 `failed`；空决策/理由直接 ValueError；
+编号只增不改。
+
+### 26.5 边界
+
+* `diff` 只按引脚对账；网名被 EDA 重命名时，`net_added/removed` 可能成对出现
+  （那是名字差异，不是拓扑差异）
+* `apply` 不做删除、不处理新元件/新网（要人确认）
+* 基线对比只看"变差"，不看"变得更好"是否真实（指标涨也可能是假象）
+* ADR 的"证据"是自由文本，机器不判真伪

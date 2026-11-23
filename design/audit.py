@@ -274,9 +274,15 @@ def _stage_release(store: Any, design: Any) -> dict[str, Any]:
     # （那正是 §0.2：空表看起来像没问题）。
     verdict_word = ("不可打板" if blocking else
                     f"阻断 0，但还有 {missing} 条缺数据" if missing else "可打板")
-    return _row("release", status, checked=dict(counts),
-                basis="handoff.json（现场聚合）",
-                note=f"{verdict_word}（阻断 {blocking} / 缺数据 {missing}）")
+    # C3：成熟度只按本工程的需求/规格/证据算（不引用参考工程）。
+    from . import maturity as maturity_module
+    mat = maturity_module.compute(store, design)
+    checked = {**dict(counts), "maturity_level": mat.get("level"),
+               "maturity_total": mat.get("total")}
+    return _row("release", status, checked=checked,
+                basis="handoff.json（现场聚合）+ maturity",
+                note=(f"{verdict_word}（阻断 {blocking} / 缺数据 {missing}）；"
+                      f"成熟度 {mat.get('level')}/{mat.get('total')}"))
 
 
 _BUILDERS = {

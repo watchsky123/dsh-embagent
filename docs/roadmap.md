@@ -18,6 +18,9 @@
 | 每颗元件都有存在理由 | `justify` 归因 + `claims` 断言；删掉会红（`assert --remove`）|
 | 每个数是可复核的 | 尺寸/电流/时序都带 `source`（datasheet/measured/catalog/proposed）|
 
+**基准 ≠ 验收**：验收只看需求（`req.json`/`spec`）+ 硬判据；参考工程只做能力回归，
+指标只作 `reference`（C2 已降级为可选基线）。
+
 **不做的事**（避免假绿）：不把"生成出来"当"能用"；不把 `unknown` 并进 `pass`；
 不替人做不可逆决策（下单/改封装/选关键器件）。
 
@@ -90,10 +93,10 @@ L5 验证    → ladder/electrical/mech/fw/emit/audit/handoff；不达标回 L2/
 
 | 编号 | 内容 | 判据 |
 |---|---|---|
-| C1 | `emit` → `readback --diff` → 人确认 → `hw_put` 回写 | 差异可读；单写入口不变 |
-| C2 | golden projects：`示例-多板`（316/8/119）作回归基准 | 每次改生成/检查器跑它，指标不许降 |
-| C3 | 设计成熟度进 `audit` | 块覆盖/约束覆盖/复用率/未验证数 |
-| C4 | `ADR/` 落地 | 每个非显然选择一条，含被否方案 |
+| C1 | `readback --diff [--apply]`：逐引脚对账；只回写 moved/eda_only | 删除留给人；回写后过 validate | ✅ P64 |
+| C2 | **可选基线**（降级）：人显式 record；对比 gate=false、只报告 | 没有基线 → not_ready；不绑定工程名 | ✅ P64 |
+| C3 | 成熟度六维（需求/规格/块/约束/证据/发射）进 audit release 段 | 只读本工程；没 req/spec → not_ready | ✅ P64 |
+| C4 | `ADR/`：决定/理由/被否方案/证据四节 | 缺节 = failed；空决策拒收 | ✅ P64 |
 
 ---
 

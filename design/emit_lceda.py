@@ -2550,7 +2550,8 @@ def parity_from_netlists(design: DesignModel, netlists: Iterable[str],
 
 
 def read_back(session: lceda_mod.LcedaSession, design: DesignModel,
-              *, boards: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+              *, boards: list[dict[str, Any]] | None = None,
+              with_netlists: bool = False) -> dict[str, Any]:
     """从立创读回 PCB 网表 + DRC，供 parity 与 handoff 用。
 
     独立于发射流程：已经落盘的工程也能单独回读（审查的输入）。
@@ -2598,7 +2599,7 @@ def read_back(session: lceda_mod.LcedaSession, design: DesignModel,
             f"另有 {sum(r['categories']['connection'] for r in usable)} 条 "
             "Connection Error —— 实测它不认 API 创建的过孔构成的跨层连接"
             "（手册 §18.1），连通性以几何判定为准（`pcb_geo.connectivity`）")
-    return {
+    payload = {
         "parity": parity_from_netlists(design, netlists),
         "drc": {"status": drc_status,
                 "pass": all(r["pass"] for r in usable) if usable else False,
@@ -2613,6 +2614,10 @@ def read_back(session: lceda_mod.LcedaSession, design: DesignModel,
                     "connection 类违规不可信（不认 API 过孔），只看 "
                     "clearance/netlist/physical")},
     }
+    # C1：差异回读要**原始网表**（逐引脚对账）；普通 review 不需要，默认不带。
+    if with_netlists:
+        payload["netlists"] = netlists
+    return payload
 
 
 _JS_READBACK = r"""

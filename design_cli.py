@@ -1588,6 +1588,70 @@ def cmd_capability(args: list[str]) -> dict[str, Any]:
             "role": role, "constraints": constraints}
 
 
+def cmd_maturity(args: list[str]) -> dict[str, Any]:
+    """``maturity <id>`` —— 设计成熟度（C3）。六维只读本工程产物；不引用参考工程。"""
+    from .design import maturity as maturity_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **maturity_module.describe()}
+    store, design = _load(args[0])
+    payload = maturity_module.compute(store, design)
+    store.write(maturity_module.FILE, payload)
+    return {"project_id": args[0], **payload}
+
+
+def cmd_baseline(args: list[str]) -> dict[str, Any]:
+    """``baseline <id> [--record]`` —— 可选基线（C2 降级版）。
+
+    `--record` 记下当前指标；否则与已记录基线对比。**只作参考**（`gate=false`），
+    不参与 pass/fail；没有基线 → `not_ready`（没记录 ≠ 没退化）。
+    """
+    from .design import baseline as baseline_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **baseline_module.describe()}
+    store, design = _load(args[0])
+    if "--record" in args[1:]:
+        return {"project_id": args[0], **baseline_module.record(store, design)}
+    return {"project_id": args[0], **baseline_module.compare(store, design)}
+
+
+def cmd_adr(args: list[str]) -> dict[str, Any]:
+    """``adr <id> [list|validate|add --title= --decision= --why= ...]`` —— ADR（C4）。
+
+    四节（决定/理由/被否方案/证据）缺一不算 ADR；编号只增不改。
+    """
+    from .design import adr as adr_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **adr_module.describe()}
+    store, design = _load(args[0])
+    action = args[1] if len(args) > 1 and not args[1].startswith("-") else "list"
+    if action == "list":
+        rows = adr_module.list_adrs(store.dir)
+        return {"status": "ok" if rows else "not_ready", "project_id": args[0],
+                "entries": rows, "counts": {"entries": len(rows)}}
+    if action == "validate":
+        payload = adr_module.validate(store.dir)
+        return {"project_id": args[0], **payload}
+    if action == "add":
+        fields: dict[str, str] = {}
+        for item in args[2:]:
+            if item.startswith("--") and "=" in item:
+                key, value = item[2:].split("=", 1)
+                fields[key] = value
+        try:
+            payload = adr_module.add(
+                store.dir, title=fields.get("title", "未命名决策"),
+                decision=fields.get("decision", ""), why=fields.get("why", ""),
+                alternatives=fields.get("alternatives", ""),
+                evidence=fields.get("evidence", ""))
+        except ValueError as exc:
+            return {"status": "failed", "project_id": args[0], "reason": str(exc)}
+        return {"project_id": args[0], **payload}
+    return {"status": "not_ready", "reason": f"不认识的动作 {action}"}
+
+
 def cmd_graph(args: list[str]) -> dict[str, Any]:
     """``graph <id> [--impact=U1,net:3V3,block:MCU1] [--write]`` —— 变更图（B4）。
 
@@ -3208,27 +3272,51 @@ def cmd_emit(args: list[str]) -> dict[str, Any]:
     return payload
 
 
-def cmd_readback(args: list[str]) -> dict[str, Any]:
-    """``readback <id> [--path=<eprj3>]`` —— 只回读（不发射）：PCB 网表 parity + DRC。
+_JS_OPEN_PROJECT = r"""
+const P = __CTX__;
+for (let i = 0; i < 25; i++) {
+  try { const t = await eda.dmt_Team.getAllTeamsInfo(); if (t && t.length) break; } catch (e) {}
+  await new Promise(r => setTimeout(r, 300));
+}
+const opened = await eda.dmt_Project.openProject(P.uuid);
+await new Promise(r => setTimeout(r, 1200));
+return {opened: !!opened};
+"""
 
-    审查入口。工程从哪来：``--path`` 优先；否则用 ``emit.json`` 里记的
-    上次发射路径（那是**磁盘上的真工程**，能直接重开）。两者都没有就
-    ``not_ready`` 并说清——不猜。
+
+def cmd_readback(args: list[str]) -> dict[str, Any]:
+    """``readback <id> [--path=<eprj3>] [--diff] [--apply]`` —— 回读（不发射）。
+
+    三种用途：
+
+    * 默认：PCB 网表 parity + DRC（**审查**，只读）
+    * ``--diff``：逐引脚对比 **设计 vs EDA**（``(ref,pin)→net``），写 `diff.json`
+    * ``--apply``：只回写**安全差异**（pin_moved / eda_only）；删除与新网/新件
+      留给人；回写后必须过 ``validate()``
+
+    工程从哪来：``--path`` 优先，其次 ``emit.json`` 里的磁盘路径，再次
+    ``emit.json`` 的工程 uuid（云端工程）。都没有就 ``not_ready``——不猜。
     """
     from .design import emit_lceda
     from .design import lceda as lceda_module
+    from .design import readback_diff as diff_module
 
     if not args or args[0].startswith("-"):
         return {"status": "ok", **emit_lceda.describe()}
     store, design = _load(args[0])
     path = ""
+    want_diff = "--diff" in args
+    do_apply = "--apply" in args
     for item in args[1:]:
         if item.startswith("--path="):
             path = item.split("=", 1)[1]
+    emit = store.read("emit.json") or {}
+    project = emit.get("project") or {}
     if not path:
-        emit = store.read("emit.json") or {}
-        path = str((emit.get("project") or {}).get("path") or "")
-    if not path or not Path(path).exists():
+        path = str(project.get("path") or "")
+    has_path = bool(path) and Path(path).exists()
+    uuid = str(project.get("uuid") or "")
+    if not has_path and not uuid:
         return {"status": "not_ready",
                 "findings": ["没有可回读的立创工程：先跑 emit，或给 --path=<*.eprj3>"]}
     exe = lceda_module.find_exe()
@@ -3236,16 +3324,48 @@ def cmd_readback(args: list[str]) -> dict[str, Any]:
         return {"status": "not_ready", "findings": ["没有 lceda-pro 可执行文件"]}
     session = lceda_module.LcedaSession(exe=exe)
     try:
-        session.open(path=path, headless=True)
-        ready = session.wait_project_ready()
-        boards = [b for b in (ready.get("boards") or []) if b.get("pcbUuid")]
+        boards: list[dict[str, Any]] = []
+        if has_path:
+            session.open(path=path, headless=True)
+            ready = session.wait_project_ready()
+            boards = [b for b in (ready.get("boards") or []) if b.get("pcbUuid")]
+        else:
+            session.open("", headless=True)
+            session.invoke(_JS_OPEN_PROJECT.replace(
+                "__CTX__", json.dumps({"uuid": uuid}, ensure_ascii=False)),
+                label="readback:open", timeout_ms=280_000)
+            boards = [b for b in (project.get("boards") or [])
+                      if isinstance(b, dict) and b.get("pcbUuid")]
         if not boards:
             return {"status": "not_ready",
-                    "findings": [f"工程里没有可回读的 PCB：{path}"]}
-        result = emit_lceda.read_back(session, design, boards=boards)
+                    "findings": [f"工程里没有可回读的 PCB：{path or uuid}"]}
+        result = emit_lceda.read_back(session, design, boards=boards,
+                                      with_netlists=want_diff)
+        if want_diff:
+            parsed: dict[tuple[str, str], str] = {}
+            for text in result.pop("netlists", []) or []:
+                parsed.update(emit_lceda._netlist_pins(text))  # noqa: SLF001
+            diff_payload = diff_module.diff(design, parsed)
+            payload = {"status": diff_payload["status"],
+                       "project_id": args[0], "project_path": path or uuid,
+                       "parity": result.get("parity"), "drc": result.get("drc"),
+                       **diff_payload}
+            if do_apply and diff_payload.get("differences"):
+                applied = diff_module.apply(design, diff_payload)
+                problems = design.validate()
+                if problems:
+                    payload["apply"] = {**applied, "saved": False,
+                                        "problems": problems[:8]}
+                    payload["status"] = "failed"
+                else:
+                    store.save(design)
+                    payload["apply"] = {**applied, "saved": True}
+            store.write(diff_module.FILE, {k: v for k, v in payload.items()
+                                          if k not in ("project_id",)})
+            return payload
         ok = result["parity"].get("status") == "ok"
         payload = {"status": "ok" if ok else "not_ready",
-                   "project_id": args[0], "project_path": path, **result}
+                   "project_id": args[0], "project_path": path or uuid, **result}
         store.write("emit_readback.json", payload)
         return payload
     except lceda_module.CliError as exc:
@@ -4936,6 +5056,9 @@ COMMANDS = {
     "ioc-links": cmd_ioc_links,
     "renode": cmd_renode,
     "capability": cmd_capability,
+    "baseline": cmd_baseline,
+    "maturity": cmd_maturity,
+    "adr": cmd_adr,
     "graph": cmd_graph,
     "pin-assign": cmd_pin_assign,
     "assemble": cmd_assemble,

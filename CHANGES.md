@@ -3737,6 +3737,49 @@ B5 4 功能 4 脚（PA9/PA10/PB6/PB7）；avoid PA9 + PB6/PB7 被占 → USART1_
 * `graph` 不含机械域/引脚级边
 * 引脚分配是贪心，不是全局最优
 
+## P64 — C 档：差异闭环 / 可选基线 / 成熟度 / ADR（2026-11-23）
+
+> 用户定调：C1/C3/C4 是产品功能，C2 降级为可选基线；**基准 ≠ 验收**。
+
+### 新增
+
+| 文件 | 内容 |
+|---|---|
+| `design/readback_diff.py` | 逐引脚对账（moved/eda_only/design_only/net/part 增删）；只回写加法 |
+| `design/baseline.py` | 可选基线：显式 record；compare `gate=false` |
+| `design/maturity.py` | 六维成熟度：需求/规格/块/约束/证据/发射 |
+| `design/adr.py` | ADR 四节 + 索引 + validate |
+| `scripts/check_p64.py` | 16 项 |
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design/emit_lceda.py` | `read_back(..., with_netlists=True)` 返回原始网表 |
+| `design_cli.py` | `readback --diff [--apply]`；新增 `baseline` / `maturity` / `adr` |
+| `design/audit.py` | release 段带 `maturity_level` |
+| `design/store.py` | `ARTIFACTS` 加 `diff.json`、`baseline.json`、`maturity.json`、`ADR/index.json` |
+| `docs/runbook.md` | 新增 §26 |
+| `docs/roadmap.md` | C1–C4 ✅；§0 加「基准 ≠ 验收」 |
+| `AGENTS.md` | 指针扩到 §21–§26 |
+
+### 实测
+
+```
+C1 一致 → 0 差异；moved/eda_only/net_removed 识别；回写后 validate 通过；
+   空网表 → not_ready
+C2 无基线 → not_ready；record 后 gate=false；nets/parts 变小 → regression（status 仍 ok）
+C3 无 req/spec → not_ready；完整工程 level=3/6；约束 fail → 该维 fail、level 减 1
+C4 add → 0001 + 索引；缺「证据」→ failed；空决策 → ValueError/CLI failed
+```
+
+### 诚实边界
+
+* `diff` 只按引脚对账，网名重命名会表现成 net_added/removed 成对
+* `apply` 不删除、不处理新件/新网
+* 基线只看"变差"，不验证"变好"是真的
+* ADR 的"证据"是自由文本，机器不判真伪
+
 ---
 
 ## 后续
