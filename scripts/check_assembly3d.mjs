@@ -97,6 +97,20 @@ scene.bodies = [
 console.log(`  ..   ${scene.parts.length} 实体 / ${scene.wires.length} 铜线 / `
   + `板 ${scene.board.size_mm.w.toFixed(1)}×${scene.board.size_mm.h.toFixed(1)}mm`)
 
+// 外壳也注入一份：腔体/盖的坐标换了新语义（地板/板厚/板偏移），
+// 不注入的话这条分支在 CI 里是死的，错位了也没人发现。
+scene.enclosure = {
+  inner_mm: { w: 110, h: 90, d: 26 },
+  wall_mm: 2, lid_mm: 2, floor_z_mm: 4,
+  board_thickness_mm: scene.board.thickness_mm,
+  outer_mm: { w: 114, h: 94, d: 34 },
+  board_offset_mm: { x: (110 - scene.board.size_mm.w) / 2,
+                     y: (90 - scene.board.size_mm.h) / 2 },
+  panel_mm: { w: scene.board.size_mm.w, h: scene.board.size_mm.h },
+  openings: [], faces_mm: { top: [110, 90], bottom: [110, 90],
+    front: [110, 31.6], back: [110, 31.6], left: [90, 31.6], right: [90, 31.6] },
+}
+
 // --- 打包真组件 -----------------------------------------------------------
 
 const probeEntry = resolve(here, '.probe3d-entry.tsx')
@@ -344,6 +358,8 @@ check('圆柱 / 盘 / 盒 三种形状都有分支',
   assemblySource.includes("'cylinder'") && assemblySource.includes("'disc'")
   && assemblySource.includes("shape.type === 'mesh'"))
 check('注入的 3 个整机实体没有把渲染搞崩（像素仍正常）', stats.litRatio > 0.3)
+check('外壳按新语义定位（地板/板厚/板偏移，不是板原点）',
+  assemblySource.includes('enc.board_offset_mm') && assemblySource.includes('enc.lid_mm > 0'))
 console.log(`  ..   真实渲染图：${pngPath}`)
 
 if (failures.length > 0) {

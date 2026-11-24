@@ -465,25 +465,50 @@ function createScene(host: HTMLElement, palette: Palette): SceneState {
         }
       }
 
-      // 外壳（线框 + 半透明内腔）
+      // 外壳（腔体线框 + 半透明填充 + 盖）。
+      //
+      // **坐标不能沿用旧假设**：旧代码把"板原点"当成"腔原点"，在
+      // `floor_z_mm` / `board_offset_mm` 出现以后必然错位（板偏在一角、
+      // 腔体一半埋进地板）。现在的换算：
+      //
+      //   模型 z=0 是**板顶**；腔底在 z = −(floor + 板厚)；腔顶在 z = inner.d。
+      //   腔体 x ∈ [−offset.x, −offset.x + inner.w]，板在 [0, panel.w]。
+      //
+      // 开口**不在 3D 挖**（要 CSG 或者分段墙板，属 V2 剩余）：2D 已按真实
+      // 矩形投影，3D 先只画腔体与盖，别让人以为孔已经开好了。
       if (payload.enclosure !== null) {
-        const inner = payload.enclosure.inner_mm
-        const wall = payload.enclosure.wall_mm
-        if (inner.w > 0 && inner.h > 0 && inner.d > 0) {
-          const geometry = new BoxGeometry(inner.w + wall * 2, inner.h + wall * 2,
-            inner.d + wall)
+        const enc = payload.enclosure
+        const floorZ = enc.floor_z_mm + enc.board_thickness_mm
+        const cavityH = enc.inner_mm.d + floorZ
+        if (enc.inner_mm.w > 0 && enc.inner_mm.h > 0 && cavityH > 0) {
+          const geometry = new BoxGeometry(enc.inner_mm.w, enc.inner_mm.h, cavityH)
           const shell = new Mesh(geometry, new MeshStandardMaterial({
-            color: new Color(palette.shell3d), transparent: true, opacity: 0.08,
+            color: new Color(palette.bodyShell), transparent: true, opacity: 0.10,
             side: DoubleSide, depthWrite: false,
           }))
-          shell.position.set(inner.w / 2, inner.h / 2, (inner.d - wall) / 2)
+          shell.position.set(
+            enc.inner_mm.w / 2 - enc.board_offset_mm.x,
+            enc.inner_mm.h / 2 - enc.board_offset_mm.y,
+            (enc.inner_mm.d - floorZ) / 2)
           helperGroup.add(shell)
           const edges = new LineSegments(new EdgesGeometry(geometry),
             new LineBasicMaterial({
-              color: new Color(palette.warnStroke), transparent: true, opacity: 0.6,
+              color: new Color(palette.warnStroke), transparent: true, opacity: 0.55,
             }))
           edges.position.copy(shell.position)
           helperGroup.add(edges)
+        }
+        // 盖：单独一块板，厚度来自 `lid_mm`。没有盖厚就不画。
+        if (enc.lid_mm > 0 && enc.inner_mm.w > 0 && enc.inner_mm.h > 0) {
+          const lid = new Mesh(
+            new BoxGeometry(enc.inner_mm.w, enc.inner_mm.h, enc.lid_mm),
+            new MeshStandardMaterial({ color: new Color(palette.bodyShell),
+              transparent: true, opacity: 0.35, side: DoubleSide }))
+          lid.position.set(
+            enc.inner_mm.w / 2 - enc.board_offset_mm.x,
+            enc.inner_mm.h / 2 - enc.board_offset_mm.y,
+            enc.inner_mm.d + enc.lid_mm / 2)
+          helperGroup.add(lid)
         }
       }
 
