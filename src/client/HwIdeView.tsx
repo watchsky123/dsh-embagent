@@ -608,8 +608,10 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
                     explode={state.explode}
                     section={state.section}
                     grid={state.grid3d}
+                    sectionAt={state.sectionAt}
                     onExplode={(v) => { store.setExplode(v) }}
                     onSection={(v) => { store.setSection(v) }}
+                    onSectionAt={(value) => { store.setSectionAt(value) }}
                     onGrid={(v) => { store.setGrid3d(v) }}
                   />
                 </div>

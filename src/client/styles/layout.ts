@@ -143,6 +143,19 @@ export const LAYOUT = `
 .hwv-handle.horizontal { cursor: row-resize; border-top: 1px solid var(--hwv-line); border-bottom: 1px solid var(--hwv-line); }
 
 /* 3D pane 右上角视图工具（爆炸/剖面/网格）：浮层归 actionbar 级 */
+/** 剖面滑杆：和按钮同一条工具栏，只在剖面开启时出现。 */
+.hwv-section-slider {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hwv-space-2);
+  padding: 0 var(--hwv-space-2);
+  font-size: var(--hwv-fs-xs);
+  color: var(--hwv-m-fg-muted);
+}
+.hwv-section-slider input[type='range'] {
+  width: 96px;
+  accent-color: var(--hwv-m-accent);
+}
 .hwv-pane-tools {
   position: absolute; right: var(--hwv-space-3); top: var(--hwv-space-3);
   display: flex; gap: var(--hwv-space-2); z-index: var(--hwv-z-actionbar);

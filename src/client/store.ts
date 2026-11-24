@@ -155,6 +155,8 @@ export interface HwState {
   readonly explode: boolean
   readonly section: boolean
   readonly grid3d: boolean
+  /** 剖面切面比例 0..1（乘最高元件顶面）。**只在 section 为真时生效。** */
+  readonly sectionAt: number
   /** 当前工作区（用户资产目录）。null = 还没读过。 */
   readonly workspace: string
   readonly workspaceSource: 'env' | 'config' | 'default' | ''
@@ -220,6 +222,7 @@ const INITIAL: HwState = {
   explode: readStoredString('view3d.explode', '0') === '1',
   section: readStoredString('view3d.section', '0') === '1',
   grid3d: readStoredString('view3d.grid', '1') === '1',
+  sectionAt: readStored('view3d.sectionAt', 0.6, 0, 1),
   workspace: '',
   workspaceSource: '',
   workspaceWritable: true,
@@ -573,6 +576,12 @@ export class HwStore {
   setGrid3d(value: boolean): void {
     writeStoredString('view3d.grid', value ? '1' : '0')
     this.set({ grid3d: value })
+  }
+  /** 剖面高度比例 0..1。夹紧到 [0,1]：坏值退化成"全留"而不是全切。 */
+  setSectionAt(value: number): void {
+    const clamped = Math.max(0, Math.min(1, value))
+    writeStored('view3d.sectionAt', clamped)
+    this.set({ sectionAt: clamped })
   }
 
   /** 选中元件 + 指定要聚焦的字段（空串 = 只选中）。 */

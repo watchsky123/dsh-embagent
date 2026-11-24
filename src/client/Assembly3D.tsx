@@ -25,6 +25,9 @@ import type { Finding, Scene3D as ScenePayload, SnapshotPayload } from '../share
 import { partFill, readPalette, useThemeRevision } from './theme.js'
 import type { Palette } from './theme.js'
 
+/** 剖面默认切在最高元件的 60% 处。数字是**观察起点**，不是设计参数。 */
+const DEFAULT_SECTION_AT = 0.6
+
 export interface Assembly3DProps {
   readonly snapshot: SnapshotPayload
   readonly selectedRef: string
@@ -37,11 +40,15 @@ export interface Assembly3DProps {
   readonly onExplode: (value: boolean) => void
   readonly onSection: (value: boolean) => void
   readonly onGrid: (value: boolean) => void
+  /** 剖面高度比例 0..1（乘最高元件顶面）。只在 `section` 为真时生效。 */
+  readonly sectionAt?: number
+  readonly onSectionAt?: (value: number) => void
 }
 
 export function Assembly3D(props: Assembly3DProps): JSX.Element {
   const { snapshot, selectedRef, findings, onSelect,
-    explode, section, grid, onExplode, onSection, onGrid } = props
+    explode, section, grid, onExplode, onSection, onGrid,
+    sectionAt = DEFAULT_SECTION_AT, onSectionAt } = props
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const stateRef = useRef<SceneState | null>(null)
   const onSelectRef = useRef(onSelect)
@@ -66,13 +73,16 @@ export function Assembly3D(props: Assembly3DProps): JSX.Element {
 
   // -- 数据 -> 场景 -------------------------------------------------------
 
+  // 最高元件顶面（mm）。滑杆刻度用它换算，避免写死一个上限。
+  const tallest = snapshot.scene3d.parts.reduce(
+    (top, part) => Math.max(top, part.bbox_mm[5]), 0)
   const themeRev = useThemeRevision()
   useEffect(() => {
     const state = stateRef.current
     if (state === null) return
     // 主题翻转 → 重读调色板并重建材质颜色（three 不跟 CSS 变量）。
     state.rebuild(snapshot.scene3d, findings, explode, section, grid,
-      readPalette(wrapRef.current))
+      sectionAt, readPalette(wrapRef.current))
     // 点击选中：只有"没有拖动"才算点击，否则每次转视角都会误选
     let downX = 0
     let downY = 0
@@ -86,7 +96,7 @@ export function Assembly3D(props: Assembly3DProps): JSX.Element {
       const ref = state.pick(event)
       if (ref !== '') onSelectRef.current(ref)
     }
-  }, [snapshot.scene3d, findings, explode, section, grid, themeRev])
+  }, [snapshot.scene3d, findings, explode, section, grid, sectionAt, themeRev])
 
   // -- 选中高亮 -----------------------------------------------------------
 
@@ -106,6 +116,17 @@ export function Assembly3D(props: Assembly3DProps): JSX.Element {
                 onClick={() => { onSection(!section) }}>剖面</button>
         <button className={`hwv-btn${grid ? ' on' : ''}`} aria-pressed={grid}
                 onClick={() => { onGrid(!grid) }}>网格</button>
+        {section && (
+          <label className="hwv-section-slider"
+                 title="剖面高度：只影响显示，不改模型，也不参与判定">
+            <input type="range" min="0" max="1" step="0.05" value={sectionAt}
+                   aria-label="剖面高度"
+                   onChange={(event) => {
+                     onSectionAt?.(Number(event.currentTarget.value))
+                   }} />
+            <span>切于 {(Math.max(0.4, tallest * sectionAt)).toFixed(1)} mm</span>
+          </label>
+        )}
       </div>
       {snapshot.scene3d.parts.length === 0 && (
         <div className="hwv-canvas-empty">
@@ -154,7 +175,8 @@ interface SceneState {
   start(): void
   resize(): void
   rebuild(scene: ScenePayload, findings: readonly Finding[],
-          explode: boolean, section: boolean, grid: boolean, palette: Palette): void
+          explode: boolean, section: boolean, grid: boolean,
+          sectionAt: number, palette: Palette): void
   highlight(ref: string): void
   pick(event: MouseEvent): string
   dispose(): void
@@ -245,7 +267,7 @@ function createScene(host: HTMLElement, palette: Palette): SceneState {
       camera.updateProjectionMatrix()
       renderer.setSize(w, h, false)
     },
-    rebuild(payload, findings, explode, section, grid, palette) {
+    rebuild(payload, findings, explode, section, grid, sectionAt, palette) {
       clearGroup(boardGroup)
       clearGroup(partsGroup)
       clearGroup(wiresGroup)
@@ -341,7 +363,7 @@ function createScene(host: HTMLElement, palette: Palette): SceneState {
         }
       }
 
-      payload.parts.forEach((part, index) => {
+      payload.parts.forEach((part) => {
         const [x0, y0, z0, x1, y1] = part.bbox_mm
         // 几何用**未旋转**足迹，再按 rotation_z 转一次。bbox_mm 是旋转后的 AABB，
         // 拿它建盒子再转一次就是转两遍（0/90/180/270 会画得一模一样）。
@@ -357,9 +379,14 @@ function createScene(host: HTMLElement, palette: Palette): SceneState {
           color, roughness: 0.6, metalness: 0.15,
         })
         const mesh = new Mesh(geometry, material)
-        const explodeOffset = explode ? (index % 4 + 1) * 3.5 : 0
         // **底层元件贴板底面**：z 为负。渲染层与判定层用同一套坐标。
         const isBottom = part.side === 'bottom'
+        // 爆炸按「装配面 + 高度档」：顶层向上、底层向下。
+        // 旧实现 `(index % 4 + 1) * 3.5` 按**数组下标**分组——与装配层次无关，
+        // 且对所有件都加正值，底层件（z 为负）看起来像"沉进板里"。
+        const explodeOffset = explode
+          ? (isBottom ? -1 : 1) * (bandOf(d) + 1) * 4.5
+          : 0
         const centerZ = isBottom ? z0 - d / 2 : z0 + d / 2
         mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, centerZ + explodeOffset)
         // 模型 Z 向上 = 绕 Z 转；root 已把模型 Z 映射成世界 Y，
@@ -395,17 +422,9 @@ function createScene(host: HTMLElement, palette: Palette): SceneState {
         }
       })
 
-      // 线缆（**铜线**：真实走线几何）
-      for (const wire of payload.wires) {
-        if (wire.path_mm.length < 2) continue
-        const points = wire.path_mm.map(([x, y, z]) =>
-          new Vector3(x, y, Math.max(z, 0) + 0.6))
-        const curve = new CatmullRomCurve3(points, false, 'catmullrom', 0.2)
-        const geometry = new TubeGeometry(curve, Math.max(points.length * 8, 16), 0.45, 6, false)
-        wiresGroup.add(new Mesh(geometry, new MeshStandardMaterial({
-          color: new Color(palette.wire3d), roughness: 0.5,
-        })))
-      }
+      // 铜线**只画一遍**（上面那一遍贴板细盒）。
+      // 这里曾有一遍 CatmullRom 圆管，悬在板面 0.6mm 之上——同一根走线
+      // 画两遍：屏幕上是一条亮线叠一个"鼓包"，draw call 也翻倍。
 
       // 飞线（**不是铜线**）：从网表推导的"应该连成什么样"。
       // 用细管 + 半透明，和铜线明显区分。
@@ -460,10 +479,16 @@ function createScene(host: HTMLElement, palette: Palette): SceneState {
       gridHelper.visible = grid
       worldGroup.add(gridHelper)
 
-      // 剖面：全局裁剪平面。世界坐标 Y 向上，裁掉板中心以上（y > 高）的部分。
-      // 这是一个**观察工具**，不改模型，也不参与判定。
+      // 剖面：全局裁剪平面（世界 Y 向上，保留 y < 切面）。
+      // 切面高度 = 最高元件顶面 × `sectionAt`（0..1）。
+      // 旧实现写死 `thickness + 1`：板顶只到 1.6mm，于是切面永远在 2.6mm，
+      // 高元件被整片切掉、矮元件全留——滑杆都没得拉。
+      // 这是**观察工具**：不改模型，也不参与判定。
+      const tallestTop = payload.parts.reduce(
+        (top, part) => Math.max(top, part.bbox_mm[5]), 0)
+      const cutZ = Math.max(0.4, tallestTop * sectionAt)
       renderer.clippingPlanes = section
-        ? [new Plane(new Vector3(0, -1, 0), thickness + 1)]
+        ? [new Plane(new Vector3(0, -1, 0), cutZ)]
         : []
 
       // 视角自适应（只在首次或板子尺寸变化时重置）
@@ -516,6 +541,18 @@ function createScene(host: HTMLElement, palette: Palette): SceneState {
     },
   }
   return state
+}
+
+/**
+ * 高度档：爆炸时同一面内按元件高度分档，避免 43 件各飞各的。
+ * 分档边界（1.2 / 3 / 6 mm）对应实测的常见封装高度：0603≈0.5、
+ * 排针≈2.5、电解≈5.4、Type-C≈3.2。**这是显示分档，不是判定阈值。**
+ */
+function bandOf(heightMm: number): number {
+  if (heightMm <= 1.2) return 0
+  if (heightMm <= 3) return 1
+  if (heightMm <= 6) return 2
+  return 3
 }
 
 function clearGroup(group: Group): void {

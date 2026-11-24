@@ -94,6 +94,7 @@ function App() {
             onSelect={() => {}}
             explode={false} section={false} grid={true}
             onExplode={() => {}} onSection={() => {}} onGrid={() => {}}
+            sectionAt={0.6} onSectionAt={() => {}}
           />
         </div>
       </div></div>

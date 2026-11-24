@@ -4066,6 +4066,39 @@ git status --short        # 只有 docs/ 与 CHANGES.md，无源码改动
 
 ---
 
+## 视图 V0 — 3D 视图三处缺陷修复（2026-11-25）
+
+**只修 bug，不新增能力**：不动 `design.json`、不动载荷、不改 2D。
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `src/client/Assembly3D.tsx` | ① 删掉重复的 CatmullRom 圆管铜线（同一根走线原来画两遍：贴板细盒 + 悬空 0.6mm 的圆管，draw call 翻倍）；② 爆炸从 `(index % 4 + 1) * 3.5`（按数组下标分组、底层件也被加正值）改为**按装配面 + 高度档**：顶层向上、底层向下，档位 `≤1.2 / ≤3 / ≤6 / >6 mm`；③ 剖面从写死 `y < thickness + 1`（板顶 1.6mm，实际永远切在 2.6mm）改为**可移动**：切面 = 最高元件顶面 × `sectionAt`，配滑杆并显示 mm 读数 |
+| `src/client/store.ts` | 加 `sectionAt`（0..1，初值 0.6）+ `setSectionAt`，持久化到 `view3d.sectionAt`；**存在 store 而不是组件里**，切视图不丢 |
+| `src/client/HwIdeView.tsx` | 把 `sectionAt` / `onSectionAt` 传给 `Assembly3D` |
+| `src/client/styles/layout.ts` | `.hwv-section-slider`（与按钮同一条工具栏，只在剖面开启时出现） |
+| `scripts/check_assembly3d.mjs` | 探针补 `sectionAt` / `onSectionAt`，否则滑杆在自检里是死控件 |
+
+### 为什么先修这三处
+
+它们是「加了整机实体以后也仍然难看」的那部分：线重影、爆炸不成层、剖面切不动。
+V1 加电机/桨/外壳之前不修，等于在脏底子上叠东西。
+
+### 不动
+
+* `design.json` / `scene3d` 载荷 / `Circuit2D.tsx` —— 本阶段**零数据改动**。
+* 剖面**没有 cap**（切开是空的）：cap 需要 stencil 或背面重绘，留到 V2 与外壳几何一起做。
+
+### 验收
+
+```
+npm run check                        # tsc build + client 都过
+node scripts/check_assembly3d.mjs    # 真渲染：非纯色 / 不过曝 / 有明暗层次
+```
+
+---
+
 ## 后续
 
 **`docs/execution-plan-v3.md`（P15–P23）与 `docs/ux-plan.md`（P0–P5）全部交付。**
