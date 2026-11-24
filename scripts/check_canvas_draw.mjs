@@ -100,6 +100,27 @@ if (projection.parts.length === 0) {
   process.exit(1)
 }
 
+// 外壳也注入一份：`drawEnclosure` 只有声明了外壳才走，不注入的话这条分支
+// 在 CI 里永远是死代码（"死代码"和"画对了"看起来一样）。
+{
+  const ppm = projection.px_per_mm
+  const w = projection.panel.size_mm.w
+  const h = projection.panel.size_mm.h
+  const pad = 6 * ppm
+  projection.enclosure = {
+    outer: { x_px: -pad, y_px: -pad, w_px: w * ppm + 2 * pad,
+             h_px: h * ppm + 2 * pad, w_mm: w + 12, h_mm: h + 12 },
+    inner: { x_px: -pad / 2, y_px: -pad / 2, w_px: w * ppm + pad,
+             h_px: h * ppm + pad, w_mm: w + 6, h_mm: h + 6 },
+    openings: [{ x_px: 2 * ppm, y_px: 2 * ppm, w_px: 6 * ppm,
+                 h_px: 3 * ppm, face: 'top', kind: 'usb' }],
+    side_openings: 2,
+    wall_mm: 3, lid_mm: 2,
+    inner_mm: { w: w + 6, h: h + 6, d: 20 },
+    outer_mm: { w: w + 12, h: h + 12, d: 30 },
+  }
+}
+
 // --- 打包真组件 -----------------------------------------------------------
 //
 // **入口放在仓库内**（`scripts/.probe-entry.tsx`），不放临时目录：
@@ -346,6 +367,13 @@ check('最大单一颜色不吞掉整块画布（板子不是铺满屏）',
   } catch { /* 截图失败不影响判定 */ }
   rmSync(profile2, { recursive: true, force: true })
 }
+
+// 外壳分支：源码里存在 + 注入后画布仍然正常（绘制异常会被 effect 吞掉，
+// 表现成"板还在、外壳没画"，只有像素/非空断言能抓到一半）。
+const circuitSource = readFileSync(resolve(repoRoot, 'src/client/Circuit2D.tsx'), 'utf8')
+check('2D 有外壳投影分支（drawEnclosure）',
+  circuitSource.includes('drawEnclosure')
+  && circuitSource.includes('projection.enclosure'))
 
 if (failures.length > 0) {
   console.log(`\n❌ ${failures.length} 项失败`)

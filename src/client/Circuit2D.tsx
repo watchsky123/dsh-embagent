@@ -124,31 +124,47 @@ export function Circuit2D(props: Circuit2DProps): JSX.Element {
     if (size.w === 0 || size.h === 0) return null
     const panelW = projection.panel.size_mm.w * projection.px_per_mm
     const panelH = projection.panel.size_mm.h * projection.px_per_mm
+    // 外壳比板大：只按板适配，外框会永远被裁在画布外（V1 第一版就是这样）。
+    // 内容框 = 板 ∪ 外壳外框，原点可能为负，所以 ox/oy 要把它整体推进视野。
+    const enc = projection.enclosure
+    const minX = enc !== null && enc !== undefined ? Math.min(0, enc.outer.x_px) : 0
+    const minY = enc !== null && enc !== undefined ? Math.min(0, enc.outer.y_px) : 0
+    const maxX = enc !== null && enc !== undefined
+      ? Math.max(panelW, enc.outer.x_px + enc.outer.w_px) : panelW
+    const maxY = enc !== null && enc !== undefined
+      ? Math.max(panelH, enc.outer.y_px + enc.outer.h_px) : panelH
+    const contentW = Math.max(maxX - minX, 1)
+    const contentH = Math.max(maxY - minY, 1)
     const padding = 36
     const scale = Math.max(MIN_SCALE, Math.min(
-      Math.min((size.w - padding * 2) / Math.max(panelW, 1),
-               (size.h - padding * 2) / Math.max(panelH, 1)),
+      Math.min((size.w - padding * 2) / contentW,
+               (size.h - padding * 2) / contentH),
       8,
     ))
     return {
       scale,
-      ox: (size.w - panelW * scale) / 2,
-      oy: (size.h - panelH * scale) / 2,
+      ox: (size.w - contentW * scale) / 2 - minX * scale,
+      oy: (size.h - contentH * scale) / 2 - minY * scale,
     }
-  }, [size, projection.panel.size_mm.w, projection.panel.size_mm.h, projection.px_per_mm])
+  }, [size, projection.panel.size_mm.w, projection.panel.size_mm.h,
+      projection.px_per_mm, projection.enclosure])
 
   const fittedRef = useRef<string>('')
   useEffect(() => {
     if (size.w === 0 || size.h === 0) return
     const panelW = projection.panel.size_mm.w * projection.px_per_mm
     const panelH = projection.panel.size_mm.h * projection.px_per_mm
-    const key = `${projection.panel.board_count}:${panelW.toFixed(0)}x${panelH.toFixed(0)}:${size.w}x${size.h}`
+    const enc = projection.enclosure
+    const key = `${projection.panel.board_count}:${panelW.toFixed(0)}x${panelH.toFixed(0)}`
+      + `:${enc === null || enc === undefined ? 'no-shell' : `${enc.outer.w_px.toFixed(0)}x${enc.outer.h_px.toFixed(0)}`}`
+      + `:${size.w}x${size.h}`
     if (fittedRef.current === key) return
     fittedRef.current = key
     const next = computeFit()
     if (next !== null) setView(next)
   }, [projection.panel.board_count, projection.panel.size_mm.w,
-      projection.panel.size_mm.h, projection.px_per_mm, size, computeFit])
+      projection.panel.size_mm.h, projection.px_per_mm, projection.enclosure,
+      size, computeFit])
 
   /** 复位到"适合窗口"。双击画布、按 `0`、点比例胶囊都走这一条。 */
   const fitToView = useCallback((): void => {
