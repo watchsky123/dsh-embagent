@@ -4006,6 +4006,66 @@ check_dead_css 绿
 
 ---
 
+## 视图 — 2D/3D 优化方案（2026-11-24）
+
+**性质：分析 + 方案，未执行。** 没有改任何代码、没有改 `design.json`；
+V0–V4 分期全部待做。
+
+**触发**：用户问「2D/3D 都比较简陋，嘉立创 EDA 反而更完善，且视图里只有多块 PCB、
+没有电机/螺旋桨/3D 外壳，怎么优化」。
+
+**依据**（都是读代码得出的实测事实，不是印象）：
+
+| 事实 | 出处 |
+|---|---|
+| 每颗元件只按 `size_mm` 画一个盒子 | `src/client/Assembly3D.tsx` L351 |
+| **同一根铜线画了两遍**（细长盒 L298–320 + CatmullRom 圆管 L399–408） | 同上 |
+| 爆炸按数组下标 `index % 4 * 3.5`，与装配层次无关 | L360 |
+| 「剖面」是固定裁剪面 `y < thickness+1`，不可移动、无 cap | L465 |
+| 外壳只有一个 `opacity 0.08` 的盒子，`openings` 从未被渲染，拼板偏移忽略 | L427 |
+| 无 shadowMap / 环境贴图 / 正交相机 / 文字贴图（grep 零命中） | 全文件 |
+| 3D 载荷不送 `joints` / `footprint` / `package` / 模型引用 / 丝印 | `design_cli.py::scene3d` L62–175 |
+| 模型里**没有**电机/桨/机臂/机架实体；`enclosure` 只有 `inner_mm/wall_mm/openings` | `design/model.py` L725–745 |
+| **全仓没有丝印字段**，导入器不解析 | `grep -rn silk design/` 零命中 |
+| 仓库无任何 `.glb/.gltf/.stl/.obj/.step` | `find` 零结果 |
+| `Joint` / `joints_list` / `mass_g` / `com_mm` / `inertia` / `mechanical.limits` **已存在** | `model.py` L780–867、L286–446 |
+
+**结论**：缺的不是渲染库，是**整机实体这一层**；机械关系已有、机械实体没有。
+JLC 的强项是元件模型库 + 丝印 + 光照（PCB 高保真），整机装配它也没有。
+
+### 新增
+
+| 文件 | 内容 | 行数 |
+|---|---|---|
+| `docs/views-2d3d-plan.md` | 现状盘点 / 三层目标架构（`bodies_list` 表 + `scene3d` v2 + 渲染词汇）/ V0–V4 分期与闸门 / 不做什么 / 三个待定决策 | 169 |
+
+### 方案要点（供后续排期）
+
+* **事实层**：`design.json` 加 `bodies_list`（**单列表，不进 `parts`** ——
+  否则 `mount="air"` 会污染 bbox 重叠、`emit` 器件数、parity 对账）。
+  逐实体必填 `source`；`estimated/proposed` 在 3D 里画虚线框 + `?`。
+  `Joint.a/b` 需跨两表解析（V0 引用完整性）。
+* **投影层**：`scene3d` 升 v2，**只加字段不改旧字段**（旧客户端仍可渲染）。
+* **渲染层收益排序**：修双画/爆炸/剖面/外壳 → 丝印纹理（+60% 观感）→
+  环境光 + 阴影（+30%）→ 程序化封装形状库（+25%）→ bodies 形状词汇 →
+  外壳真几何 → 交互 → 关节演示 → Instancing 合批。
+* **不做什么**：不追 JLC 元件模型库；不编电机/桨尺寸（无数据 = `unknown`
+  占位框）；不在 TS 做几何推导；不引 OpenCascade.js。
+
+### 未做
+
+* 未改 `Assembly3D.tsx` / `Circuit2D.tsx` / `design_cli.py` / `model.py`；
+* V0–V4 五期一行未动；
+* 三个待定决策（电机桨尺寸来源 / 外壳参数化 vs STEP / 丝印是否扩导入器）等用户定。
+
+### 验收
+
+```
+git status --short        # 只有 docs/ 与 CHANGES.md，无源码改动
+```
+
+---
+
 ## 后续
 
 **`docs/execution-plan-v3.md`（P15–P23）与 `docs/ux-plan.md`（P0–P5）全部交付。**
