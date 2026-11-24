@@ -65,6 +65,8 @@ def scene3d(design) -> dict[str, Any]:
     多板：元件坐标平移到**拼板坐标**（与 2D 同一套 `panel_layout` 偏移），
     每块板各自挤出。渲染层拿到的是拼板坐标，不需要知道板的概念。
     """
+    from .design import body as body_module
+    from .design import shell as shell_module
     from .design.projection import PANEL_GAP_MM, panel_layout
     from .design.ratlines import build_ratlines
 
@@ -110,6 +112,9 @@ def scene3d(design) -> dict[str, Any]:
     # 铜线只属于主板（`Wire` 还没有 board_id），按主板偏移平移。
     main_ox, main_oy = offset_of.get(design.board.id, (0.0, 0.0))
     return {
+        # 载荷版本：**只加字段，不改旧字段**（旧客户端仍能渲染）。
+        # 2 = 加 bodies[] + 外壳参数化字段（lid/floor/outer/openings 归一）。
+        "schema": 2,
         "units": "mm",
         "panel": {
             "size_mm": dict(panel["size_mm"]),
@@ -171,7 +176,12 @@ def scene3d(design) -> dict[str, Any]:
             for entry in panel["boards"]
             for h in entry["board"].mount_holes
         ],
-        "enclosure": design.enclosure.to_dict() if design.enclosure else None,
+        # 外壳：**参数化腔体**（内腔 / 壁厚 / 地板 / 盖 / 归一后的开口）。
+        # 旧字段 `inner_mm/wall_mm/openings` 仍在；新增的都是"只加不改"。
+        "enclosure": shell_module.payload(design),
+        # 整机实体（电机/桨/机臂/电池）。**与 parts 分开**：它们没有焊盘，
+        # 不进网表/发射/parity；3D 只按 shape 画，缺尺寸的 `known=False`。
+        "bodies": [row.scene_row() for row in body_module.rows(design)],
     }
 
 
@@ -260,6 +270,7 @@ def scaffold_summary(store) -> dict[str, Any]:
 def snapshot(project_id: str, *, pitch_mm: float = 0.5) -> dict[str, Any]:
     """一次读取渲染 + 判定 + 预算 + 闸门所需的一切（一次往返）。"""
     from .design import budgets, crosscheck, discipline, physical
+    from .design import shell as shell_module
     from .design.projection import to_2d
 
     store, design = _load(project_id)
@@ -274,6 +285,8 @@ def snapshot(project_id: str, *, pitch_mm: float = 0.5) -> dict[str, Any]:
         "problems": problems,
         "projection2d": to_2d(design),
         "scene3d": scene3d(design),
+        # 外壳判据（内腔装得下拼板 / 开口在面内 / 盖）。**缺数据是 unknown。**
+        "shell": shell_module.evaluate(design),
     }
 
     try:
@@ -4540,6 +4553,95 @@ def cmd_project2d(args: list[str]) -> dict[str, Any]:
     return {"status": "ok", "projection": to_2d(design)}
 
 
+def _eq_arg(args: list[str], name: str) -> str | None:
+    """读 `--name=value`。**只认等号形式**（与 P17+ 的命令一致，见 AGENTS §3.12）。"""
+    prefix = f"--{name}="
+    for item in args:
+        if item.startswith(prefix):
+            return item[len(prefix):]
+    return None
+
+
+def cmd_bodies(args: list[str]) -> dict[str, Any]:
+    """``bodies <id> [--catalog] [--show=REF] [--install=MODEL] [--ref=] [--at=x,y,z] [--rz=]``
+
+    整机实体表（电机/桨/机臂/电池）。**与 `parts` 分开**：它们不是焊在板上的
+    元件，不进网表/发射/parity 对账。
+
+    - 不带参数：三态审计（`checked` / `drawn` / `placeholder`）
+    - `--catalog`：目录里有哪些型号（含 `source` 与缺哪些字段）
+    - `--install=<model>`：按目录条目装一个实体（缺尺寸照样装，标 unknown）
+    - `--show=REF`：只看一个
+    """
+    from .design import body as body_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **body_module.describe()}
+    project = args[0]
+    if "--catalog" in args:
+        cat = body_module.catalog()
+        entries = body_module.catalog_entries()
+        return {
+            "status": "ok",
+            "schema": int(cat.get("schema") or 0),
+            "updated": str(cat.get("updated") or ""),
+            "note": str(cat.get("note") or ""),
+            "entries": entries,
+            "total": len(entries),
+        }
+    store, design = _load(project)
+
+    model = _eq_arg(args, "install")
+    if model is not None:
+        at = (_eq_arg(args, "at") or "").split(",")
+        placement: dict[str, float] = {"x_mm": 0.0, "y_mm": 0.0, "z_mm": 0.0,
+                                       "rz": float(_eq_arg(args, "rz") or 0.0)}
+        try:
+            if len(at) >= 2 and at[0].strip() and at[1].strip():
+                placement["x_mm"] = float(at[0])
+                placement["y_mm"] = float(at[1])
+            if len(at) >= 3 and at[2].strip():
+                placement["z_mm"] = float(at[2])
+        except ValueError:
+            return {"status": "failed",
+                    "findings": ["--at 需要 `x,y[,z]`（毫米），例如 --at=10,20,32"]}
+        body = body_module.install_from_catalog(
+            design, model, ref=(_eq_arg(args, "ref") or ""),
+            replace=("--replace" in args), **placement)
+        store.save(design)
+        return {"status": "ok", "installed": body.to_dict(),
+                **body_module.audit(design)}
+
+    audit = body_module.audit(design)
+    ref = _eq_arg(args, "show")
+    if ref is not None:
+        body = body_module.find(design, ref)
+        if body is None:
+            return {"status": "not_ready",
+                    "findings": [f"没有整机实体 {ref!r}"]}
+        return {"status": "ok", "body": body.to_dict(),
+                "scene_row": body.scene_row(),
+                "missing": body.missing_fields()}
+    return {"status": ("ok" if audit["status"] == "ok"
+                       else "not_ready" if audit["status"] == "not_ready"
+                       else "failed"), **audit}
+
+
+def cmd_shell(args: list[str]) -> dict[str, Any]:
+    """``shell <id>`` —— 外壳三态 + 投影（内腔/壁厚/盖/开口）。"""
+    from .design import shell as shell_module
+
+    if not args or args[0].startswith("-"):
+        return {"status": "ok", **shell_module.describe()}
+    _store_, design = _load(args[0])
+    report = shell_module.evaluate(design)
+    payload = shell_module.payload(design)
+    return {"status": ("ok" if report["status"] == "ok"
+                       else "not_ready" if report["status"] == "not_ready"
+                       else "failed"),
+            **report, "payload": payload}
+
+
 def cmd_scene3d(args: list[str]) -> dict[str, Any]:
     if not args:
         return {"status": "failed", "findings": ["scene3d 需要 <id>"]}
@@ -5055,6 +5157,8 @@ COMMANDS = {
     "snapshot": cmd_snapshot,
     "project2d": cmd_project2d,
     "scene3d": cmd_scene3d,
+    "bodies": cmd_bodies,
+    "shell": cmd_shell,
     "check": cmd_check,
     "ladder": cmd_ladder,
     "claims": cmd_claims,
