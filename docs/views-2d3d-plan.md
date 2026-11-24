@@ -287,7 +287,9 @@ V1 之后可并行：丝印（需样本，阻塞）
   新 `design/shell.py` 出三态结论（`shell.openings` / `shell.inner` /
   `shell.height`），失败进 `checks.json` 的 findings。
 * 2D：外框实线 + 内腔虚线 + 开口矩形（带 kind 标签）。
-* 3D：腔体 `Shape.holes` + 盖 + 螺柱（`proposed`）。
+* 3D：腔体 + 盖（**已做**：腔底 z=−(地板+板厚)、腔顶 z=inner.d、x 从 −offset 起）。
+  **开口挖孔**（`Shape.holes` / 分段墙板）与**螺柱**（从 `mount_holes` 推、标
+  `proposed`）**未做**——2D 已按真实矩形投影，3D 先只画腔体与盖，不让人以为孔开好了。
 
 ### 6.4 V3（目录）
 
