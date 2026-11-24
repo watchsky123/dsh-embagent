@@ -4114,7 +4114,7 @@ node scripts/check_assembly3d.mjs    # 真渲染：非纯色 / 不过曝 / 有�
 | `design/body.py` | 整机实体层：`Body`（容错解析）+ 安装/移除 + 目录 + 审计；**ref 与 `parts` 同一命名空间** | ~430 行 |
 | `design/shell.py` | 参数化外壳：开口三态校验（越界/内腔/盖）+ 2D/3D 投影 + 面坐标约定 | ~330 行 |
 | `design/bodies_catalog.json` | 8 条常见型号（4 电机 / 3 桨 / 1 电池），**尺寸没核对的一律留空** | 8 条 |
-| `scripts/check_bodies.py` | 40 项验收（含 5 个退化用例） | ~300 行 |
+| `scripts/check_bodies.py` | 42 项验收（含 5 个退化用例） | ~300 行 |
 | `tests/test_design.py::TestBodiesAndEnclosure` | 7 项单测（往返 / 撞名 / 跨表关节 / 三态 / 投影） | +7 项 |
 
 ### 修改
@@ -4174,7 +4174,7 @@ node scripts/check_assembly3d.mjs    # 真渲染：非纯色 / 不过曝 / 有�
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_bodies     # 40 项（含退化用例）
+python -m hw_velxio.scripts.check_bodies     # 42 项（含退化用例）
 python -m hw_velxio.scripts.check_scene3d    # 几何
 node scripts/check_assembly3d.mjs            # 真渲染（注入 3 个实体）
 node scripts/check_layout_runtime.mjs        # 布局/面板
@@ -4183,7 +4183,7 @@ npm run check                                # tsc build + client
 npm test                                     # 774 项
 ```
 
-实测：`check_bodies` 40/40、`check_scene3d` 通过、`check_assembly3d` 9/9、
+实测：`check_bodies` 42/42、`check_scene3d` 通过、`check_assembly3d` 9/9、
 `check_layout_runtime` 通过、`check_dead_css` 绿、`npm run check` 通过、`npm test` 774 OK。
 
 ---
