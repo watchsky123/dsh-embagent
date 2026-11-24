@@ -4099,6 +4099,77 @@ node scripts/check_assembly3d.mjs    # 真渲染：非纯色 / 不过曝 / 有�
 
 ---
 
+## 视图 V1 — 整机实体 + 参数化外壳（2026-11-25）
+
+**一句话**：`design.json` 里第一次有了"电机/桨/机臂/电池"和"能开口的外壳"，
+3D 能按形状画出来，2D 能投影外壳与顶面开口。**判定的口径没松**：缺尺寸的
+实体只画占位框，缺数据的开口是 `unknown`。
+
+**依据**：`docs/views-2d3d-plan.md`（v2）§2.1 事实层 / §5 三项决策 / §6 执行顺序。
+
+### 新增
+
+| 文件 | 内容 | 量级 |
+|---|---|---|
+| `design/body.py` | 整机实体层：`Body`（容错解析）+ 安装/移除 + 目录 + 审计；**ref 与 `parts` 同一命名空间** | ~430 行 |
+| `design/shell.py` | 参数化外壳：开口三态校验（越界/内腔/盖）+ 2D/3D 投影 + 面坐标约定 | ~330 行 |
+| `design/bodies_catalog.json` | 8 条常见型号（4 电机 / 3 桨 / 1 电池），**尺寸没核对的一律留空** | 8 条 |
+| `scripts/check_bodies.py` | 40 项验收（含 5 个退化用例） | ~300 行 |
+| `tests/test_design.py::TestBodiesAndEnclosure` | 7 项单测（往返 / 撞名 / 跨表关节 / 三态 / 投影） | +7 项 |
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `design/model.py` | 加 `BODY_KINDS` / `BODY_SHAPES` / `ENCLOSURE_FACES`；`DesignModel.bodies_list` + `entity(ref)`（跨两表）；`Enclosure` 扩 `lid_mm` / `floor_z_mm` / `outer_mm()`；`validate()` 接入 `body.problems` 与 `shell.structure_problems` |
+| `design/joints.py` | 关节两端的 `known` 集合**并上 `bodies_list`**——否则"电机—桨"这类关系永远被判悬空（假红） |
+| `design/mech_check.py` | 关节一端是整机实体时，扭矩判据报 `unknown` 并说明"判据还没接"（不是"不在设计里"） |
+| `design/projection.py` | `to_2d` 加 `enclosure`（px 在 Python 算：外框/内腔/顶面开口）；侧面开口只计数 |
+| `design_cli.py` | `scene3d` 升 v2（`schema` / `bodies[]` / 外壳参数载荷）；`snapshot` 加 `shell` 三态；新增 `bodies`（list/catalog/install/show）与 `shell` 两个命令 |
+| `src/shared/types.ts` | 新 `Scene3DBody` / `Enclosure` / `EnclosureOpening` / `Projection2DEnclosure`；`Scene3D.schema?/bodies`；`Projection2D.enclosure` |
+| `src/client/Assembly3D.tsx` | 画整机实体：圆柱（电机）、盘+叶（桨）、盒（机臂/电池）、线框（网格/未定尺寸）；取景范围算上实体（5 寸桨盘比板宽一倍，旧取景会切掉桨叶）；图例加三项 |
+| `src/client/Circuit2D.tsx` | 外壳俯视：外框虚线 + 内腔虚线 + 顶面开口矩形；侧面开口在俯视图里只计数（不猜边） |
+| `src/client/theme.ts` / `styles/{tokens,dark}.ts` | 三个材质令牌（电机金属 / 桨 / 外壳填充），深色只覆盖材质层 |
+| `src/client/HwIdeView.tsx` | 3D 面板头显示"元件 · 整机"两个数 |
+| `scripts/check_assembly3d.mjs` | **注入** 3 个实体（已知圆柱/已知桨/未知尺寸）→ bodies 分支在真渲染里跑一遍；加 4 条断言 |
+
+### 语义（写反会算错，所以逐条记）
+
+* `enclosure.inner_mm.d` 仍是**板顶以上可用高度**（`physical.space.height` 拿它当限高，不改）；
+* 外高 = `wall + floor_z + board_thickness + inner.d + lid`，`outer_mm()` 是**方法**：板厚不属于外壳；
+* 开口 `x_mm/y_mm` 是**中心**：`top/bottom` 用拼板坐标，`front/back/left/right` 的 y 从内腔底面向上；
+* `lid_mm` / `floor_z_mm` 默认 0 时**不写进文件**（旧工程往返逐字节不变）。
+
+### 诚实边界
+
+* 目录里 **4 个电机 + 1 个电池的尺寸全空**（`source=unknown` + `need` 列字段）。
+  2026-11-25 实测可访问性：tmotorhobby 商品页只有导航文本、getfpv/robu 返回 403、
+  ligpower 正文截断、iflight.cn 连接失败——**没有可信的尺寸表就不填**。
+  3 条桨只填了型号换算出的直径（5.1 in × 25.4 = 129.54mm，`source=derived`）。
+* 因此 3D 里这些实体是**线框占位框**（图例写明"虚框 = 尺寸未定"），
+  填两三个数字（直径 + 高度）后立刻变成实心圆柱——路径已在 `check_bodies` 的
+  合成夹具里验过。
+* `mesh` 形状**没有加载器**：仓库里没有任何 `.glb`，只画同尺寸线框。
+* 丝印仍**未做**：磁盘上没有真实 `.epro2` 样本，层号表不能猜（见方案 §5.3）。
+* 光影（环境贴图/阴影）、封装形状库、正交/量尺/导出仍未做。
+
+### 验收
+
+```
+python -m hw_velxio.scripts.check_bodies     # 40 项（含退化用例）
+python -m hw_velxio.scripts.check_scene3d    # 几何
+node scripts/check_assembly3d.mjs            # 真渲染（注入 3 个实体）
+node scripts/check_layout_runtime.mjs        # 布局/面板
+python scripts/check_dead_css.py             # 样式同步
+npm run check                                # tsc build + client
+npm test                                     # 774 项
+```
+
+实测：`check_bodies` 40/40、`check_scene3d` 通过、`check_assembly3d` 9/9、
+`check_layout_runtime` 通过、`check_dead_css` 绿、`npm run check` 通过、`npm test` 774 OK。
+
+---
+
 ## 后续
 
 **`docs/execution-plan-v3.md`（P15–P23）与 `docs/ux-plan.md`（P0–P5）全部交付。**

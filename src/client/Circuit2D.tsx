@@ -372,6 +372,14 @@ export function Circuit2D(props: Circuit2DProps): JSX.Element {
         <span><i className="src-estimated" />估算</span>
         <span><i className="wire-copper" />铜线（已布线）</span>
         <span><i className="wire-ratline" />飞线（未布线）</span>
+        {projection.enclosure !== null && (
+          <span><i className="body-shell" />外壳（虚线）</span>
+        )}
+        {projection.enclosure !== null && projection.enclosure.side_openings > 0 && (
+          <span className="hwv-dim">
+            侧面 {projection.enclosure.side_openings} 处开口（见 3D）
+          </span>
+        )}
         <span className="hwv-dim">
           {projection.px_per_mm.toFixed(4)} px/mm · {projection.panel.size_mm.w.toFixed(2)}×
           {projection.panel.size_mm.h.toFixed(2)} mm
@@ -475,6 +483,10 @@ function draw(ctx: CanvasRenderingContext2D, input: DrawInput): void {
       ctx.globalAlpha = 1
     }
   }
+
+  // 外壳（俯视图）：外框 + 内腔虚线 + 顶面开口。
+  // **没有外壳就不画**——不拿板框假装外壳。
+  drawEnclosure(ctx, projection.enclosure, view, palette)
 
   // 安装孔
   for (const hole of projection.mount_holes) {
@@ -601,6 +613,39 @@ function draw(ctx: CanvasRenderingContext2D, input: DrawInput): void {
  * 形状来自立创 EDA 的 `PAD.defaultPad.padType`（实测 RECT 196 / OVAL 78 /
  * ELLIPSE 18）。画成真实形状比一律画方块有用得多 —— 引脚间距一眼可辨。
  */
+/**
+ * 外壳俯视图：外框实线、内腔与开口虚线/半透明。
+ *
+ * 侧面开口**不在这里画**：从正上方看，它只是边上的一条线，位置一猜就错。
+ * 数量在 `side_openings` 里如实计数，图例里写出来。
+ */
+function drawEnclosure(ctx: CanvasRenderingContext2D,
+                       enc: SnapshotPayload['projection2d']['enclosure'],
+                       view: View, palette: Palette): void {
+  if (enc === null || enc === undefined) return
+  ctx.save()
+  ctx.setLineDash([6 / view.scale, 4 / view.scale])
+  ctx.strokeStyle = palette.warnStroke
+  ctx.lineWidth = Math.max(0.9, 1.2 / view.scale)
+  ctx.strokeRect(enc.outer.x_px, enc.outer.y_px, enc.outer.w_px, enc.outer.h_px)
+  ctx.globalAlpha = 0.7
+  ctx.strokeStyle = palette.plainStroke
+  ctx.strokeRect(enc.inner.x_px, enc.inner.y_px, enc.inner.w_px, enc.inner.h_px)
+  ctx.restore()
+
+  // 顶面/底面开口：真实矩形（px 由 Python 算，这里不换算）
+  ctx.save()
+  ctx.fillStyle = palette.bodyShell
+  ctx.globalAlpha = 0.55
+  ctx.strokeStyle = palette.warnStroke
+  ctx.lineWidth = Math.max(0.6, 0.8 / view.scale)
+  for (const opening of enc.openings) {
+    ctx.fillRect(opening.x_px, opening.y_px, opening.w_px, opening.h_px)
+    ctx.strokeRect(opening.x_px, opening.y_px, opening.w_px, opening.h_px)
+  }
+  ctx.restore()
+}
+
 function drawPad(ctx: CanvasRenderingContext2D, shape: string,
                  x: number, y: number, w: number, h: number,
                  rotationZ: number): void {

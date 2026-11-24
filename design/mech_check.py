@@ -192,12 +192,28 @@ def _servo_torque(design: DesignModel) -> list[dict[str, Any]]:
                      message="没有铰链关节，扭矩无从计算",
                      basis="joints_list 里没有 hinge")]
     by_ref = {p.ref: p for p in design.parts}
+    # 整机实体（电机/桨）不是 PCB 元件：它们有位置和尺寸，但没有焊盘，
+    # 所以扭矩判据现在**算不了**。如实报 unknown 并说明差什么，
+    # 不把它当成"不在设计里"（那是假红），也不当成通过。
+    body_refs = {str(b.get("ref") or "") for b in (design.bodies_list or [])
+                 if isinstance(b, dict)}
     for joint in hinges:
         actuator = by_ref.get(joint.a) or by_ref.get(joint.b)
         load = by_ref.get(joint.b) or by_ref.get(joint.a)
         if actuator is None or load is None:
-            rows.append(_row("servo_torque", "unknown", refs=[joint.a, joint.b],
-                             message="关节两端不在设计里", basis="joints_list"))
+            on_body = [ref for ref in (joint.a, joint.b)
+                       if ref in body_refs]
+            if on_body:
+                rows.append(_row(
+                    "servo_torque", "unknown", refs=[joint.a, joint.b],
+                    message=(f"关节一端是整机实体（{'、'.join(on_body)}），"
+                             "扭矩判据还没接上：现在只能算 PCB 元件的力臂"),
+                    basis="bodies_list"))
+            else:
+                rows.append(_row("servo_torque", "unknown",
+                                 refs=[joint.a, joint.b],
+                                 message="关节两端不在设计里",
+                                 basis="joints_list"))
             continue
         mass, how = _mass_g(load)
         if mass is None:

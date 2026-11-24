@@ -209,6 +209,13 @@ export const PANELS = `
 }
 .hwv-path-bad { border-color: var(--hwv-err); color: var(--hwv-err); }
 
+/** 整机实体的图例色块：与 3D 材质同一套令牌（不写死颜色）。 */
+.hwv-legend i.body-metal { background: var(--hwv-p-body-metal); }
+.hwv-legend i.body-prop { background: var(--hwv-p-body-prop); }
+.hwv-legend i.body-shell {
+  background: var(--hwv-p-body-shell);
+  outline: 1px dashed var(--hwv-p-warn);
+}
 .hwv-legend {
   /* 浮层 HUD：和 .hwv-pane-tools 一样是覆盖在画布上的，不能参与流布局
      ——否则 100% 高的画布会把它顶出 wrap，压到下一个面板上。 */

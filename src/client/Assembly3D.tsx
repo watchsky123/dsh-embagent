@@ -21,7 +21,8 @@ import {
   Vector2, Vector3, WebGLRenderer,
 } from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import type { Finding, Scene3D as ScenePayload, SnapshotPayload } from '../shared/types.js'
+import type { Finding, Scene3D as ScenePayload, Scene3DBody,
+  SnapshotPayload } from '../shared/types.js'
 import { partFill, readPalette, useThemeRevision } from './theme.js'
 import type { Palette } from './theme.js'
 
@@ -128,10 +129,11 @@ export function Assembly3D(props: Assembly3DProps): JSX.Element {
           </label>
         )}
       </div>
-      {snapshot.scene3d.parts.length === 0 && (
+      {snapshot.scene3d.parts.length === 0
+        && (snapshot.scene3d.bodies ?? []).length === 0 && (
         <div className="hwv-canvas-empty">
           <strong>这个工程有 0 个实体</strong>
-          <span>板子在，但上面没有元件 —— 不是渲染坏了</span>
+          <span>板子在，但上面没有元件、也没有整机实体 —— 不是渲染坏了</span>
         </div>
       )}
       <div className="hwv-legend">
@@ -140,7 +142,12 @@ export function Assembly3D(props: Assembly3DProps): JSX.Element {
         <span><i className="src-error" />判定冲突</span>
         <span><i className="face-top" />顶层</span>
         <span><i className="face-bottom" />底层</span>
-        <span className="hwv-dim">mm · 拖拽旋转 · 滚轮缩放 · 点击选中</span>
+        <span><i className="body-metal" />电机/机臂</span>
+        <span><i className="body-prop" />桨</span>
+        <span><i className="body-shell" />外壳</span>
+        <span className="hwv-dim">
+          mm · 虚框 = 尺寸未定 · 拖拽旋转 · 滚轮缩放 · 点击选中
+        </span>
       </div>
     </div>
   )
@@ -158,6 +165,8 @@ interface SceneState {
   root: Group
   boardGroup: Group
   partsGroup: Group
+  /** 整机实体（电机/桨/机臂/外壳）：和 PCB 元件分开挂。 */
+  bodyGroup: Group
   wiresGroup: Group
   helperGroup: Group
   /** **世界坐标**的辅助几何（地面网格）。不能挂 root：root 绕 X 转了 −90°，
@@ -237,14 +246,15 @@ function createScene(host: HTMLElement, palette: Palette): SceneState {
 
   const boardGroup = new Group()
   const partsGroup = new Group()
+  const bodyGroup = new Group()
   const wiresGroup = new Group()
   const helperGroup = new Group()
-  root.add(boardGroup, partsGroup, wiresGroup, helperGroup)
+  root.add(boardGroup, partsGroup, bodyGroup, wiresGroup, helperGroup)
 
   const raycaster = new Raycaster()
   const state: SceneState = {
     scene, camera, renderer, controls, root, hemi,
-    boardGroup, partsGroup, wiresGroup, helperGroup, worldGroup,
+    boardGroup, partsGroup, bodyGroup, wiresGroup, helperGroup, worldGroup,
     raycaster, pickables: [], selected: null,
     baseColors: new Map(),
     palette,
@@ -270,6 +280,7 @@ function createScene(host: HTMLElement, palette: Palette): SceneState {
     rebuild(payload, findings, explode, section, grid, sectionAt, palette) {
       clearGroup(boardGroup)
       clearGroup(partsGroup)
+      clearGroup(bodyGroup)
       clearGroup(wiresGroup)
       clearGroup(helperGroup)
       clearGroup(worldGroup)
@@ -422,6 +433,18 @@ function createScene(host: HTMLElement, palette: Palette): SceneState {
         }
       })
 
+      // 整机实体（电机 / 桨 / 机臂 / 电池 / 外壳）。
+      //
+      // **规则只有一条**：`known=false` 的只画棱、不画面。给它一个"看起来对"
+      // 的实心圆柱，等于告诉用户这个尺寸核对过——那是 AGENTS §0.1 的渲染版。
+      for (const body of payload.bodies ?? []) {
+        const part = bodyPart(body, palette)
+        part.group.position.set(body.transform.x_mm, body.transform.y_mm,
+          body.transform.z_mm)
+        part.group.rotation.z = (body.transform.rz * Math.PI) / 180
+        bodyGroup.add(part.group)
+      }
+
       // 铜线**只画一遍**（上面那一遍贴板细盒）。
       // 这里曾有一遍 CatmullRom 圆管，悬在板面 0.6mm 之上——同一根走线
       // 画两遍：屏幕上是一条亮线叠一个"鼓包"，draw call 也翻倍。
@@ -468,11 +491,20 @@ function createScene(host: HTMLElement, palette: Palette): SceneState {
       // 多板工程里只按主板取景，其余板全部在视野外。
       const panelW = payload.panel?.size_mm?.w ?? board.size_mm.w
       const panelH = payload.panel?.size_mm?.h ?? board.size_mm.h
+      // 整机实体还要再撑一次取景：5.1 寸桨盘 129.5mm，比 68.6mm 的板宽一倍，
+      // 只按板取景会把桨叶切在画面外（V1 第一版截图就是这样）。
+      let reach = Math.max(panelW, panelH)
+      for (const body of payload.bodies ?? []) {
+        const size = Math.max(body.shape.diameter_mm, body.shape.w, body.shape.h)
+        reach = Math.max(reach,
+          Math.abs(body.transform.x_mm) + size / 2,
+          Math.abs(body.transform.y_mm) + size / 2)
+      }
 
       // 地面网格：**世界坐标**。GridHelper 的几何在它自己的局部 XZ 面，
       // 挂到旋转过的 root 下会被 root 的 −90° 转成一面竖直的墙。
       // 世界坐标 = 模型 (x,y,z) → (x, z, −y)，所以地面在 y = −thickness。
-      const span = Math.max(panelW, panelH) * 2.4
+      const span = Math.max(panelW, panelH, reach) * 2.4
       const gridHelper = new GridHelper(span, Math.max(10, Math.round(span / 10)),
         new Color(palette.grid3dMajor), new Color(palette.grid3dMinor))
       gridHelper.position.set(panelW / 2, -thickness - 0.05, -panelH / 2)
@@ -493,9 +525,9 @@ function createScene(host: HTMLElement, palette: Palette): SceneState {
 
       // 视角自适应（只在首次或板子尺寸变化时重置）
       const target = new Vector3(panelW / 2, 0, -panelH / 2)
-      const radius = Math.max(panelW, panelH) * 1.6
-      if (state.fitKey !== `${panelW}x${panelH}`) {
-        state.fitKey = `${panelW}x${panelH}`
+      const radius = Math.max(panelW, panelH, reach) * 1.6
+      if (state.fitKey !== `${panelW}x${panelH}x${reach}`) {
+        state.fitKey = `${panelW}x${panelH}x${reach}`
         camera.position.set(target.x + radius, target.y + radius * 0.9,
           target.z + radius)
         controls.target.copy(target)
@@ -553,6 +585,100 @@ function bandOf(heightMm: number): number {
   if (heightMm <= 3) return 1
   if (heightMm <= 6) return 2
   return 3
+}
+
+/**
+ * 一个整机实体的 three 节点。
+ *
+ * 形状词汇只有四种（见 `BODY_SHAPES`）：`box`/`prism` 盒、`cylinder` 圆柱
+ * （电机/电容）、`disc` 盘（桨）、`mesh` 模型文件。**没有加载器时 `mesh`
+ * 也只画线框**——仓库里目前没有任何 `.glb`，假装能加载比不画更糟。
+ *
+ * 坐标：模型 Z 向上（根节点已转 −90°），所以圆柱要先绕 X 转 90° 把轴摆正。
+ */
+function bodyPart(body: Scene3DBody, palette: Palette): { group: Group } {
+  const group = new Group()
+  const shape = body.shape
+  const color = new Color(body.kind === 'propeller' ? palette.bodyProp
+    : body.kind === 'shell' || body.kind === 'lid' ? palette.bodyShell
+      : palette.bodyMetal)
+
+  if (!body.known) {
+    // 占位框：尺寸只用**已有字段**（哪怕是 0），没有就给一个 8×8×4 的"未知"，
+    // 并在图例里说明"虚框 = 尺寸未定"。虚线用棱替代：LineDashed 需要
+    // computeLineDistances，不值得为一个占位框引入。
+    const w = Math.max(shape.w, shape.diameter_mm, 8)
+    const h = Math.max(shape.h, shape.diameter_mm, 8)
+    const d = Math.max(shape.d, shape.thickness_mm, 4)
+    const geometry = new BoxGeometry(w, h, d)
+    const edges = new LineSegments(new EdgesGeometry(geometry),
+      new LineBasicMaterial({ color: new Color(palette.warnStroke),
+        transparent: true, opacity: 0.85 }))
+    edges.position.set(0, 0, d / 2)
+    group.add(edges)
+    geometry.dispose()
+    return { group }
+  }
+
+  if (shape.type === 'cylinder') {
+    const height = Math.max(shape.d, 0.4)
+    const geometry = new CylinderGeometry(shape.diameter_mm / 2,
+      shape.diameter_mm / 2, height, 24)
+    geometry.rotateX(Math.PI / 2)
+    const mesh = new Mesh(geometry, new MeshStandardMaterial({
+      color, roughness: 0.45, metalness: 0.55 }))
+    mesh.position.set(0, 0, height / 2)
+    group.add(mesh)
+    return { group }
+  }
+
+  if (shape.type === 'disc') {
+    const thickness = Math.max(shape.thickness_mm, 0.4)
+    const hubR = Math.max(shape.diameter_mm * 0.06, 1)
+    const hub = new CylinderGeometry(hubR, hubR, thickness * 1.8, 18)
+    hub.rotateX(Math.PI / 2)
+    const hubMesh = new Mesh(hub, new MeshStandardMaterial({ color, roughness: 0.5 }))
+    hubMesh.position.set(0, 0, thickness * 0.9)
+    group.add(hubMesh)
+    const blades = Math.max(0, Math.round(shape.blades))
+    const bladeLength = Math.max(shape.diameter_mm / 2 - hubR, 1)
+    const bladeWidth = Math.max(shape.diameter_mm * 0.13, 2)
+    for (let index = 0; index < blades; index += 1) {
+      const geometry = new BoxGeometry(bladeLength, bladeWidth, thickness * 0.5)
+      const blade = new Mesh(geometry, new MeshStandardMaterial({
+        color, roughness: 0.55, metalness: 0.1 }))
+      blade.position.set(hubR + bladeLength / 2, 0, thickness * 0.6)
+      const pivot = new Group()
+      pivot.rotation.z = (index * 2 * Math.PI) / blades
+      pivot.add(blade)
+      group.add(pivot)
+    }
+    return { group }
+  }
+
+  if (shape.type === 'mesh') {
+    // 模型文件没有加载器：只画同尺寸线框，并在图例里说明。
+    const w = Math.max(shape.w, 4)
+    const h = Math.max(shape.h, 4)
+    const d = Math.max(shape.d, 2)
+    const geometry = new BoxGeometry(w, h, d)
+    const edges = new LineSegments(new EdgesGeometry(geometry),
+      new LineBasicMaterial({ color: new Color(palette.warnStroke),
+        transparent: true, opacity: 0.55 }))
+    edges.position.set(0, 0, d / 2)
+    group.add(edges)
+    geometry.dispose()
+    return { group }
+  }
+
+  const w = Math.max(shape.w, 0.4)
+  const h = Math.max(shape.h, 0.4)
+  const d = Math.max(shape.d, 0.4)
+  const mesh = new Mesh(new BoxGeometry(w, h, d), new MeshStandardMaterial({
+    color, roughness: 0.6, metalness: 0.2 }))
+  mesh.position.set(0, 0, d / 2)
+  group.add(mesh)
+  return { group }
 }
 
 function clearGroup(group: Group): void {

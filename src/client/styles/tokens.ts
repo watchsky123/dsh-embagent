@@ -91,6 +91,9 @@ export const TOKENS = `
   --hwv-m-trace: #c45c26;        /* 铜线（已布线走线） */
   --hwv-m-shell: #f59e0b;        /* 外壳 */
   --hwv-m-edge: #81858c;
+  --hwv-m-body-metal: #9aa3af;   /* 电机外转子/机臂金属 */
+  --hwv-m-body-prop: #3a4150;    /* 桨（碳纤深色，和金属区分） */
+  --hwv-m-body-shell: #fde8c8;   /* 外壳填充（低不透明度画） */
   --hwv-m-grid3d-major: #cfd3d6;
   --hwv-m-grid3d-minor: #e1e5ee;
   --hwv-m-fill-datasheet: #3b82f6;   /* 尺寸来源四态 */
@@ -127,6 +130,9 @@ export const TOKENS = `
   --hwv-p-trace: var(--hwv-m-trace);
   --hwv-p-shell3d: var(--hwv-m-shell);
   --hwv-p-edge: var(--hwv-m-edge);
+  --hwv-p-body-metal: var(--hwv-m-body-metal);
+  --hwv-p-body-prop: var(--hwv-m-body-prop);
+  --hwv-p-body-shell: var(--hwv-m-body-shell);
   --hwv-p-grid3d-major: var(--hwv-m-grid3d-major);
   --hwv-p-grid3d-minor: var(--hwv-m-grid3d-minor);
   --hwv-p-fill-datasheet: var(--hwv-m-fill-datasheet);

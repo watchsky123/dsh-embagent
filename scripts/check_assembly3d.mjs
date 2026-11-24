@@ -71,6 +71,29 @@ if (existsSync(EPRO2)) {
 const snapshotRaw = JSON.parse(cli(['snapshot', 'probe3d']))
 const snapshot = snapshotRaw.snapshot ?? snapshotRaw
 const scene = snapshot.scene3d
+
+// V1：**注入**三个整机实体，让 `bodies` 分支在 CI 里真的跑一遍。
+// 不注入的话这条路径永远是死的——而 three 里抛异常会被 effect 吞掉，
+// 表现成"画布变黑"，只有像素断言抓得到（和"光照过曝一片惨白"同一类）。
+scene.bodies = [
+  { ref: 'M1', kind: 'motor', label: '探针电机', parent: '', mount: 'air',
+    transform: { x_mm: scene.board.size_mm.w / 2, y_mm: scene.board.size_mm.h / 2,
+                 z_mm: 2, rz: 0 },
+    shape: { type: 'cylinder', w: 0, h: 0, d: 20, diameter_mm: 26,
+             thickness_mm: 0, blades: 0, model: '' },
+    mass_g: 31.5, source: 'datasheet', evidence: 'probe fixture', known: true },
+  { ref: 'P1', kind: 'propeller', label: '探针桨', parent: 'M1', mount: 'air',
+    transform: { x_mm: scene.board.size_mm.w / 2, y_mm: scene.board.size_mm.h / 2,
+                 z_mm: 22, rz: 15 },
+    shape: { type: 'disc', w: 0, h: 0, d: 0, diameter_mm: 130, thickness_mm: 1.4,
+             blades: 3, model: '' },
+    mass_g: null, source: 'derived', evidence: 'probe fixture', known: true },
+  { ref: 'X1', kind: 'generic', label: '未知尺寸', parent: '', mount: 'air',
+    transform: { x_mm: 6, y_mm: 6, z_mm: 0, rz: 0 },
+    shape: { type: 'cylinder', w: 0, h: 0, d: 0, diameter_mm: 0, thickness_mm: 0,
+             blades: 0, model: '' },
+    mass_g: null, source: 'unknown', evidence: '', known: false },
+]
 console.log(`  ..   ${scene.parts.length} 实体 / ${scene.wires.length} 铜线 / `
   + `板 ${scene.board.size_mm.w.toFixed(1)}×${scene.board.size_mm.h.toFixed(1)}mm`)
 
@@ -311,6 +334,16 @@ check('没有大面积纯黑（< 80%）', stats.blackRatio < 0.8,
   `纯黑占 ${(stats.blackRatio * 100).toFixed(1)}%`)
 check('有明暗层次（颜色 > 8 种）', stats.distinct > 8,
   `只有 ${stats.distinct} 种 —— 可能是纯色块`)
+
+// -- V1：整机实体 ---------------------------------------------------------
+const assemblySource = readFileSync(resolve(repoRoot, 'src/client/Assembly3D.tsx'), 'utf8')
+check('装配视图真的读 `payload.bodies`', assemblySource.includes('payload.bodies'))
+check('尺寸未定的实体只画占位框（不画实心）',
+  assemblySource.includes('if (!body.known)'))
+check('圆柱 / 盘 / 盒 三种形状都有分支',
+  assemblySource.includes("'cylinder'") && assemblySource.includes("'disc'")
+  && assemblySource.includes("shape.type === 'mesh'"))
+check('注入的 3 个整机实体没有把渲染搞崩（像素仍正常）', stats.litRatio > 0.3)
 console.log(`  ..   真实渲染图：${pngPath}`)
 
 if (failures.length > 0) {

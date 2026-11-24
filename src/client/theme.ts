@@ -48,6 +48,9 @@ const PALETTE_VARS = {
   padStroke: '--hwv-p-pad-stroke',
   pad3d: '--hwv-p-pad3d',
   trace: '--hwv-p-trace',
+  bodyMetal: '--hwv-p-body-metal',
+  bodyProp: '--hwv-p-body-prop',
+  bodyShell: '--hwv-p-body-shell',
 } as const
 
 export type PaletteKey = keyof typeof PALETTE_VARS
@@ -89,6 +92,9 @@ const FALLBACK: Palette = {
   padStroke: '#8a6d1f',
   pad3d: '#d4af37',
   trace: '#c45c26',
+  bodyMetal: '#9aa3af',
+  bodyProp: '#3a4150',
+  bodyShell: '#fde8c8',
   wireLightness: '45%',
 }
 

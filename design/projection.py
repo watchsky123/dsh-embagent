@@ -253,9 +253,58 @@ def to_2d(design: DesignModel) -> dict[str, Any]:
             for entry in panel["boards"]
             for h in entry["board"].mount_holes
         ],
+        # 外壳：2D 只画**俯视图**（外框 + 内腔虚线 + 开口矩形）。
+        # 与 3D 共用 `shell.payload()`——同一份 mm，不在 TS 里再推一次。
+        "enclosure": _enclosure_2d(design, x_px, y_px, ppm),
         "estimated_parts": [p.ref for p in design.parts
                             if p.physical_source == "estimated"],
         "warnings": list(design.warnings),
+    }
+
+
+def _enclosure_2d(design: DesignModel, x_px, y_px, ppm: float
+                  ) -> dict[str, Any] | None:
+    """外壳的**俯视图**投影：外框 / 内腔 / 顶面开口（px）。
+
+    **px 在 Python 里算**：TS 只画，不做 mm↔px 换算（判定与几何只有一个地方）。
+    侧面开口在俯视图里只是一条边，画出来必然错位——所以只计数，
+    不去猜它落在哪。没有外壳返回 None（不是空对象）。
+    """
+    from . import shell as shell_module
+
+    payload = shell_module.payload(design)
+    if payload is None:
+        return None
+    wall = payload["wall_mm"]
+    ox = payload["board_offset_mm"]["x"]
+    oy = payload["board_offset_mm"]["y"]
+    inner = payload["inner_mm"]
+    outer = payload["outer_mm"]
+
+    def rect(x0: float, y0: float, w: float, h: float) -> dict[str, float]:
+        # y 轴在画布上是反的：矩形的**上边**来自 mm 的 y0+h。
+        return {"x_px": round(x_px(x0), 3),
+                "y_px": round(y_px(y0 + h), 3),
+                "w_px": round(w * ppm, 3),
+                "h_px": round(h * ppm, 3)}
+
+    top = [o for o in payload["openings"] if o["face"] in ("top", "bottom")]
+    return {
+        "outer": {**rect(-ox - wall, -oy - wall, outer["w"], outer["h"]),
+                  "w_mm": outer["w"], "h_mm": outer["h"]},
+        "inner": {**rect(-ox, -oy, inner["w"], inner["h"]),
+                  "w_mm": inner["w"], "h_mm": inner["h"]},
+        "openings": [{**rect(o["x_mm"] - o["w_mm"] / 2,
+                             o["y_mm"] - o["h_mm"] / 2,
+                             o["w_mm"], o["h_mm"]),
+                      "face": o["face"], "kind": o["kind"]}
+                     for o in top],
+        "side_openings": sum(1 for o in payload["openings"]
+                             if o["face"] not in ("top", "bottom")),
+        "wall_mm": wall,
+        "lid_mm": payload["lid_mm"],
+        "inner_mm": inner,
+        "outer_mm": outer,
     }
 
 

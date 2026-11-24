@@ -590,6 +590,11 @@ def validate(design: DesignModel, joints: list[Joint] | None = None) -> dict[str
         Joint.from_dict(j) for j in (design.joints_list or [])
         if isinstance(j, dict)]
     known = {p.ref for p in design.parts}
+    # 整机实体与 PCB 元件**共用 ref 命名空间**（`design/body.py`）：
+    # 「电机—桨」这类关系的两端可能都不是 PCB 元件。只查 `parts` 会把
+    # 它们判成悬空引用——那是**假红**，会让人去改对的关节。
+    known |= {str(b.get("ref") or "") for b in (design.bodies_list or [])
+              if isinstance(b, dict)}
     findings: list[dict[str, Any]] = []
     seen: dict[str, str] = {}
     checked = 0

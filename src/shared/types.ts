@@ -169,8 +169,80 @@ export interface Projection2D {
     approximate: boolean
   }>
   mount_holes: Array<{ x_px: number; y_px: number; d_px: number; source: string }>
+  /** 外壳（俯视图，px 已在 Python 算好）。null = 没声明外壳。 */
+  enclosure: Projection2DEnclosure | null
   estimated_parts: string[]
   warnings: string[]
+}
+
+/** 2D 俯视图里的外壳：px 由 Python 算，TS 不做换算。 */
+export interface Projection2DEnclosure {
+  outer: { x_px: number; y_px: number; w_px: number; h_px: number;
+           w_mm: number; h_mm: number }
+  inner: { x_px: number; y_px: number; w_px: number; h_px: number;
+           w_mm: number; h_mm: number }
+  /** **只含 top/bottom 面**的开口：侧面开口在俯视图里只是一条边。 */
+  openings: Array<{ x_px: number; y_px: number; w_px: number; h_px: number;
+                    face: string; kind: string }>
+  /** 侧面开口数（俯视图不画，只有计数）。 */
+  side_openings: number
+  wall_mm: number
+  lid_mm: number
+  inner_mm: { w: number; h: number; d: number }
+  outer_mm: { w: number; h: number; d: number }
+}
+
+/** 外壳投影（3D 用 mm；没有外壳时整段为 null）。 */
+export interface Enclosure {
+  inner_mm: { w: number; h: number; d: number }
+  wall_mm: number
+  lid_mm: number
+  floor_z_mm: number
+  board_thickness_mm: number
+  /** 外形尺寸（含壁厚/地板/板厚/盖）。**派生量**，不要在 TS 里重算。 */
+  outer_mm: { w: number; h: number; d: number }
+  /** 板原点在内腔里的位置（默认居中）。拼板时按拼板算。 */
+  board_offset_mm: { x: number; y: number }
+  panel_mm: { w: number; h: number }
+  openings: EnclosureOpening[]
+  /** 各面的 (水平, 垂直) 尺寸，供 2D 画侧面开口刻度用。 */
+  faces_mm: Record<string, [number, number]>
+}
+
+export interface EnclosureOpening {
+  /** top/bottom/front/back/left/right —— 轴向约定见 `design/shell.py`。 */
+  face: string
+  /** 开孔**中心**（top/bottom 用拼板坐标；侧面 y 从内腔底面向上）。 */
+  x_mm: number
+  y_mm: number
+  w_mm: number
+  h_mm: number
+  kind: string
+}
+
+/** 整机实体（电机/桨/机臂/电池）。**不是 PCB 元件**：没有焊盘、不进网表。 */
+export interface Scene3DBody {
+  ref: string
+  kind: string
+  label: string
+  parent: string
+  mount: string
+  transform: { x_mm: number; y_mm: number; z_mm: number; rz: number }
+  shape: {
+    type: string
+    w: number
+    h: number
+    d: number
+    diameter_mm: number
+    thickness_mm: number
+    blades: number
+    model: string
+  }
+  mass_g: number | null
+  source: string
+  evidence: string
+  /** 尺寸够不够画实体。**false = 只能画占位框**（不许按"看起来像"补尺寸）。 */
+  known: boolean
 }
 
 export interface Scene3DPart {
@@ -200,6 +272,8 @@ export interface Scene3DPart {
 }
 
 export interface Scene3D {
+  /** 载荷版本：2 = 有 `bodies[]` 与参数化外壳字段（只加字段）。 */
+  schema?: number
   units: 'mm'
   /** 拼板（多板时的总尺寸）。 */
   panel: {
@@ -245,7 +319,9 @@ export interface Scene3D {
     approximate: boolean
   }>
   mount_holes: Array<{ x_mm: number; y_mm: number; diameter_mm: number; source: string }>
-  enclosure: { inner_mm: { w: number; h: number; d: number }; wall_mm: number; openings: unknown[] } | null
+  /** 整机实体（v2）。**空数组 = 只有 PCB**，不是渲染失败。 */
+  bodies: Scene3DBody[]
+  enclosure: Enclosure | null
 }
 
 export interface Finding {

@@ -31,6 +31,7 @@ from hw_velxio.design.model import (
     Board,
     DesignError,
     DesignModel,
+    Enclosure,
     Part,
     Placement,
     Wire,
@@ -4185,6 +4186,139 @@ class TestPutAutoLock(unittest.TestCase):
         store = DesignStore("_test_putlock")
         ledger = discipline.ledger_from_json(store.read("deferred.json"))
         self.assertIn("mcu_family", ledger.locked_names())
+
+
+class TestBodiesAndEnclosure(unittest.TestCase):
+    """V1：整机实体表 + 参数化外壳。
+
+    这里只测**事实层与投影**。渲染与三态的完整验收在
+    `scripts/check_bodies.py`（含退化用例），两边不重复。
+    """
+
+    def test_body_roundtrip_and_source(self) -> None:
+        from hw_velxio.design import body
+
+        design = DesignModel(id="bodies")
+        body.install(design, {"ref": "M1", "kind": "motor", "shape": "cylinder",
+                              "diameter_mm": 27.7, "size_mm": {"d": 32.0},
+                              "mass_g": 31.5, "source": "datasheet",
+                              "evidence": "datasheet p.3"})
+        payload = design.to_dict()
+        self.assertEqual(payload["bodies_list"][0]["ref"], "M1")
+        # 空字段不落盘：零值不写进文件（旧工程往返不受影响）
+        self.assertNotIn("x_mm", payload["bodies_list"][0])
+        again = DesignModel.from_dict(payload).to_dict()
+        self.assertEqual(payload, again, "bodies 往返不稳定")
+
+    def test_missing_source_is_reported_not_silently_ok(self) -> None:
+        from hw_velxio.design import body
+
+        design = DesignModel(id="no-source")
+        body.install(design, {"ref": "M1", "kind": "motor", "shape": "cylinder"})
+        problems = design.validate()
+        self.assertTrue(any("没有 source" in p for p in problems), problems)
+        # 缺 source 时**照样能画占位框**，而不是抛异常把工程读崩
+        self.assertFalse(design.entity("M1").has_geometry)
+
+    def test_body_ref_cannot_collide_with_part(self) -> None:
+        from hw_velxio.design import body
+        from hw_velxio.design.model import DesignError
+
+        design = DesignModel(id="collide")
+        design.add_part(Part(ref="M1", kind="resistor"))
+        with self.assertRaises(DesignError):
+            body.install(design, {"ref": "M1", "kind": "motor",
+                                  "source": "estimated"})
+
+    def test_joint_may_end_on_a_body(self) -> None:
+        from hw_velxio.design import body, joints
+
+        design = DesignModel(id="joint-body")
+        design.add_part(Part(ref="R1", kind="resistor"))
+        body.install(design, {"ref": "M1", "kind": "motor", "shape": "cylinder",
+                              "diameter_mm": 27.7, "size_mm": {"d": 32.0},
+                              "source": "datasheet"})
+        design.joints_list = [{"a": "M1", "b": "R1", "kind": "axle",
+                               "params": {"diameter_mm": 5.0},
+                               "source": "declared"}]
+        report = joints.validate(design)
+        dangling = [f for f in report["findings"]
+                    if "悬空" in str(f.get("message") or "")]
+        self.assertEqual(dangling, [], "整机实体被当成悬空引用")
+
+        # 退化：删掉 bodies 之后同一条关节必须变红
+        design.bodies_list = []
+        report = joints.validate(design)
+        self.assertTrue(any("悬空" in str(f.get("message") or "")
+                            for f in report["findings"]),
+                        "闸门没生效：跨表引用是恒真的")
+
+    def test_enclosure_defaults_do_not_touch_the_file(self) -> None:
+        enclosure = Enclosure(inner_mm={"w": 10.0, "h": 10.0, "d": 5.0},
+                              wall_mm=2.0)
+        self.assertEqual(set(enclosure.to_dict()),
+                         {"inner_mm", "wall_mm", "openings"})
+        with_lid = Enclosure(inner_mm={"w": 10.0, "h": 10.0, "d": 5.0},
+                             wall_mm=2.0, lid_mm=2.0, floor_z_mm=4.0)
+        self.assertIn("lid_mm", with_lid.to_dict())
+        # 总高 = 壁 + 地板 + 板厚 + 可用高度 + 盖
+        outer = with_lid.outer_mm(1.6)
+        self.assertAlmostEqual(outer["d"], 2.0 + 4.0 + 1.6 + 5.0 + 2.0, places=4)
+
+    def test_shell_is_three_state(self) -> None:
+        from hw_velxio.design import shell
+
+        self.assertEqual(shell.evaluate(DesignModel(id="none"))["status"],
+                         "not_ready")
+        sealed = DesignModel(id="sealed")
+        sealed.enclosure = Enclosure(inner_mm={"w": 100, "h": 80, "d": 20},
+                                     wall_mm=2.0)
+        rows = {r["check"]: r for r in shell.evaluate(sealed)["rows"]}
+        self.assertEqual(rows["shell.openings"]["status"], "unknown")
+        self.assertEqual(rows["shell.lid"]["status"], "unknown")
+        # 高度只报数、不判：写成 pass 会把"量了个数"当成"核对过"
+        self.assertEqual(rows["shell.height"]["status"], "unknown")
+
+        out = DesignModel(id="out")
+        out.enclosure = Enclosure(inner_mm={"w": 100, "h": 80, "d": 20},
+                                  wall_mm=2.0,
+                                  openings=[{"face": "top", "x_mm": 98,
+                                             "y_mm": 10, "w_mm": 8, "h_mm": 4}])
+        self.assertEqual(shell.evaluate(out)["status"], "failed")
+        self.assertTrue(any("越界" in p for p in out.validate()))
+
+    def test_scene3d_and_2d_carry_bodies_and_shell(self) -> None:
+        from hw_velxio import design_cli
+        from hw_velxio.design import body
+
+        design = DesignModel(id="projection")
+        body.install(design, {"ref": "P1", "kind": "propeller", "shape": "disc",
+                              "diameter_mm": 129.54, "thickness_mm": 1.4,
+                              "blades": 3, "x_mm": 20, "y_mm": 20, "z_mm": 24,
+                              "source": "derived"})
+        design.enclosure = Enclosure(inner_mm={"w": 100, "h": 80, "d": 20},
+                                     wall_mm=2.0, lid_mm=2.0,
+                                     openings=[{"face": "top", "x_mm": 10,
+                                                "y_mm": 10, "w_mm": 8,
+                                                "h_mm": 4, "kind": "usb"}])
+
+        scene = design_cli.scene3d(design)
+        self.assertEqual(scene["schema"], 2)
+        self.assertEqual(len(scene["bodies"]), 1)
+        self.assertTrue(scene["bodies"][0]["known"])
+        self.assertIn("outer_mm", scene["enclosure"])
+
+        two = to_2d(design)
+        self.assertIsNotNone(two["enclosure"])
+        self.assertEqual(len(two["enclosure"]["openings"]), 1)
+        self.assertGreater(two["enclosure"]["outer"]["w_px"],
+                           two["enclosure"]["inner"]["w_px"])
+
+        # 没有外壳时是 None，不是空对象（空对象会让 2D 画出 0×0 的框）
+        bare = DesignModel(id="bare")
+        self.assertIsNone(design_cli.scene3d(bare)["enclosure"])
+        self.assertIsNone(to_2d(bare)["enclosure"])
+
 
 
 if __name__ == "__main__":

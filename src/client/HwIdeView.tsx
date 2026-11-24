@@ -598,7 +598,12 @@ export function HwIdeView(props: HwIdeViewProps): JSX.Element {
                   <div className="hwv-pane-head">
                     3D 装配 · 物理/机械权威
                     <span className="hwv-spacer" />
-                    <span className="hwv-dim">{snapshot.scene3d.parts.length} 实体</span>
+                    <span className="hwv-dim">
+                      {snapshot.scene3d.parts.length} 元件
+                      {(snapshot.scene3d.bodies ?? []).length > 0
+                        ? ` · ${(snapshot.scene3d.bodies ?? []).length} 整机`
+                        : ''}
+                    </span>
                   </div>
                   <Assembly3D
                     snapshot={snapshot}

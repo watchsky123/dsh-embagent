@@ -69,6 +69,26 @@ def source_at_least(source: str, floor: str) -> bool:
 MOUNTS = ("board", "panel", "air")
 ROTATIONS = (0, 90, 180, 270)
 
+#: 整机实体的类别。**这不是封装类别**：`motor` 是电机本体，不是驱动 IC。
+#: 新增一类要同时想清楚三件事：形状怎么画、质量怎么算、关节怎么连。
+BODY_KINDS = (
+    "motor", "propeller", "arm", "frame", "shell", "lid",
+    "battery", "gimbal", "sensor", "generic",
+)
+
+#: 形状白名单。**只做这四种 + 网格引用**：每一种都能被 3D 直接画出来；
+#: 画不出来的形状（异形/扫掠）先不收录，免得"有类型没几何"。
+BODY_SHAPES = ("box", "cylinder", "disc", "prism", "mesh")
+
+#: 外壳面的名字。**投影约定**（`shell.py` 与 2D/3D 共用同一套）：
+#:
+#:   `top` / `bottom` —— x 沿宽（w）、y 沿深（h）
+#:   `front` / `back` —— x 沿宽（w）、y 沿高（d）
+#:   `left` / `right` —— x 沿深（h）、y 沿高（d）
+#:
+#: 写反了不会报错，只会把孔开到另一面——所以这套约定只写在这里一处。
+ENCLOSURE_FACES = ("top", "bottom", "front", "back", "left", "right")
+
 Point2 = tuple[float, float]
 Point3 = tuple[float, float, float]
 
@@ -723,25 +743,66 @@ class Wire:
 
 @dataclass
 class Enclosure:
-    """外壳：内腔尺寸 + 壁厚 + 开口。开口只记语义，不做曲面建模。"""
+    """外壳：**参数化腔体**（内腔 + 壁厚 + 地板/盖 + 开口）。
+
+    ## 尺寸语义（写反了会让"限高"算错，所以逐条定死）
+
+    * `inner_mm.w/h` —— **内腔footprint**（长、宽）。
+    * `inner_mm.d`   —— 板顶以上的**可用高度**。`physical._declared_height_limit`
+      正是拿它当限高用，所以它的语义不能改。
+    * `floor_z_mm`   —— 内腔地板到**板底面**的高度（螺柱/台阶）。
+    * `lid_mm`       —— 盖厚（0 = 没有盖）。**限高不扣盖厚**：那是另一个判据
+      （`shell.height`），这里不偷改既有语义。
+
+    于是总高 = `wall + floor_z + board_thickness + inner.d + lid`。
+    `outer_mm()` 是**方法**而不是字段：板厚不属于外壳，必须由调用方给进来。
+
+    ## 开口
+
+    `openings[]` 每项 `{face, x_mm, y_mm, w_mm, h_mm, kind}`；`face` 取
+    `ENCLOSURE_FACES`，面上坐标的轴向见那里的注释。**位置只记语义，不做曲面**：
+    异形开孔（倒角、沉孔、网罩）表达不了，如实记 `kind="user"`。
+    """
 
     inner_mm: dict[str, float] = field(
         default_factory=lambda: {"w": 0.0, "h": 0.0, "d": 0.0})
     wall_mm: float = 2.0
+    #: 盖厚（0 = 没有盖）。**空值不写进文件**（旧工程往返不变）。
+    lid_mm: float = 0.0
+    #: 内腔地板到板底面的高度（螺柱高度）。
+    floor_z_mm: float = 0.0
     openings: list[dict[str, Any]] = field(default_factory=list)
 
-    def to_dict(self) -> dict[str, Any]:
+    def outer_mm(self, board_thickness_mm: float = 0.0) -> dict[str, float]:
+        """外形尺寸。**板厚由调用方给**：外壳不知道板有多厚。"""
+        inner = {k: float(self.inner_mm.get(k) or 0.0) for k in ("w", "h", "d")}
         return {
-            "inner_mm": {k: round(v, 4) for k, v in self.inner_mm.items()},
+            "w": round(inner["w"] + 2.0 * self.wall_mm, 4),
+            "h": round(inner["h"] + 2.0 * self.wall_mm, 4),
+            "d": round(self.wall_mm + self.floor_z_mm + board_thickness_mm
+                       + inner["d"] + self.lid_mm, 4),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "inner_mm": {k: round(float(v), 4) for k, v in self.inner_mm.items()},
             "wall_mm": self.wall_mm,
             "openings": [dict(o) for o in self.openings],
         }
+        # 只在非默认时写：旧工程读进来再写回去，文件逐字节不变。
+        if self.lid_mm != 0.0:
+            out["lid_mm"] = self.lid_mm
+        if self.floor_z_mm != 0.0:
+            out["floor_z_mm"] = self.floor_z_mm
+        return out
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "Enclosure":
         return Enclosure(
             inner_mm=dict(data.get("inner_mm") or {}),
-            wall_mm=data.get("wall_mm", 2.0),
+            wall_mm=float(data.get("wall_mm", 2.0) or 2.0),
+            lid_mm=float(data.get("lid_mm") or 0.0),
+            floor_z_mm=float(data.get("floor_z_mm") or 0.0),
             openings=[dict(o) for o in (data.get("openings") or [])],
         )
 
@@ -996,6 +1057,14 @@ class DesignModel:
     # 行为与 v2 完全一致（M1–M3 的 266 项测试必须全绿）。
     #: 机械关系表（`Joint`）。**空 = 没有机械域概念**。
     joints_list: list[dict[str, Any]] = field(default_factory=list)
+    #: 整机实体表（电机/桨/机臂/外壳…）。**空 = 只有 PCB**。
+    #:
+    #: 与 `parts` **分开存**，不是风格问题：`parts` 是 PCB 域的元件，
+    #: 会进网表校验、重叠检查、发射器件数与 parity 对账。电机塞进去会
+    #: 让这四件事同时变脏（`mount="air"` 的老口子只解决坐标，不解决语义）。
+    #: 理由与 `joints_list` 单列同源：**关系/整机不该污染电气判定**。
+    #: 形状与校验在 `design/body.py`。
+    bodies_list: list[dict[str, Any]] = field(default_factory=list)
     #: 开环时序（`Program`）。None = 没有动作序列。
     program: dict[str, Any] | None = None
     #: 仿真器参数（对应 RoboBuilder 的 `Params`）。
@@ -1094,6 +1163,19 @@ class DesignModel:
 
     def part(self, ref: str) -> Part | None:
         return next((p for p in self.parts if p.ref == ref), None)
+
+    def entity(self, ref: str):
+        """按 `ref` 找**实体**：`Part` 或 `Body`（两表同一命名空间）。
+
+        `joints_list` 的 a/b 可以指向任意一端：电机与桨的关系里，
+        电机不是 PCB 元件，却和电阻共用同一张关系表。所以判"引用是否存在"
+        必须跨两张表，否则"电机—桨"这条关系永远被判成悬空。
+        """
+        part = self.part(ref)
+        if part is not None:
+            return part
+        from .body import find as _find_body
+        return _find_body(self, ref)
 
     def require(self, ref: str) -> Part:
         part = self.part(ref)
@@ -1246,6 +1328,11 @@ class DesignModel:
                     problems.append(
                         f"元件 {text} 同时属于块 {claimed[text]} 和 {instance}")
                 claimed[text] = instance
+        # ---- V1：整机实体 / 外壳腔体的结构问题（引用、枚举、几何可表达性）
+        from . import body as _body
+        from . import shell as _shell
+        problems.extend(_body.problems(self))
+        problems.extend(_shell.structure_problems(self))
         problems.extend(self._validate_domains())
         return problems
 
@@ -1327,6 +1414,8 @@ class DesignModel:
         # ---- 多域（P15）：同样只在非空时写 ----
         if self.joints_list:
             out["joints_list"] = [dict(j) for j in self.joints_list]
+        if self.bodies_list:
+            out["bodies_list"] = [dict(b) for b in self.bodies_list]
         if self.program is not None:
             out["program"] = dict(self.program)
         if self.sim_params:
@@ -1370,6 +1459,7 @@ class DesignModel:
             # 旧文件没有这四个键 → 空/None，行为不变。
             joints_list=[dict(j) for j in (data.get("joints_list") or [])
                          if isinstance(j, dict)],
+            bodies_list=[dict(b) for b in (data.get("bodies_list") or [])],
             program=(dict(data["program"])
                      if isinstance(data.get("program"), dict) else None),
             sim_params=dict(data.get("sim_params") or {}),

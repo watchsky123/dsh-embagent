@@ -26,6 +26,9 @@ body[data-ds-dark-theme] .hwv-root {
   --hwv-m-trace: #e07b4a;
   --hwv-m-shell: #f59e0b;
   --hwv-m-edge: #9aa3af;
+  --hwv-m-body-metal: #b7bfca;
+  --hwv-m-body-prop: #6d7686;
+  --hwv-m-body-shell: #4a3a24;
   --hwv-m-grid3d-major: #43454a;
   --hwv-m-grid3d-minor: #2c2c2e;
   --hwv-m-fill-datasheet: #2f6fb5;
