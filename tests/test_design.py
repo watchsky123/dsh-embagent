@@ -4321,5 +4321,33 @@ class TestBodiesAndEnclosure(unittest.TestCase):
 
 
 
+class TestSchemaCompat(unittest.TestCase):
+    """改名后**老工程必须还能读**。
+
+    `design.json` 的 `schema` 是磁盘上的既有事实：用户工作区里 5 个工程
+    全是 `hw_velxio.design/1`。换个包名就让它们读不出来，是改名最典型的
+    副作用——而它的表现是 `DesignError`，不是"名字变了"。
+    """
+
+    def test_legacy_schema_reads_and_normalises(self) -> None:
+        from dsh_embagent.design.model import LEGACY_SCHEMAS, SCHEMA
+
+        self.assertTrue(LEGACY_SCHEMAS, "旧 schema 白名单不能是空表")
+        # 用**真的能读**的设计当底：空 dict 会先撞 `board.size_mm 必须为正`，
+        # 那条错和 schema 无关，拿它验 schema 只会验出别的 bug。
+        old = DesignModel(id="legacy").to_dict()
+        old["schema"] = LEGACY_SCHEMAS[0]
+        design = DesignModel.from_dict(old)
+        self.assertEqual(design.id, "legacy")
+        # 读进来按新 schema 写回：一次保存后旧字面量就消失了
+        self.assertEqual(design.to_dict()["schema"], SCHEMA)
+
+    def test_unknown_schema_still_rejected(self) -> None:
+        from dsh_embagent.design.model import DesignError
+
+        with self.assertRaises(DesignError):
+            DesignModel.from_dict({"schema": "someone-else.design/9"})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
