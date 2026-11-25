@@ -4190,7 +4190,7 @@ npm test                                     # 774 项
 
 ## 改名 — `hw_velxio` → `dsh-embagent`（2026-11-25）
 
-**性质：身份改名，不改判定逻辑。** 784 项测试、全部离线 check 在同一天跑过；
+**性质：身份改名，不改判定逻辑。** 776 项测试、全部离线 check 在同一天跑过；
 `design.json` 的**旧 schema 仍可读**（见下），判定口径零改动。
 
 **触发**：用户「目前插件名不够直观」→ 决策 `dsh-embagent`（合规小写）+ 显示名
@@ -4246,7 +4246,9 @@ npm test                                     # 774 项
 ### 验收（实测）
 
 ```
-npm test                                       774 OK（新模块名下）
+npm test                                       776 OK（新模块名下，含 2 项 schema 兼容）
+plugin_manager list_bundles                    出现 dsh-embagent（source=file:workspace/dsh_embagent，
+                                               row=embagent）；`meta.title` 要**重启后**才下发
 npm run check                                  通过（tsc build + client）
 python -m dsh_embagent.scripts.check_bodies    42/42
 python -m dsh_embagent.scripts.check_scene3d   通过
