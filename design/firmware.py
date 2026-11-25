@@ -1,4 +1,4 @@
-"""固件源码检查 —— **hw_velxio 自己的**：读代码，不生成代码。
+"""固件源码检查 —— **dsh_embagent 自己的**：读代码，不生成代码。
 
 取代 `hwforge.fwcheck`（1239 行）。
 
@@ -54,7 +54,7 @@ calls    = mentions - decls - defs
 函数看起来就没人调 —— 计数膨胀到 507，把唯一真实的结果埋了。
 所以还要判"从上一个语句边界到名字之间的前缀像不像类型表达式"。
 
-@module hw_velxio.design.firmware
+@module dsh_embagent.design.firmware
 """
 
 from __future__ import annotations
@@ -600,6 +600,6 @@ def run(root: str | Path, *, scope: Sequence[str] | None = None,
 
 
 def describe() -> dict[str, Any]:
-    return {"module": "hw_velxio.design.firmware",
+    return {"module": "dsh_embagent.design.firmware",
             "checks": list(ALL_CHECKS),
             "note": "文本/结构检查，只读，每条都写明看不见什么"}

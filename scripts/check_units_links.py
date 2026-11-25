@@ -2,7 +2,7 @@
 
 从仓库根运行：
 
-    python -m hw_velxio.scripts.check_units_links
+    python -m dsh_embagent.scripts.check_units_links
 
 ## 为什么一半夹具是合成的
 
@@ -34,10 +34,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hw_velxio.design import links, units                # noqa: E402
-from hw_velxio.design.model import (Board, DesignModel, Part,   # noqa: E402
+from dsh_embagent.design import links, units                # noqa: E402
+from dsh_embagent.design.model import (Board, DesignModel, Part,   # noqa: E402
                                     Placement)
-from hw_velxio.design.store import DesignStore, list_projects   # noqa: E402
+from dsh_embagent.design.store import DesignStore, list_projects   # noqa: E402
 
 MULTI = "示例-多板"
 

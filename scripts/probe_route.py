@@ -1,6 +1,6 @@
 """自动布线诊断 —— 为什么 `autoRouting` 返回 success:false / duration:0。
 
-    python -m hw_velxio.scripts.probe_route [--keep]
+    python -m dsh_embagent.scripts.probe_route [--keep]
 
 ## 为什么不复用 P17 的排除实验
 
@@ -33,8 +33,8 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import emit_lceda, lceda  # noqa: E402
-from hw_velxio.design.model import (Board, DesignModel, Part,  # noqa: E402
+from dsh_embagent.design import emit_lceda, lceda  # noqa: E402
+from dsh_embagent.design.model import (Board, DesignModel, Part,  # noqa: E402
                                     Placement)
 
 PROBE_NAME = "hwv-route-probe"

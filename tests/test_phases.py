@@ -31,7 +31,7 @@ import unittest
 from pathlib import Path
 from typing import Any, Callable
 
-from hw_velxio.design import (
+from dsh_embagent.design import (
     agent_loop,
     agent_tools,
     capability,
@@ -57,11 +57,11 @@ from hw_velxio.design import (
     router,
     lceda_channel,
 )
-from hw_velxio.design.fwgen import drivers as fw_drivers
-from hw_velxio.design.fwgen import mcus as fw_mcus
-from hw_velxio.design.fwgen import pinmap as fw_pinmap
-from hw_velxio.design.fwgen import scaffold as fw_scaffold
-from hw_velxio.design.model import (Board, DesignError, DesignModel, Joint, Part,
+from dsh_embagent.design.fwgen import drivers as fw_drivers
+from dsh_embagent.design.fwgen import mcus as fw_mcus
+from dsh_embagent.design.fwgen import pinmap as fw_pinmap
+from dsh_embagent.design.fwgen import scaffold as fw_scaffold
+from dsh_embagent.design.model import (Board, DesignError, DesignModel, Joint, Part,
                                     Placement, Program)
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "designs"
@@ -347,7 +347,7 @@ def _joint_kind_roundtrip(self: unittest.TestCase, kind: str) -> None:
     self.assertEqual(again.key, joint.key, "无向关系的 key 必须与顺序无关")
 
 
-from hw_velxio.design.model import JOINT_KINDS as _JOINT_KINDS  # noqa: E402
+from dsh_embagent.design.model import JOINT_KINDS as _JOINT_KINDS  # noqa: E402
 
 add_cases(TestModelJoints, [(f"kind:{k}", k) for k in _JOINT_KINDS],
           _joint_kind_roundtrip)
@@ -421,7 +421,7 @@ class TestModelBehaviour(unittest.TestCase):
 
 class TestJointsModule(unittest.TestCase):
     def test_inferable_set(self) -> None:
-        from hw_velxio.design.model import JOINT_INFERABLE
+        from dsh_embagent.design.model import JOINT_INFERABLE
         self.assertEqual(JOINT_INFERABLE, frozenset({"stack", "port", "contact"}))
 
     def test_validate_flags_missing_params(self) -> None:
@@ -577,7 +577,7 @@ class TestLadder(unittest.TestCase):
         self.assertEqual(result.levels[-1].status, "not_run")
 
     def test_v7_without_mujoco_is_not_run(self) -> None:
-        from hw_velxio.design import mujoco_backend
+        from dsh_embagent.design import mujoco_backend
         saved = mujoco_backend.available
         try:
             mujoco_backend.available = lambda: (False, "stub: 没有 MuJoCo")
@@ -653,7 +653,7 @@ class TestEmitLcedaPure(unittest.TestCase):
 
     def test_emit_without_lceda_is_not_ready(self) -> None:
         import os
-        from hw_velxio.design import lceda
+        from dsh_embagent.design import lceda
         old = os.environ.get(lceda.EXE_ENV)
         os.environ[lceda.EXE_ENV] = "C:/no-such-lceda.exe"
         try:
@@ -1308,7 +1308,7 @@ class TestSensitivity(unittest.TestCase):
 
 
 def _synth_pins() -> dict:
-    from hw_velxio.design.fwgen import pinmap as pm
+    from dsh_embagent.design.fwgen import pinmap as pm
     return {
         "PA1": pm.IocPin(pin="PA1", port="A", bit=1, mode="Input",
                          signal="GPIO_Input", label="BTN"),
@@ -1389,7 +1389,7 @@ GOOD_REQ = {
 class TestReqDraft(unittest.TestCase):
     def test_fields_match_requirement(self) -> None:
         # 比对而不是抄：Requirement 加字段时这条必须红
-        from hw_velxio.design import generate
+        from dsh_embagent.design import generate
         self.assertEqual(list(req_draft.ReqDraft.__dataclass_fields__),
                          list(generate.Requirement.__dataclass_fields__))
 
@@ -1442,7 +1442,7 @@ class TestReqDraft(unittest.TestCase):
                       [p["kind"] for p in report["problems"]])
 
     def test_known_roles_come_from_roles_py(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
         self.assertEqual(req_draft._known_roles(),
                          sorted({t.role for t in roles.ROLE_TEMPLATES}))
 
@@ -1471,7 +1471,7 @@ class TestReqDraftZeroStart(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _store(self):
-        from hw_velxio.design.store import DesignStore
+        from dsh_embagent.design.store import DesignStore
         return DesignStore("fresh")
 
     def test_draft_goes_to_workspace_when_project_missing(self) -> None:
@@ -1607,7 +1607,7 @@ class TestFwgenBehaviour(unittest.TestCase):
 
 class TestGenerateMaterialize(unittest.TestCase):
     def test_materialize_produces_parts(self) -> None:
-        from hw_velxio.design import generate
+        from dsh_embagent.design import generate
         req_path = Path(__file__).resolve().parents[1] / "examples" / "req_car.yaml"
         req = generate.load_requirement(req_path)
         report = generate.generate(req, max_candidates=1, run_ladder=False)
@@ -1616,7 +1616,7 @@ class TestGenerateMaterialize(unittest.TestCase):
         self.assertGreaterEqual(len(design.board_list()), 1)
 
     def test_materialized_design_validates(self) -> None:
-        from hw_velxio.design import generate
+        from dsh_embagent.design import generate
         req_path = Path(__file__).resolve().parents[1] / "examples" / "req_car.yaml"
         req = generate.load_requirement(req_path)
         report = generate.generate(req, max_candidates=1, run_ladder=False)
@@ -1795,7 +1795,7 @@ class TestPcbLayout(unittest.TestCase):
     """布局规则（P30 布局）。离线。"""
 
     def _design(self, *, close: bool, connector_inside: bool) -> Any:
-        from hw_velxio.design.model import Board, DesignModel, Part, Placement
+        from dsh_embagent.design.model import Board, DesignModel, Part, Placement
 
         d = DesignModel(title="layout")
         d.board = Board(kind="generic", name="b",
@@ -1851,7 +1851,7 @@ class TestPcbLayout(unittest.TestCase):
         self.assertTrue(any(f.code == "unknown_size" for f in report.findings))
 
     def test_empty_design_is_not_ready(self) -> None:
-        from hw_velxio.design.model import Board, DesignModel
+        from dsh_embagent.design.model import Board, DesignModel
 
         d = DesignModel(title="empty")
         d.board = Board(kind="generic", name="b", size_mm={"w": 10, "h": 10})

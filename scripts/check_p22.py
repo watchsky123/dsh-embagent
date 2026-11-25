@@ -1,6 +1,6 @@
 """P22 验收：agent 循环（白名单 / 审批 / 假模型端到端 / 中断续跑）。
 
-    python -m hw_velxio.scripts.check_p22
+    python -m dsh_embagent.scripts.check_p22
 
 五条对应 `docs/execution-plan-v3.md` §P22，第 5 条是**退化验证**。
 
@@ -29,8 +29,8 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import agent_loop, agent_tools  # noqa: E402
-from hw_velxio.scripts.fake_model import ScriptedClient, call, done  # noqa: E402
+from dsh_embagent.design import agent_loop, agent_tools  # noqa: E402
+from dsh_embagent.scripts.fake_model import ScriptedClient, call, done  # noqa: E402
 
 PASS = "pass"
 FAIL = "fail"
@@ -38,7 +38,7 @@ SKIP = "not_ready"
 
 _RESULTS: list[dict[str, Any]] = []
 REPO = Path(__file__).resolve().parents[2]
-REQ_CAR = REPO / "hw_velxio" / "examples" / "req_car.yaml"
+REQ_CAR = REPO / "dsh_embagent" / "examples" / "req_car.yaml"
 
 
 def check(name: str, ok: bool, detail: str = "", *, status: str = "") -> bool:

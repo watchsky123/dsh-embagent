@@ -459,7 +459,7 @@ class _Net:
 
     @staticmethod
     def _headers() -> dict[str, str]:
-        return {"User-Agent": "hw_velxio/parts-catalog (+https://example.invalid)",
+        return {"User-Agent": "dsh_embagent/parts-catalog (+https://example.invalid)",
                 "Accept": "application/json"}
 
     def get_json(self, url: str) -> tuple[dict[str, Any] | None, str]:
@@ -657,7 +657,7 @@ def to_design_fields(part: dict[str, Any]) -> dict[str, Any]:
 def describe() -> dict[str, Any]:
     """自省：端点、缓存、信任级。"""
     return {
-        "module": "hw_velxio.design.parts_catalog",
+        "module": "dsh_embagent.design.parts_catalog",
         "endpoints": {
             "detail": "cart.jlcpcb.com/…/getComponentDetail",
             "search": "jlcpcb.com/api/…/selectSmtComponentList",

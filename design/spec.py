@@ -245,7 +245,7 @@ def load_latest(project_dir: Path) -> dict[str, Any] | None:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.spec",
+        "module": "dsh_embagent.design.spec",
         "dir": str(DIR),
         "blocks": sorted(BLOCKS),
         "produces": ["spec/vN.json", "spec.md", "spec/index.json"],

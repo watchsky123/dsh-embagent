@@ -5,7 +5,7 @@
  * （文案）、`PANELS`（分组入口），加一个面板就漏一处、对不齐。
  * 现在只有这张表；`store.ts` 从它派生，`HwIdeView` 只读派生结果。
  *
- * @module dsh-hw-velxio/client/features
+ * @module dsh-embagent/client/features
  */
 
 /** 底部面板的**分组**（3 个），不是平级的 8 个页签。 */

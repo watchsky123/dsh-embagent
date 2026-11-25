@@ -162,7 +162,7 @@ def net_count(protocol: str) -> int:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.bus",
+        "module": "dsh_embagent.design.bus",
         "buses": {key: [role for _, role in cfg["roles"]] for key, cfg in BUSES.items()},
         "pin_source": "AF 表（afmap）：脚的功能名必须等于 组_角色",
         "cross": {key: cfg.get("cross") for key, cfg in BUSES.items() if cfg.get("cross")},

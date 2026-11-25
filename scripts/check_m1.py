@@ -2,7 +2,7 @@
 
 从仓库根运行：
 
-    python -m hw_velxio.scripts.check_m1
+    python -m dsh_embagent.scripts.check_m1
 
 ## 这个脚本存在的理由
 
@@ -42,11 +42,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hw_velxio.design import (claims, electrical, handoff,    # noqa: E402
+from dsh_embagent.design import (claims, electrical, handoff,    # noqa: E402
                               justify, ladder)
-from hw_velxio.design.model import (Board, DesignModel, Part,  # noqa: E402
+from dsh_embagent.design.model import (Board, DesignModel, Part,  # noqa: E402
                                     Placement)
-from hw_velxio.design.store import DesignStore, list_projects  # noqa: E402
+from dsh_embagent.design.store import DesignStore, list_projects  # noqa: E402
 
 #: 用哪个工程做"在真实脏数据上不崩"的验证。
 REAL_PROJECT = "示例-单板"
@@ -296,7 +296,7 @@ def check_p3(f: Failures) -> None:
 def check_p4(f: Failures) -> None:
     print("\n== P4 交接层 ==")
 
-    from hw_velxio.scripts.check_handoff import FakeStore, _design as fix_design, \
+    from dsh_embagent.scripts.check_handoff import FakeStore, _design as fix_design, \
         _ladder as fix_ladder
 
     # 有产物：五类结构齐全

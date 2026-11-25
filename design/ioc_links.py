@@ -442,7 +442,7 @@ def extract(root: str | Path) -> dict[str, Any]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.ioc_links",
+        "module": "dsh_embagent.design.ioc_links",
         "input": ".ioc（STM32CubeMX 工程文件）",
         "tiers": {
             "1": "显式 links.yaml 规则 → source=declared（可参与硬检查）",

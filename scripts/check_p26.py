@@ -1,6 +1,6 @@
 """P26/P27 验收 —— 几何回读、连通性判定、自研布线器（**全部离线**）。
 
-    python -m hw_velxio.scripts.check_p26
+    python -m dsh_embagent.scripts.check_p26
 
 这一层的价值全在「不依赖 DRC 也能判连通」，所以验收也**不需要立创在线**：
 `pcb_geo.parse` 吃的是 JS 返回的 JSON，`router.plan` 吃的是几何对象，两者都是
@@ -24,7 +24,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import lceda_channel, pcb_geo, pcb_layout, router  # noqa: E402
+from dsh_embagent.design import lceda_channel, pcb_geo, pcb_layout, router  # noqa: E402
 
 _failures: list[str] = []
 _checks = 0
@@ -279,7 +279,7 @@ def part_router() -> None:
 
 
 def _layout_design(*, close: bool, connector_inside: bool) -> Any:
-    from hw_velxio.design.model import Board, DesignModel, Part, Placement
+    from dsh_embagent.design.model import Board, DesignModel, Part, Placement
 
     d = DesignModel(title="layout")
     d.board = Board(kind="generic", name="b",
@@ -330,7 +330,7 @@ def part_layout() -> None:
     check("4d. autoplace 之后 → ok（重排真的守规则，不是把违规挪个位置）",
           after.status == "ok", f"blockers={[f.code for f in after.blockers]}")
 
-    from hw_velxio.design.model import Board, DesignModel
+    from dsh_embagent.design.model import Board, DesignModel
 
     empty = DesignModel(title="empty")
     empty.board = Board(kind="generic", name="b", size_mm={"w": 10, "h": 10})

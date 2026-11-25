@@ -133,7 +133,7 @@ def create(project_dir: Path, *, session: lceda.LcedaSession | None = None,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.lceda_panel",
+        "module": "dsh_embagent.design.lceda_panel",
         "file": FILE,
         "can": ["createPanel", "modifyPanelName", "getPanelInfo",
                 "getAllPanelsInfo", "copyPanel", "deletePanel"],

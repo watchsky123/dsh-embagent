@@ -344,7 +344,7 @@ def report(design: DesignModel) -> dict[str, Any]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.mech_check",
+        "module": "dsh_embagent.design.mech_check",
         "checks": ["interference", "center_of_gravity", "servo_torque",
                    "joint_range"],
         "tolerances": {"touch_eps_mm": TOUCH_EPS_MM,

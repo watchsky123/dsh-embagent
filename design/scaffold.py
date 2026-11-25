@@ -352,7 +352,7 @@ def open_items_markdown(project_id: str, report: dict[str, Any]) -> str:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.scaffold",
+        "module": "dsh_embagent.design.scaffold",
         "routes": list(ROUTES),
         "stages": ["requirement", "design", "pinmap", "joints", "firmware",
                    "mechanical"],

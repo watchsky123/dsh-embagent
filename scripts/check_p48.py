@@ -1,6 +1,6 @@
 """P48 验收 —— 三步闭环修复：网表不再丢、空输入不再绿、第二意见生效。
 
-    python -m hw_velxio.scripts.check_p48
+    python -m dsh_embagent.scripts.check_p48
 
 ## 这一段修的是什么（都是真实验收逼出来的）
 
@@ -24,9 +24,9 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio import design_cli  # noqa: E402
-from hw_velxio.design import generate, handoff, ladder, physical  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent import design_cli  # noqa: E402
+from dsh_embagent.design import generate, handoff, ladder, physical  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     Board, DesignModel, Part, Placement,
 )
 
@@ -214,7 +214,7 @@ def part_command_status() -> None:
 
 
 def part_parity_guard() -> None:
-    from hw_velxio.design.emit_lceda import parity_from_netlists
+    from dsh_embagent.design.emit_lceda import parity_from_netlists
 
     d = DesignModel(id="p48-parity", board=_board())
     d.add_part(_part("U1", ["1", "2"], 5.0, 5.0))
@@ -250,7 +250,7 @@ def part_degeneration() -> None:
         res = original(design, **kw)
         res.findings = [f for f in res.findings
                         if f.get("check") != "symbol.empty_netlist"]
-        from hw_velxio.design.ladder import _finish  # noqa: PLC0415
+        from dsh_embagent.design.ladder import _finish  # noqa: PLC0415
         res.status = "pass" if not res.findings else res.status
         return res
 

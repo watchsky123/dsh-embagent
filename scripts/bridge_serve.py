@@ -1,6 +1,6 @@
 """把 easyeda-api 的 Bridge Server 用**计划任务**拉起来（不要用 bash 后台任务）。
 
-    python -m hw_velxio.scripts.bridge_serve [start|stop|status]
+    python -m dsh_embagent.scripts.bridge_serve [start|stop|status]
 
 ## 为什么不用 `node ... &` / `run_in_background`
 

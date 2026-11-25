@@ -4,7 +4,7 @@
  * 每个面板只做两件事：**如实显示已有结论**，以及**给一个可执行动作**。
  * 没有数据的格子写"未验证"，不写"通过"——这两者在硬件上不是一回事。
  *
- * @module dsh-hw-velxio/client/panels
+ * @module dsh-embagent/client/panels
  */
 
 import { useState } from 'react'

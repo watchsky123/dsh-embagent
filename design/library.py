@@ -1,4 +1,4 @@
-"""元件模板库 —— **hw_velxio 自己的**，不再依赖 `hwforge.assembly_parts`。
+"""元件模板库 —— **dsh_embagent 自己的**，不再依赖 `hwforge.assembly_parts`。
 
 ## 为什么要迁
 
@@ -10,9 +10,9 @@ from hwforge.assembly_parts import TEMPLATES   # 外部依赖
 
 这带来两个问题：
 
-1. **hw_velxio 跑不起来** —— 没有 hwforge checkout 时，需求→装配整条链路
+1. **dsh_embagent 跑不起来** —— 没有 hwforge checkout 时，需求→装配整条链路
    全部 `not_ready`；
-2. **两种事实源** —— 模板的尺寸与引脚在 hwforge 里，装配规则在 hw_velxio
+2. **两种事实源** —— 模板的尺寸与引脚在 hwforge 里，装配规则在 dsh_embagent
    里，改一边不知道另一边。
 
 本模块把 16 个模板的**尺寸 + 引脚 + 引脚位置**搬进来。数据是从 hwforge
@@ -39,7 +39,7 @@ hwforge 的模板是**工厂函数**（`make_gimbal_servo(...)` 几十个参数�
 尺寸、引脚名、引脚位置、角色。那些 "假设/未验证" 文本归
 `provenance` 管，不在模板里。
 
-@module hw_velxio.design.library
+@module dsh_embagent.design.library
 """
 
 from __future__ import annotations

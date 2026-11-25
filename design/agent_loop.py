@@ -457,7 +457,7 @@ def compare(events_a: list[dict[str, Any]],
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.agent_loop",
+        "module": "dsh_embagent.design.agent_loop",
         "max_steps": MAX_STEPS,
         "journal": "JSONL，只 append；resume 只读它，compare 只比它",
         "approval": "read/judge 放行；write 看模式；human 任何模式都问；无回调=拒绝",

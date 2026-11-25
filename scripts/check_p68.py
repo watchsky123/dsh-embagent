@@ -1,6 +1,6 @@
 """P68 验收 —— 块引脚用符号名 + 预检查引脚是否存在。
 
-    python -m hw_velxio.scripts.check_p68
+    python -m dsh_embagent.scripts.check_p68
 
 ## 背景（实测）
 
@@ -27,9 +27,9 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import blocks as blocks_module  # noqa: E402
-from hw_velxio.design import emit_preflight  # noqa: E402
-from hw_velxio.design.model import Board, DesignModel, Part, Placement  # noqa: E402
+from dsh_embagent.design import blocks as blocks_module  # noqa: E402
+from dsh_embagent.design import emit_preflight  # noqa: E402
+from dsh_embagent.design.model import Board, DesignModel, Part, Placement  # noqa: E402
 
 _failures: list[str] = []
 _checks = 0

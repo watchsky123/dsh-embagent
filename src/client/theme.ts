@@ -10,7 +10,7 @@
  * 一套），这里只做读取与回退：拿不到宿主样式表时用深色兜底集，行为与旧版
  * 硬编码一致，插件在裸环境里也不至于不可读。
  *
- * @module dsh-hw-velxio/client/theme
+ * @module dsh-embagent/client/theme
  */
 
 import { useEffect, useState } from 'react'

@@ -1,6 +1,6 @@
 """P42 验收 —— 关节提案（`joints-propose`）。
 
-    python -m hw_velxio.scripts.check_p42
+    python -m dsh_embagent.scripts.check_p42
 
 ## 这一段补的是什么
 
@@ -32,14 +32,14 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio import design_cli  # noqa: E402
-from hw_velxio.design import joint_propose as propose_module  # noqa: E402
-from hw_velxio.design import joints as joints_module  # noqa: E402
-from hw_velxio.design import mjcf as mjcf_module  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent import design_cli  # noqa: E402
+from dsh_embagent.design import joint_propose as propose_module  # noqa: E402
+from dsh_embagent.design import joints as joints_module  # noqa: E402
+from dsh_embagent.design import mjcf as mjcf_module  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     Board, DesignModel, Part, Placement,
 )
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PROJECT = "p42-fixture"
 

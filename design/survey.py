@@ -18,7 +18,7 @@ AI 拿着三天前的初审去适配今天的工作区，是必然会发生的�
 目录树 + 各工程 design.json 的 mtime/size。工具可以据此说一句
 "初审已过期（工作区有 N 个文件变化）"，而不是默默地用旧结论。
 
-@module hw_velxio.design.survey
+@module dsh_embagent.design.survey
 """
 
 from __future__ import annotations

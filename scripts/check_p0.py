@@ -1,6 +1,6 @@
 """P0 验收：结论层（一屏结论）。
 
-    python -m hw_velxio.scripts.check_p0
+    python -m dsh_embagent.scripts.check_p0
 
 P0 只做一件事：**让"这版行不行、下一步做什么"出现在首屏**。
 所以这 11 条只验三件事——数据对不对、排序对不对、过期了说不说。
@@ -32,8 +32,8 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import handoff, verdict  # noqa: E402
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design import handoff, verdict  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PASS = "pass"
 FAIL = "fail"
@@ -41,7 +41,7 @@ SKIP = "not_ready"
 
 _RESULTS: list[dict[str, Any]] = []
 REPO = Path(__file__).resolve().parents[2]
-FIXTURES = REPO / "hw_velxio" / "tests" / "fixtures" / "designs"
+FIXTURES = REPO / "dsh_embagent" / "tests" / "fixtures" / "designs"
 
 
 def check(name: str, ok: bool, detail: str = "", *, status: str = "") -> bool:
@@ -218,7 +218,7 @@ def check_stale(tmp: Path) -> None:
 
 
 def check_contract() -> None:
-    code, out = _run([sys.executable, "-m", "hw_velxio.design_cli", "snapshot",
+    code, out = _run([sys.executable, "-m", "dsh_embagent.design_cli", "snapshot",
                       "001-blink"])
     try:
         payload = json.loads(out.strip().splitlines()[-1])
@@ -231,7 +231,7 @@ def check_contract() -> None:
 
     # 前端契约：**读注册表**而不是猜。P70 起分区表在 `features.ts`
     # （store 只派生 + 重导出），所以断言跟着唯一事实源走。
-    features = (REPO / "hw_velxio" / "src" / "client" / "features.ts").read_text(
+    features = (REPO / "dsh_embagent" / "src" / "client" / "features.ts").read_text(
         encoding="utf-8")
     rows = re.findall(
         r"id: '(\w+)', label: '([^']+)', panel: '(\w+)', order: (\d+)", features)
@@ -243,9 +243,9 @@ def check_contract() -> None:
           health_ok and label_ok and default_ok,
           f"首位={health_ok} 标签={label_ok} 默认={default_ok}")
 
-    panel_src = (REPO / "hw_velxio" / "src" / "client" / "panels.tsx").read_text(
+    panel_src = (REPO / "dsh_embagent" / "src" / "client" / "panels.tsx").read_text(
         encoding="utf-8")
-    view_src = (REPO / "hw_velxio" / "src" / "client" / "HwIdeView.tsx").read_text(
+    view_src = (REPO / "dsh_embagent" / "src" / "client" / "HwIdeView.tsx").read_text(
         encoding="utf-8")
     has_case = "case 'verdict':" in view_src
     has_panel = "export function VerdictPanel" in panel_src

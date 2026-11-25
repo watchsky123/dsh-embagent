@@ -189,7 +189,7 @@ def assemble(req: Any, *, board_size: tuple[float, float] = (60.0, 40.0),
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.assemble_blocks",
+        "module": "dsh_embagent.design.assemble_blocks",
         "role_blocks": {role: [block for _, block in rows]
                         for role, rows in ROLE_BLOCKS.items()},
         "interface_blocks": {proto: [block for _, block in rows]

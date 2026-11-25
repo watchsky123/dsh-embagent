@@ -1,6 +1,6 @@
 """P70 验收 —— 前端 P0/P1/P2（注册表 / 样式 / 板级汇总 / 发射时间线）。
 
-    python -m hw_velxio.scripts.check_p70
+    python -m dsh_embagent.scripts.check_p70
 
 ## 判据
 
@@ -24,7 +24,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import emit_lceda  # noqa: E402
+from dsh_embagent.design import emit_lceda  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CLIENT = ROOT / "src" / "client"
@@ -90,7 +90,7 @@ def part_p1() -> None:
 
 
 def _design():
-    from hw_velxio.design.model import Board, DesignModel, Part, Placement  # noqa: PLC0415
+    from dsh_embagent.design.model import Board, DesignModel, Part, Placement  # noqa: PLC0415
     board = Board(kind="custom", id="PCB#main", size_mm={"w": 40, "h": 30},
                   outline=[(0.0, 0.0), (40.0, 0.0), (40.0, 30.0), (0.0, 30.0)])
     design = DesignModel(id="p70", board=board, boards=[board])

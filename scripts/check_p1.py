@@ -1,6 +1,6 @@
 """P1 验收：finding 可操作化。
 
-    python -m hw_velxio.scripts.check_p1
+    python -m dsh_embagent.scripts.check_p1
 
 P1 只做一件事：**每条能动手的 finding，带一个能点的动作**。
 
@@ -35,8 +35,8 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import handoff, nextstep, verdict  # noqa: E402
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design import handoff, nextstep, verdict  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PASS = "pass"
 FAIL = "fail"
@@ -44,7 +44,7 @@ SKIP = "not_ready"
 
 _RESULTS: list[dict[str, Any]] = []
 REPO = Path(__file__).resolve().parents[2]
-PKG = REPO / "hw_velxio"
+PKG = REPO / "dsh_embagent"
 
 
 def check(name: str, ok: bool, detail: str = "", *, status: str = "") -> bool:
@@ -193,7 +193,7 @@ def check_pipeline() -> None:
 
     # 4c 在 001-blink 的快照 finding 上验：那个工程**真的**有一个估算尺寸的件
     # （btn1）。示例-多板 没有估算件，拿它验这条等于验空气。
-    code_b, out_b = _run([sys.executable, "-m", "hw_velxio.design_cli", "snapshot",
+    code_b, out_b = _run([sys.executable, "-m", "dsh_embagent.design_cli", "snapshot",
                           "001-blink"])
     try:
         snap_b = json.loads(out_b.strip().splitlines()[-1])
@@ -217,7 +217,7 @@ def check_verdict_and_snapshot() -> None:
           f"{len(with_step)}/{len(rows)} 条带 step")
 
     # 快照：失败的 finding 才有 next，通过的没有
-    code, out = _run([sys.executable, "-m", "hw_velxio.design_cli", "snapshot",
+    code, out = _run([sys.executable, "-m", "dsh_embagent.design_cli", "snapshot",
                       "001-blink"])
     try:
         snapshot = json.loads(out.strip().splitlines()[-1])

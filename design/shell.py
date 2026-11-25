@@ -278,7 +278,7 @@ def payload(design: Any) -> dict[str, Any] | None:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.shell",
+        "module": "dsh_embagent.design.shell",
         "faces": list(ENCLOSURE_FACES),
         "default_clearance_mm": DEFAULT_CLEARANCE_MM,
         "coords": ("top/bottom 用拼板坐标；侧面 x 沿面水平、y 从内腔底面向上；"

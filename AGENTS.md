@@ -256,7 +256,7 @@ _AUTO_NET_RE = re.compile(r"^\$|^[wW]\d+$")
 
 ### 3.8 Python imports 的两种错误
 
-* `ModuleNotFoundError: No module named 'hw_velxio'` → 不在仓库根跑。
+* `ModuleNotFoundError: No module named 'dsh_embagent'` → 不在仓库根跑。
   `sys.path.insert(0, str(REPO_ROOT))`，`REPO_ROOT` 从 `__file__` 推。
 * `TypeError: 'X' object is not subscriptable` → 判定器返回的是 dataclass，
   要 `.to_dict()`，不是 dict。
@@ -423,7 +423,7 @@ COMMANDS = {
 }
 ```
 
-原命令**被顶掉**，`python -m hw_velxio.design_cli firmware` 变成跑矩阵。
+原命令**被顶掉**，`python -m dsh_embagent.design_cli firmware` 变成跑矩阵。
 不 warning、不 TypeError、测试也未必红（除非恰好有一条断言原命令的行为）。
 
 这和 §3.13（字段没人读）、§3.16（参数没人读）是同一形状的**静默替换**，
@@ -1138,10 +1138,10 @@ return {"status": "ok", **result}   # ← result 里没有 status，写死的活
 ### 4.2 验收脚本要能一条命令跑
 
 ```
-python -m hw_velxio.scripts.check_m1            # M1 硬验收
-python -m hw_velxio.scripts.check_units_links   # P5
-python -m hw_velxio.scripts.check_generate      # P6
-python -m hw_velxio.scripts.check_m3            # M3
+python -m dsh_embagent.scripts.check_m1            # M1 硬验收
+python -m dsh_embagent.scripts.check_units_links   # P5
+python -m dsh_embagent.scripts.check_generate      # P6
+python -m dsh_embagent.scripts.check_m3            # M3
 npm test                       # 756 项单测（test_design + test_phases）
 ```
 

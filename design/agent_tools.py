@@ -473,7 +473,7 @@ TOOLS_BY_NAME.update({spec.name: spec for spec in TOOLS})
 def describe() -> dict[str, Any]:
     table = ToolTable()
     return {
-        "module": "hw_velxio.design.agent_tools",
+        "module": "dsh_embagent.design.agent_tools",
         "tools": {tier: table.by_tier(tier) for tier in TIERS},
         "count": len(table.specs),
         "modes": ["read-only", "ask", "auto"],

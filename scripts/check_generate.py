@@ -2,7 +2,7 @@
 
 从仓库根运行：
 
-    python -m hw_velxio.scripts.check_generate
+    python -m dsh_embagent.scripts.check_generate
 
 ## 这个脚本守的三件事
 
@@ -31,7 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hw_velxio.design import capability, generate     # noqa: E402
+from dsh_embagent.design import capability, generate     # noqa: E402
 
 
 class Failures:

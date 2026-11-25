@@ -1,4 +1,4 @@
-# hw_velxio 架构升级执行方案
+# dsh_embagent 架构升级执行方案
 
 > **P9 之后的执行方案见 `execution-plan-v3.md`（P15–P23，41 天）。**
 > 本文只覆盖已交付的 P0–P8 与它们的实现偏差（§1.2–§1.4、§18）。
@@ -73,10 +73,10 @@ M1 结束时你能得到：每个元件为什么在、删掉它会怎样、哪�
 一条命令验各阶段硬验收：
 
 ```bash
-python -m hw_velxio.scripts.check_m1      # 或 npm run verify
-python -m hw_velxio.scripts.check_units_links   # M2 P5
-python -m hw_velxio.scripts.check_generate      # M2 P6
-python -m hw_velxio.scripts.check_m3            # M3 P7+P8
+python -m dsh_embagent.scripts.check_m1      # 或 npm run verify
+python -m dsh_embagent.scripts.check_units_links   # M2 P5
+python -m dsh_embagent.scripts.check_generate      # M2 P6
+python -m dsh_embagent.scripts.check_m3            # M3 P7+P8
 ```
 
 ### 1.1 三个里程碑
@@ -253,8 +253,8 @@ P5 交付 `units.py` + `links.py`，P6 交付 `capability.py` + `generate.py`。
 验收入口：
 
 ```bash
-python -m hw_velxio.scripts.check_units_links    # 或 npm run verify:units
-python -m hw_velxio.scripts.check_generate       # 或 npm run verify:generate
+python -m dsh_embagent.scripts.check_units_links    # 或 npm run verify:units
+python -m dsh_embagent.scripts.check_generate       # 或 npm run verify:generate
 ```
 
 计划 §12.3 的两条判据都过了：
@@ -401,7 +401,7 @@ P5 的两个产物如果不进交接单，就只是两个没人看的 JSON。
 P7 交付 `renode.py`，P8 交付 `ioc_links.py`。验收入口：
 
 ```bash
-python -m hw_velxio.scripts.check_m3      # 或 npm run verify:m3
+python -m dsh_embagent.scripts.check_m3      # 或 npm run verify:m3
 ```
 
 #### 偏差一：ARM 工具链根本不是前置（计划写错了）
@@ -634,7 +634,7 @@ class Unit:
 ### 3.1 问题（已实测复现）
 
 ```python
-from hw_velxio.design.electrical import rail_under_load
+from dsh_embagent.design.electrical import rail_under_load
 r = rail_under_load('5V', 5.0, 0.0, 90.0, 4.8, rated_a=2.0)
 # r.ok == True, r.v_at_load == 5.0, r.note == ''     ← 空过
 ```
@@ -698,16 +698,16 @@ if load_a <= 0.0:
 
 ```bash
 # 1. 单测（215 个必须仍通过；如有断言 electrical.ok==True 需按新语义修正）
-python -m unittest hw_velxio.tests.test_design
+python -m unittest dsh_embagent.tests.test_design
 
 # 2. 空工程
-HWV_WORKSPACE=<空工程> python -m hw_velxio.design_cli snapshot <id> \
+HWV_WORKSPACE=<空工程> python -m dsh_embagent.design_cli snapshot <id> \
   | python -c "import json,sys; d=json.load(sys.stdin); e=d['electrical']; \
     print('ok=', e['ok'], 'not_verified=', e['not_verified'])"
 # 期望：ok=False 且 not_verified 含"没有任何元件申报负载电流"
 
 # 3. 真实工程（应从 true 变 false）
-python -m hw_velxio.design_cli snapshot 示例-单板 | python -c "import json,sys; \
+python -m dsh_embagent.design_cli snapshot 示例-单板 | python -c "import json,sys; \
   print(json.load(sys.stdin)['electrical']['ok'])"
 # 期望：False
 ```
@@ -852,7 +852,7 @@ def check_abs_max(design) -> LevelResult:
 ### 4.5 CLI 与工具
 
 ```bash
-python -m hw_velxio.design_cli ladder <id> [--levels V0,V1,V2] [--no-truncate] [--pitch 0.5]
+python -m dsh_embagent.design_cli ladder <id> [--levels V0,V1,V2] [--no-truncate] [--pitch 0.5]
 ```
 
 ```typescript
@@ -980,9 +980,9 @@ ARTIFACTS = (..., "claims.json")
 ```
 
 ```bash
-python -m hw_velxio.design_cli claims <id>              # 生成 + 求值
-python -m hw_velxio.design_cli claims <id> --evaluate   # 只求值
-python -m hw_velxio.design_cli assert <id> --remove R12 # ★ 删除即失败验证
+python -m dsh_embagent.design_cli claims <id>              # 生成 + 求值
+python -m dsh_embagent.design_cli claims <id> --evaluate   # 只求值
+python -m dsh_embagent.design_cli assert <id> --remove R12 # ★ 删除即失败验证
 ```
 
 `--remove` 的实现（**不真删**，在内存副本上剔除再求值）：
@@ -1386,7 +1386,7 @@ hw_generate --requirement req.yaml --max-candidates 20
 |---|---|
 | Renode 平台映射已就绪 | `hwforge/blocks/renode_sim.py` 的 `KNOWN_PLATFORMS`（H743/F103/F4 全在） |
 | 运行器已实现 | `hwforge/downstream.py:260` `run_renode(script, timeout_s)` |
-| `hw_velxio` 只探测不调用 | `design/toolchain.py:98` `probe_renode()`，无调用方 |
+| `dsh_embagent` 只探测不调用 | `design/toolchain.py:98` `probe_renode()`，无调用方 |
 | Renode 在本机 | `C:/Users/<user>/Desktop/renode-master/renode`（bash 启动脚本） |
 | **缺 ARM 工具链** | `which arm-none-eabi-gcc` → 无 |
 | **缺 ELF** | 工作区 0 个 `.elf`（只有 9 个 `.bin`/`.hex`） |
@@ -1721,17 +1721,17 @@ P8 抽出来了，但按纪律不落地。确认后 `links.validate` 才会真�
 
 ```bash
 # 看待确认清单（按可信度排序，tier=2 在前）
-python -m hw_velxio.design_cli ioc-links --root "C:\Users\<user>\Desktop\示例工作区"
+python -m dsh_embagent.design_cli ioc-links --root "C:\Users\<user>\Desktop\示例工作区"
 
 # 确认哪些可信后落地
-python -m hw_velxio.design_cli ioc-links --root "..." \
+python -m dsh_embagent.design_cli ioc-links --root "..." \
   --promote <id1,id2,...> --apply 示例-多板
 ```
 
 **（2）8 块板的 MCU 型号**
 
 ```bash
-python -m hw_velxio.design_cli renode 示例-多板 \
+python -m dsh_embagent.design_cli renode 示例-多板 \
   --ioc-root "C:\Users\<user>\Desktop\示例工作区" \
   --board-mcu '{"PCB#a22effc90c196540":"STM32H743IIT6", ...}' --write
 ```
@@ -1762,14 +1762,14 @@ python -m hw_velxio.design_cli renode 示例-多板 \
 ```bash
 cd <repo-root>
 
-python -m unittest hw_velxio.tests.test_design   # 266 项单测
-python -m hw_velxio.scripts.check_m1             # M1 四条硬验收
-python -m hw_velxio.scripts.check_units_links    # P5
-python -m hw_velxio.scripts.check_generate       # P6
-python -m hw_velxio.scripts.check_m3             # P7 + P8
-python -m hw_velxio.scripts.check_ladder         # 阶梯（含 warning 判据）
-python -m hw_velxio.scripts.check_justify        # 归因
-python -m hw_velxio.scripts.check_handoff        # 交接
+python -m unittest dsh_embagent.tests.test_design   # 266 项单测
+python -m dsh_embagent.scripts.check_m1             # M1 四条硬验收
+python -m dsh_embagent.scripts.check_units_links    # P5
+python -m dsh_embagent.scripts.check_generate       # P6
+python -m dsh_embagent.scripts.check_m3             # P7 + P8
+python -m dsh_embagent.scripts.check_ladder         # 阶梯（含 warning 判据）
+python -m dsh_embagent.scripts.check_justify        # 归因
+python -m dsh_embagent.scripts.check_handoff        # 交接
 ```
 
 或 `npm run verify` / `verify:m2` / `verify:m3`。

@@ -2,7 +2,7 @@
 
 从仓库根运行：
 
-    python -m hw_velxio.scripts.check_ladder
+    python -m dsh_embagent.scripts.check_ladder
 
 ## 为什么这几条断言值得写
 
@@ -30,8 +30,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hw_velxio.design import ladder                            # noqa: E402
-from hw_velxio.design.model import (Board, DesignModel, Part,  # noqa: E402
+from dsh_embagent.design import ladder                            # noqa: E402
+from dsh_embagent.design.model import (Board, DesignModel, Part,  # noqa: E402
                                     Placement)
 
 
@@ -146,7 +146,7 @@ def check_warning_is_not_failure(f: "Failures") -> None:
 
     warning 的语义是"结论有保留"，对应 `unknown`；不是"结论是否定"。
     """
-    from hw_velxio.design.ladder import LevelResult, _finish
+    from dsh_embagent.design.ladder import LevelResult, _finish
 
     # 只有 warning
     only_warning = LevelResult("V2")

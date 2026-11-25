@@ -33,7 +33,7 @@
 不画"星形"（所有引脚连到中心）是因为那会画出 N−1 条以上重叠的线，
 且总长度更大。
 
-@module hw_velxio.design.ratlines
+@module dsh_embagent.design.ratlines
 """
 
 from __future__ import annotations

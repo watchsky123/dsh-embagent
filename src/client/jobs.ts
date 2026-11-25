@@ -8,7 +8,7 @@
  *
  * 没有 SSE、没有重试：`running` 由调用方 begin/end，粒度是整次发射。
  *
- * @module dsh-hw-velxio/client/jobs
+ * @module dsh-embagent/client/jobs
  */
 
 import { useSyncExternalStore } from 'react'

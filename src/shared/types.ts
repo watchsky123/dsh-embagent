@@ -3,9 +3,9 @@
  *
  * 这个文件不 import 任何 node 模块，客户端 `import type` 它是安全的：类型在
  * 转译后完全消失，不会把 `node:fs` 带进浏览器 bundle。字段名与 Python
- * ``hw_velxio.design`` 的 JSON 输出一一对应——改一侧必须改另一侧。
+ * ``dsh_embagent.design`` 的 JSON 输出一一对应——改一侧必须改另一侧。
  *
- * @module dsh-hw-velxio/shared
+ * @module dsh-embagent/shared
  */
 
 export type BackendStatus = 'ok' | 'not_ready' | 'failed'

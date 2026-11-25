@@ -1,6 +1,6 @@
 """P59 验收 —— 立创侧扩产：制造包（fab）/ 原理图 DRC（sch）/ 拼板容器（panel）。
 
-    python -m hw_velxio.scripts.check_p59
+    python -m dsh_embagent.scripts.check_p59
 
 ## 这一段补什么
 
@@ -31,10 +31,10 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import lceda  # noqa: E402
-from hw_velxio.design import lceda_fab as fab_module  # noqa: E402
-from hw_velxio.design import lceda_panel as panel_module  # noqa: E402
-from hw_velxio.design import lceda_sch as sch_module  # noqa: E402
+from dsh_embagent.design import lceda  # noqa: E402
+from dsh_embagent.design import lceda_fab as fab_module  # noqa: E402
+from dsh_embagent.design import lceda_panel as panel_module  # noqa: E402
+from dsh_embagent.design import lceda_sch as sch_module  # noqa: E402
 
 REAL_PROJECT = Path(r"C:\Users\<user>\Desktop\示例复现区\复刻-示例")
 

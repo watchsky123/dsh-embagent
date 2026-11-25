@@ -379,7 +379,7 @@ def apply(design: Any, geom: dict[str, Any]) -> dict[str, Any]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.lceda_geom",
+        "module": "dsh_embagent.design.lceda_geom",
         "file": FILE,
         "needs": "lceda-pro（桌面客户端）+ 会话（headless 即可）",
         "api": ("LIB_Device.getByLcscIds → LIB_Footprint.getGeometry"

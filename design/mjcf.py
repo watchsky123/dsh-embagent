@@ -418,7 +418,7 @@ def build(design: DesignModel, params: ParamSet | None = None, *,
 
     dt = float(params.get("dt", 5e-4))
     out.header = (
-        '<mujoco model="hw_velxio">\n'
+        '<mujoco model="dsh_embagent">\n'
         '  <compiler angle="radian" autolimits="true" '
         'inertiafromgeom="auto"/>\n'
         # MuJoCo 默认 arena 16MB。实测 316 元件的多板工程会报
@@ -743,7 +743,7 @@ def load_check(*, xml: str = "", path: str | Path | None = None) -> dict[str, An
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.mjcf",
+        "module": "dsh_embagent.design.mjcf",
         "mapping": dict(JOINT_MAPPING),
         "required_params": {k: list(v) for k, v in _REQUIRED_PARAMS.items()},
         # **形状也要说清**：`required_params` 只给键名。`range_deg` 是"一个数"

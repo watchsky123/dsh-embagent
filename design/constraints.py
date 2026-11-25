@@ -251,7 +251,7 @@ def evaluate(design: Any, payload: dict[str, Any], *, spec: dict[str, Any] | Non
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.constraints",
+        "module": "dsh_embagent.design.constraints",
         "file": FILE,
         "kinds": ["decoupling", "i2c.pullup", "can.termination", "budget",
                   "interface", "net"],

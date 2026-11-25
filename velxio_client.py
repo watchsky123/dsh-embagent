@@ -6,12 +6,12 @@
 
 后端地址解析优先级：
 
-1. ``HW_VELXIO_VELXIO_URL`` 环境变量（最高，便于从外部指向任意实例）。
+1. ``DSH_EMBAGENT_VELXIO_URL`` 环境变量（最高，便于从外部指向任意实例）。
 2. ``~/.dsh/hw_velxio.json`` → ``{"velxio_url": "http://127.0.0.1:3080"}``。
 3. 默认 ``http://127.0.0.1:3080``（Velxio Docker 的默认映射端口）。
 
 Velxio 的 OSS 后端是**匿名、无鉴权**的（``backend/app/main.py`` 里没有鉴权路由），
-所以这里不需要 token。私有部署若加了鉴权，可经 ``HW_VELXIO_VELXIO_TOKEN`` 带
+所以这里不需要 token。私有部署若加了鉴权，可经 ``DSH_EMBAGENT_VELXIO_TOKEN`` 带
 ``Authorization`` 头——但桥接层不会因此假装已认证。
 """
 
@@ -45,7 +45,7 @@ def load_config() -> dict[str, Any]:
 
 def velxio_url() -> str:
     """解析 Velxio 后端基址，去掉尾部斜杠。"""
-    env = os.environ.get("HW_VELXIO_VELXIO_URL", "").strip()
+    env = os.environ.get("DSH_EMBAGENT_VELXIO_URL", "").strip()
     if env:
         return env.rstrip("/")
     cfg = load_config().get("velxio_url")
@@ -55,7 +55,7 @@ def velxio_url() -> str:
 
 
 def velxio_token() -> str | None:
-    t = os.environ.get("HW_VELXIO_VELXIO_TOKEN", "").strip()
+    t = os.environ.get("DSH_EMBAGENT_VELXIO_TOKEN", "").strip()
     return t or None
 
 

@@ -739,7 +739,7 @@ def report(design: DesignModel) -> dict[str, Any]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.joints",
+        "module": "dsh_embagent.design.joints",
         "basis": "机械关系表（`Joint`），与 `nets`/`links` 并列",
         "kinds": list(JOINT_INFERABLE) + ["（其余必须显式声明）"],
         "inferable": sorted(JOINT_INFERABLE),

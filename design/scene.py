@@ -31,7 +31,7 @@
 但会影响任何"看走线长度"的解读。所以 `meta.route_note` 里写明这一点，
 且 `wires.estimated=True` —— 不让下游把中心距当走线长度。
 
-@module hw_velxio.design.scene
+@module dsh_embagent.design.scene
 """
 
 from __future__ import annotations
@@ -256,7 +256,7 @@ def to_scene(design: DesignModel, *, pitch_mm: float = DEFAULT_PITCH_MM,
             "unsourced_parts": estimated,
             "cables_unrouted": [],
             # 下游可据此知道这是"工作台导出的场景"，不是 hwforge 装配出来的。
-            "origin": "hw_velxio.design.json",
+            "origin": "dsh_embagent.design.json",
             "design_id": design.id,
         },
     }

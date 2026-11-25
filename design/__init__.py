@@ -1,4 +1,4 @@
-"""``hw_velxio.design`` —— 一份 mm 规范模型（v3 方案 §2.2）。
+"""``dsh_embagent.design`` —— 一份 mm 规范模型（v3 方案 §2.2）。
 
 2D 与 3D 都是它的投影，不各自维护数据：
 

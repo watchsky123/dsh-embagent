@@ -116,7 +116,7 @@ def for_design(design: Any, *, attrs_by_ref: dict[str, dict[str, Any]] | None = 
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.dims",
+        "module": "dsh_embagent.design.dims",
         "trusted_sources": list(TRUSTED_SIZE_SOURCES),
         "categories": ["datasheet", "measured", "catalog", "estimated",
                        "derived", "proposed", "unknown"],

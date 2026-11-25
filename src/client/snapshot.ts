@@ -6,7 +6,7 @@
  * 成视图节点。工具调用只通过 `hint()`（自增序号）触发一次刷新，这是最便宜
  * 的通知方式，也不会让"视图状态"和"模型状态"变成两份。
  *
- * @module dsh-hw-velxio/client/snapshot
+ * @module dsh-embagent/client/snapshot
  */
 
 import type { HwConversationViewBuilder } from './contract.js'

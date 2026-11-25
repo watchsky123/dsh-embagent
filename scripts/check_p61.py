@@ -1,6 +1,6 @@
 """P61 验收 —— A3 块库（块 = 网表片段 + 参数 + 验证记录）。
 
-    python -m hw_velxio.scripts.check_p61
+    python -m dsh_embagent.scripts.check_p61
 
 ## 这一段补什么
 
@@ -32,10 +32,10 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import blocks as blocks_module  # noqa: E402
-from hw_velxio.design import ladder  # noqa: E402
-from hw_velxio.design.model import Board, DesignModel  # noqa: E402
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design import blocks as blocks_module  # noqa: E402
+from dsh_embagent.design import ladder  # noqa: E402
+from dsh_embagent.design.model import Board, DesignModel  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 _failures: list[str] = []
 _checks = 0
@@ -168,7 +168,7 @@ def part_cli() -> None:
     old = os.environ.get("HWV_WORKSPACE")
     os.environ["HWV_WORKSPACE"] = str(sandbox)
     try:
-        from hw_velxio import design_cli  # noqa: PLC0415
+        from dsh_embagent import design_cli  # noqa: PLC0415
         store = DesignStore("p61-cli")
         store.delete()
         store.save(_design("p61-cli"))

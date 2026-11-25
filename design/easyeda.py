@@ -19,7 +19,7 @@
 上一版解析器按 `|` 切分并靠"有没有 type"过滤，把 `||` 的第二段当成独立
 记录，因此坐标与网表全部丢失。这一版按规范重写。
 
-@module hw_velxio.design.easyeda
+@module dsh_embagent.design.easyeda
 """
 
 from __future__ import annotations

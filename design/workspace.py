@@ -1,6 +1,6 @@
 """工作区根：**工程不再住在本插件目录里**。
 
-为什么必须改：工程原先写死在 ``hw_velxio/project/``——那是插件安装目录，
+为什么必须改：工程原先写死在 ``dsh_embagent/project/``——那是插件安装目录，
 既不该承载用户数据（升级/重装会覆盖、npm 打包会连带），也没法让用户
 "选一个文件夹当工作区"。
 
@@ -60,7 +60,7 @@ def save_config(patch: dict) -> dict:
 
 def default_workspace() -> Path:
     home = os.environ.get("USERPROFILE") or os.environ.get("HOME") or str(Path.home())
-    return Path(home) / ".dsh" / "hw_velxio" / "workspace"
+    return Path(home) / ".dsh" / "dsh_embagent" / "workspace"
 
 
 def workspace_root() -> Path:
@@ -85,7 +85,7 @@ def set_workspace(path: str) -> dict:
 
 
 def plugin_root() -> Path:
-    """``hw_velxio/`` 源码目录本身（只读用途：示例、脚本）。**不写用户数据**。"""
+    """``dsh_embagent/`` 源码目录本身（只读用途：示例、脚本）。**不写用户数据**。"""
     return Path(__file__).resolve().parent.parent
 
 

@@ -1,6 +1,6 @@
 """P66 验收 —— 连接器贴边 / 块内 LCSC / 6 个新角色块。
 
-    python -m hw_velxio.scripts.check_p66
+    python -m dsh_embagent.scripts.check_p66
 
 ## 三件事
 
@@ -27,12 +27,12 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import assemble_blocks as assemble_module  # noqa: E402
-from hw_velxio.design import blocks as blocks_module  # noqa: E402
-from hw_velxio.design import generate  # noqa: E402
-from hw_velxio.design import lceda  # noqa: E402
-from hw_velxio.design import ladder  # noqa: E402
-from hw_velxio.design import physical  # noqa: E402
+from dsh_embagent.design import assemble_blocks as assemble_module  # noqa: E402
+from dsh_embagent.design import blocks as blocks_module  # noqa: E402
+from dsh_embagent.design import generate  # noqa: E402
+from dsh_embagent.design import lceda  # noqa: E402
+from dsh_embagent.design import ladder  # noqa: E402
+from dsh_embagent.design import physical  # noqa: E402
 
 _failures: list[str] = []
 _checks = 0

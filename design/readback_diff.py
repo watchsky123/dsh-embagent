@@ -142,7 +142,7 @@ def apply(design: Any, payload: dict[str, Any]) -> dict[str, Any]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.readback_diff",
+        "module": "dsh_embagent.design.readback_diff",
         "file": FILE,
         "kinds": ["pin_moved", "eda_only", "design_only", "net_added",
                   "net_removed", "part_added", "part_missing"],

@@ -32,7 +32,11 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Iterable
 
-SCHEMA = "hw_velxio.design/1"
+SCHEMA = "dsh_embagent.design/1"
+#: 改包名（2026-11-25）之前的 schema 字面量。**必须继续接收**：
+#: 用户磁盘上已有的 design.json 就是这样写的（示例-单板 / 示例-无人机…），
+#: 换个包名不该让老工程读不出来。读到旧值时按新值规范化后写回。
+LEGACY_SCHEMAS = ("hw_velxio.design/1",)
 UNITS = "mm"
 
 #: 网络类（B2）。**单一事实源**：`bus.BUSES` 的 class、`constraints.py` 的判据、
@@ -1429,8 +1433,10 @@ class DesignModel:
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "DesignModel":
         schema = str(data.get("schema") or "")
-        if schema and schema != SCHEMA:
-            raise DesignError(f"不认识的 schema：{schema!r}（期望 {SCHEMA}）")
+        if schema and schema != SCHEMA and schema not in LEGACY_SCHEMAS:
+            raise DesignError(
+                f"不认识的 schema：{schema!r}"
+                f"（期望 {SCHEMA}；旧包名 {LEGACY_SCHEMAS} 仍可读）")
         if data.get("units") not in (None, UNITS):
             raise DesignError(f"单位必须是 mm，收到 {data.get('units')!r}")
         return DesignModel(

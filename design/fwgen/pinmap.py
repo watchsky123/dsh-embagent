@@ -47,8 +47,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-from hw_velxio.design.fwgen.mcus import MCUS, Mcu, find_mcu
-from hw_velxio.design.fwgen.netlist import Netlist, NetlistError
+from dsh_embagent.design.fwgen.mcus import MCUS, Mcu, find_mcu
+from dsh_embagent.design.fwgen.netlist import Netlist, NetlistError
 
 _POWER = re.compile(
     r"^(\+?\d+V\d*|\+?\d+\.\d+V|VCC\w*|VDD\w*|VBUS\w*|VIN|VBAT|GND\w*|AGND|VSS\w*)$", re.I
@@ -340,7 +340,7 @@ def parse_pins(path: str | Path) -> dict[str, IocPin]:
     只做**重组**，不重新解析文本：那个解析器已经处理了 mode/signal/label 三种行，
     再写一份迟早分叉（AGENTS §2.5）。
     """
-    from hw_velxio.design import ioc_links  # 延迟导入：避免 fwgen 依赖整个 design 包
+    from dsh_embagent.design import ioc_links  # 延迟导入：避免 fwgen 依赖整个 design 包
 
     parsed = ioc_links.parse_ioc(path)
     modes = parsed.get("modes") or {}
@@ -374,7 +374,7 @@ def from_ioc(path: str | Path, *, ref: str = "U1",
     返回 ``(pm, info)``；``info`` 里有 mcu 型号、板名、配置了几个脚、
     以及哪些脚因为表里没有这个 MCU 而只是"记录"未参与能力校验。
     """
-    from hw_velxio.design import ioc_links
+    from dsh_embagent.design import ioc_links
 
     parsed = ioc_links.parse_ioc(path)
     mcu_text = str(parsed.get("mcu") or "")
@@ -649,7 +649,7 @@ def crosscheck(pins: dict[str, IocPin] | PinMap, uses: list[dict[str, Any]],
 
 # ---- headers -------------------------------------------------------------------------
 
-_HEADER_NOTE = "由 hw_velxio 从 {src} 生成。不要手改；改硬件后重新生成。"
+_HEADER_NOTE = "由 dsh_embagent 从 {src} 生成。不要手改；改硬件后重新生成。"
 
 
 def _entries(pm: PinMap) -> list[tuple[str, str, PinAssignment]]:

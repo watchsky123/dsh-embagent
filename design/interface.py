@@ -821,7 +821,7 @@ def render(payload: dict[str, Any]) -> str:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.interface",
+        "module": "dsh_embagent.design.interface",
         "file": FILE,
         "hard_checks": ["iface.pin_missing", "iface.pin_dangling",
                         "ioc.mcu_mismatch（族/封装不同 = 给错 .ioc）",

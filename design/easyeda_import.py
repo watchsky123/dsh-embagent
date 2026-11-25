@@ -17,7 +17,7 @@
 `estimated` 而**不编造数值**。`space.overlap` 这类检查会因为没有尺寸而
 无法真正判定——`checks.json` 的 `vacuous`/`not_verified` 会如实标出。
 
-@module hw_velxio.design.easyeda_import
+@module dsh_embagent.design.easyeda_import
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-# Bundle layer contributed by dsh-hw-velxio.
+# Bundle layer contributed by dsh-embagent.
 #
 # Shape is the Loader's patch syntax, verified against
 # `@deepseek-ai/dsh-agent-preset/skills/cordis-plugin-development/references/host-plugin.md`
@@ -12,5 +12,5 @@
 # (it lands in `skippedBundles`), which looks exactly like "the plugin did
 # nothing".
 - insert:
-    - id: hw-velxio
-      name: dsh-hw-velxio
+    - id: embagent
+      name: dsh-embagent

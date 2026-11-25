@@ -1,6 +1,6 @@
 """P49 验收 —— `plan`：需求 → 能力（判据）→ 模块（真实坐标）→ 3D 图 → 任务树。
 
-    python -m hw_velxio.scripts.check_p49
+    python -m dsh_embagent.scripts.check_p49
 
 ## 判据
 
@@ -25,11 +25,11 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import plan as plan_module  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent.design import plan as plan_module  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     Board, DesignModel, Part, Placement,
 )
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PROJECT = "p49-fixture"
 

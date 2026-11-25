@@ -237,7 +237,7 @@ def _level_text(levels: list[dict[str, Any]]) -> str:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.verdict",
+        "module": "dsh_embagent.design.verdict",
         "max_next": MAX_NEXT,
         "level_order": list(LEVEL_ORDER),
         "category_rank": dict(CATEGORY_RANK),

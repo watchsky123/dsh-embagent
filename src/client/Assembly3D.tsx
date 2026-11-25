@@ -8,7 +8,7 @@
  * 坐标：场景在**模型坐标**（X 东 / Y 北 / Z 上）里搭建，再把根节点绕 X 转
  * −90°，于是模型 Z 变成 three 的 Y（上）。所有几何都用 mm，不缩放。
  *
- * @module dsh-hw-velxio/client/Assembly3D
+ * @module dsh-embagent/client/Assembly3D
  */
 
 import { useEffect, useRef } from 'react'

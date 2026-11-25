@@ -150,7 +150,7 @@ def compute(store: Any, design: Any) -> dict[str, Any]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.maturity",
+        "module": "dsh_embagent.design.maturity",
         "file": FILE,
         "dimensions": list(_DIMENSIONS),
         "level": "pass 的维度数（0–6）；没有 req/spec → not_ready",

@@ -35,7 +35,7 @@
 V6 不是"以后再做"，是**如实报没接**。没接的东西说成待办，比说成通过好；
 但说成"计划中"仍然是拖，不如直接 `not_run`。
 
-@module hw_velxio.design.ladder
+@module dsh_embagent.design.ladder
 """
 
 from __future__ import annotations
@@ -960,7 +960,7 @@ def run_ladder(design: DesignModel, *, levels: list[str] | None = None,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.ladder",
+        "module": "dsh_embagent.design.ladder",
         "levels": [
             {"level": lv, "title": LEVEL_TITLE[lv],
              "hard": lv in HARD_LEVELS,

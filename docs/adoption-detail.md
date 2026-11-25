@@ -5,7 +5,7 @@
 > 代码骨架、验收命令与退化验证。按本文件可以直接开工。
 >
 > 事实来源：`workspace\vendor\traceforge` v1.0.1 源码精读 +
-> `hw_velxio` 当前代码（行号为 2026-11-18 实测）。
+> `dsh_embagent` 当前代码（行号为 2026-11-18 实测）。
 > 与两份旧文档冲突时以本文为准——
 > **但架构分层（判定/生成/库/导出四层）以 `adoption-architecture.md` 为准**，
 > 本文的 §5（布线不写 KiCad 文件）已被它取代：走 P11，导出层独占文件写入。
@@ -17,7 +17,7 @@
 ### 0.1 依赖政策
 
 Traceforge 作为**只读参考源码**放在 `workspace\vendor\traceforge`，
-**不 pip install、不进 hw_velxio 的依赖树**。搬运方式是
+**不 pip install、不进 dsh_embagent 的依赖树**。搬运方式是
 "读它的源码 → 抄算法/结构 → 写进我们的模块"，带 `# ported from
 traceforge <file>:<lines>` 注释。理由：它的依赖树（anthropic/httpx/
 pydantic v2/typer）与我们不同源，直接依赖会把两套版本管理搅在一起。
@@ -149,8 +149,8 @@ EasyEDA 工程交给 Traceforge 侧工具**（如它未来的布线）或存档�
 ### 1.5 CLI / 工具
 
 ```
-python -m hw_velxio.design_cli interop-import <interop.json> <工程名>
-python -m hw_velxio.design_cli interop-export <工程名> [--out x.json]
+python -m dsh_embagent.design_cli interop-import <interop.json> <工程名>
+python -m dsh_embagent.design_cli interop-export <工程名> [--out x.json]
 ```
 
 工具 `hw_interop`：参数 `{file?, project?, direction}`，
@@ -271,7 +271,7 @@ SOIC-8/14/16, TSSOP, QFN, LQFP-32…100, SOP-8, TO-252, SMA/SMB)`，
    ▼
 design/pinmap.py ──► 生成 pins.h
    │   #pragma once
-   │   /* 由 hw_velxio 从 F401-Front.ioc 生成 —— 不要手改 */
+   │   /* 由 dsh_embagent 从 F401-Front.ioc 生成 —— 不要手改 */
    │   #define HWV_PIN_TRIG      GPIO_PIN_8   /* PA8  VL53-PWR-EN */
    │   #define HWV_PIN_USART2_TX GPIO_PIN_2   /* PA2  USART2_TX  */
    ▼
@@ -368,7 +368,7 @@ def check_stack_align(design, built) -> list[dict]:
 
 ### 5.1 移植范围（精确到文件与行数）
 
-| 源（traceforge） | 行数 | 去向（hw_velxio） | 改造 |
+| 源（traceforge） | 行数 | 去向（dsh_embagent） | 改造 |
 |---|---|---|---|
 | `kicad/route.py` 330–2440（`_Router` 类） | ~2100 | `design/router.py` | 数据源从 KiCad 板换成 DesignModel；输出从 Node 树换成 `Wire/Pad` |
 | `kicad/routegeom.py`（精确形状+空间索引） | 全部 | 同上合并 | 原样（纯几何，无 KiCad 依赖） |

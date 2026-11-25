@@ -36,7 +36,7 @@ pad（`build_from_spec` 里做的），所以这里**减掉 pad**，让元件的
 3. **来源写进 `meta`。** `assembly.sources` / `unverified` 原样带过来，
    面板上能看出这是 hwforge 装的、哪些件没有可信来源。
 
-@module hw_velxio.design.scene_import
+@module dsh_embagent.design.scene_import
 """
 
 from __future__ import annotations

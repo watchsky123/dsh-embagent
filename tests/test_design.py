@@ -1,8 +1,8 @@
-"""``hw_velxio.design`` 的自测（标准库 unittest，无第三方依赖）。
+"""``dsh_embagent.design`` 的自测（标准库 unittest，无第三方依赖）。
 
 从仓库根运行：
 
-    python -m unittest hw_velxio.tests.test_design -v
+    python -m unittest dsh_embagent.tests.test_design -v
 
 覆盖：模型校验/旋转、mm↔px 往返、KiCad/Wokwi 导入、物理检查、预算、
 交付闸门、轨迹哈希链、制造包。测试**不写** ``project/`` 以外的目录，
@@ -18,16 +18,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hw_velxio.design import budgets, crosscheck, discipline, fabrication, physical
-from hw_velxio.design.boards import board_preset, preset_info
-from hw_velxio.design.importers import (
+from dsh_embagent.design import budgets, crosscheck, discipline, fabrication, physical
+from dsh_embagent.design.boards import board_preset, preset_info
+from dsh_embagent.design.importers import (
     apply_bom,
     import_bom,
     import_kicad_pcb,
     parse_sexpr,
     wokwi_to_legacy,
 )
-from hw_velxio.design.model import (
+from dsh_embagent.design.model import (
     Board,
     DesignError,
     DesignModel,
@@ -36,8 +36,8 @@ from hw_velxio.design.model import (
     Placement,
     Wire,
 )
-from hw_velxio.design.projection import from_legacy_canvas, to_2d
-from hw_velxio.design.store import DesignStore
+from dsh_embagent.design.projection import from_legacy_canvas, to_2d
+from dsh_embagent.design.store import DesignStore
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 TEMP_PROJECTS: list[str] = []
@@ -323,7 +323,7 @@ class TestFabrication(unittest.TestCase):
 
 class TestEndToEnd(unittest.TestCase):
     def test_new_import_snapshot_export(self) -> None:
-        from hw_velxio import design_cli
+        from dsh_embagent import design_cli
 
         store = make_project("_test_e2e")
         payload = design_cli.cmd_new(["_test_e2e", "arduino-uno", "E2E"])
@@ -371,7 +371,7 @@ class TestScene3DPayload(unittest.TestCase):
     """
 
     def test_size_mm_is_unrotated_while_bbox_is_rotated(self) -> None:
-        from hw_velxio import design_cli
+        from dsh_embagent import design_cli
 
         make_project("_test_scene3d")
         design_cli.cmd_new(["_test_scene3d", "arduino-uno", "3D 载荷"])
@@ -396,7 +396,7 @@ class TestScene3DPayload(unittest.TestCase):
         self.assertEqual(part["rotation_z"], 90)
 
     def test_every_part_carries_size_mm(self) -> None:
-        from hw_velxio import design_cli
+        from dsh_embagent import design_cli
 
         make_project("_test_scene3d_all")
         design_cli.cmd_new(["_test_scene3d_all", "arduino-uno", "全量"])
@@ -419,7 +419,7 @@ class TestRatlines(unittest.TestCase):
     """
 
     def _design(self) -> DesignModel:
-        from hw_velxio.design.model import Pad
+        from dsh_embagent.design.model import Pad
 
         design = DesignModel(id="p", title="t", board=board_preset("arduino-uno"))
         design.parts = [
@@ -439,7 +439,7 @@ class TestRatlines(unittest.TestCase):
         return design
 
     def test_ratline_uses_pad_positions_not_part_centers(self) -> None:
-        from hw_velxio.design.ratlines import build_ratlines
+        from dsh_embagent.design.ratlines import build_ratlines
 
         design = self._design()
         lines = build_ratlines(design)
@@ -456,7 +456,7 @@ class TestRatlines(unittest.TestCase):
         self.assertNotIn(15.0, xs)
 
     def test_ratline_is_never_marked_routed(self) -> None:
-        from hw_velxio.design.ratlines import build_ratlines
+        from dsh_embagent.design.ratlines import build_ratlines
 
         design = self._design()
         for line in build_ratlines(design):
@@ -465,8 +465,8 @@ class TestRatlines(unittest.TestCase):
 
     def test_ratline_count_is_n_minus_one(self) -> None:
         """一条 N 端网络画 N−1 条线（最小生成树），不是 N 条。"""
-        from hw_velxio.design.model import Pad
-        from hw_velxio.design.ratlines import build_ratlines
+        from dsh_embagent.design.model import Pad
+        from dsh_embagent.design.ratlines import build_ratlines
 
         design = self._design()
         design.parts.append(Part(
@@ -554,7 +554,7 @@ class TestPackageSizes(unittest.TestCase):
     """封装类别表 —— 本体尺寸的兜底来源。"""
 
     def test_size_code_wins(self) -> None:
-        from hw_velxio.design.packages import package_size
+        from dsh_embagent.design.packages import package_size
 
         result = package_size("C0603")
         self.assertIsNotNone(result)
@@ -562,20 +562,20 @@ class TestPackageSizes(unittest.TestCase):
         self.assertAlmostEqual(result["h"], 0.8, places=3)
 
     def test_series_prefix(self) -> None:
-        from hw_velxio.design.packages import package_size
+        from dsh_embagent.design.packages import package_size
 
         result = package_size("SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR")
         self.assertIsNotNone(result)
         self.assertAlmostEqual(result["w"], 2.9, places=3)
 
     def test_unknown_returns_none(self) -> None:
-        from hw_velxio.design.packages import package_size
+        from dsh_embagent.design.packages import package_size
 
         self.assertIsNone(package_size("完全没见过的封装"))
 
     def test_two_pad_body_is_pad_center_distance_plus_quarter(self) -> None:
         """两端贴片：本体长 ≈ 焊盘中心距 + 焊盘长/4（实测 C0603 → 1.6mm）。"""
-        from hw_velxio.design.packages import size_from_pads
+        from dsh_embagent.design.packages import size_from_pads
 
         pads = [{"cx": 0.0, "cy": 0.0, "w": 0.8, "h": 0.9},
                 {"cx": 1.4, "cy": 0.0, "w": 0.8, "h": 0.9}]
@@ -590,7 +590,7 @@ class TestPackageSizes(unittest.TestCase):
         （实测 Lora1 的 19 个焊盘跨 31mm，纯 0.75 折算只有 23mm，
         15 个焊盘落到框外，看起来像布局错乱）。
         """
-        from hw_velxio.design.packages import size_from_pads
+        from dsh_embagent.design.packages import size_from_pads
 
         pads = []
         for index in range(16):
@@ -611,7 +611,7 @@ class TestTraceParsing(unittest.TestCase):
     """
 
     def test_line_record_becomes_wire(self) -> None:
-        from hw_velxio.design.easyeda import MIL_TO_MM
+        from dsh_embagent.design.easyeda import MIL_TO_MM
 
         # 直接验换算：`LINE` 用 mil，落盘用 mm。
         self.assertAlmostEqual(1600 * MIL_TO_MM, 40.64, places=4)
@@ -699,7 +699,7 @@ class TestRoleInference(unittest.TestCase):
     """
 
     def test_connector_word_in_footprint(self) -> None:
-        from hw_velxio.design.easyeda_import import _role_of
+        from dsh_embagent.design.easyeda_import import _role_of
 
         self.assertEqual(_role_of("U1047", "CONN-TH_4P-P1.25_WAFER-MX1.25-4PZZ"),
                          "connector")
@@ -707,14 +707,14 @@ class TestRoleInference(unittest.TestCase):
         self.assertEqual(_role_of("RF1", "SMA-TH_KH-SMA-KWE17-G"), "connector")
 
     def test_chip_footprint_is_not_connector(self) -> None:
-        from hw_velxio.design.easyeda_import import _role_of
+        from dsh_embagent.design.easyeda_import import _role_of
 
         self.assertEqual(_role_of("U12", "ESOP-8_L4.9-W3.9-P1.27"), "module")
         self.assertEqual(_role_of("U10", "SOP-8"), "module")
         self.assertEqual(_role_of("C1", "C0603"), "component")
 
     def test_prefix_fallback_when_no_footprint(self) -> None:
-        from hw_velxio.design.easyeda_import import _role_of
+        from dsh_embagent.design.easyeda_import import _role_of
 
         self.assertEqual(_role_of("J1", ""), "connector")
         self.assertEqual(_role_of("R1", ""), "component")
@@ -731,7 +731,7 @@ class TestBomFill(unittest.TestCase):
         return board_preset("arduino-uno")
 
     def test_bom_fills_empty_project(self) -> None:
-        from hw_velxio.design.bom_fill import fill_from_bom
+        from dsh_embagent.design.bom_fill import fill_from_bom
 
         design = DesignModel(id="p", title="t", board=self._board())
         bom = {
@@ -746,7 +746,7 @@ class TestBomFill(unittest.TestCase):
 
     def test_filled_parts_have_real_sizes(self) -> None:
         """尺寸来自封装表，不是 0 —— 否则 3D 里全是看不见的点。"""
-        from hw_velxio.design.bom_fill import fill_from_bom
+        from dsh_embagent.design.bom_fill import fill_from_bom
 
         design = DesignModel(id="p", title="t", board=self._board())
         fill_from_bom(design, {
@@ -763,7 +763,7 @@ class TestBomFill(unittest.TestCase):
 
     def test_unknown_footprint_is_estimated_not_invented(self) -> None:
         """封装查不到 → 0 尺寸 + estimated，**绝不编造**。"""
-        from hw_velxio.design.bom_fill import fill_from_bom
+        from dsh_embagent.design.bom_fill import fill_from_bom
 
         design = DesignModel(id="p", title="t", board=self._board())
         note = fill_from_bom(design, {"X9": {"value": "?", "footprint": "完全没见过的封装"}})
@@ -775,7 +775,7 @@ class TestBomFill(unittest.TestCase):
 
     def test_existing_parts_are_never_overwritten(self) -> None:
         """PCB 导入的真实布局优先于 BOM 排布。"""
-        from hw_velxio.design.bom_fill import fill_from_bom
+        from dsh_embagent.design.bom_fill import fill_from_bom
 
         design = DesignModel(id="p", title="t", board=self._board())
         design.parts = [Part(ref="C1", kind="C0603", role="component",
@@ -803,7 +803,7 @@ class TestBomFill(unittest.TestCase):
         所以占位块要盖住 (4.0, 4.0) 附近。只覆盖 y=2.0 的一条窄带
         **测不出**问题（第一版就是这么写的，变异测试直接漏过）。
         """
-        from hw_velxio.design.bom_fill import MARGIN_MM, fill_from_bom
+        from dsh_embagent.design.bom_fill import MARGIN_MM, fill_from_bom
 
         design = DesignModel(id="p", title="t", board=self._board())
         # 用大块占位把 (MARGIN, MARGIN) 附近完全盖住
@@ -830,7 +830,7 @@ class TestBomFill(unittest.TestCase):
         直接断言坐标：只断言"没有重叠发现"是不够的 —— 变异掉避让逻辑后
         `check_overlap` 仍可能因为别的原因通过（第一版测试就是这样漏掉的）。
         """
-        from hw_velxio.design.bom_fill import PACK_GAP_MM, fill_from_bom
+        from dsh_embagent.design.bom_fill import PACK_GAP_MM, fill_from_bom
 
         design = DesignModel(id="p", title="t", board=self._board())
         blocker = Part(ref="U1", kind="LQFP-64", role="module",
@@ -856,7 +856,7 @@ class TestBomFill(unittest.TestCase):
         实测事故：004 补完 BOM 后 `R5` 正好压住 #2 安装孔，检查器报
         "螺钉无法进入" —— 那条是我们自己造的。
         """
-        from hw_velxio.design.bom_fill import fill_from_bom
+        from dsh_embagent.design.bom_fill import fill_from_bom
 
         board = board_preset("arduino-uno")
         self.assertTrue(board.mount_holes, "预设板应有安装孔")
@@ -873,7 +873,7 @@ class TestBomFill(unittest.TestCase):
 
         这是纪律问题：把网格排布当真实布局展示，用户会照着布线。
         """
-        from hw_velxio.design.bom_fill import fill_from_bom
+        from dsh_embagent.design.bom_fill import fill_from_bom
 
         design = DesignModel(id="p", title="t", board=self._board())
         fill_from_bom(design, {"C1": {"value": "100nF", "footprint": "C0603"}})
@@ -884,7 +884,7 @@ class TestBomFill(unittest.TestCase):
         self.assertEqual(meta.get("placement"), "grid-estimate")
 
     def test_role_from_footprint_beats_prefix(self) -> None:
-        from hw_velxio.design.bom_fill import _role_of
+        from dsh_embagent.design.bom_fill import _role_of
 
         self.assertEqual(_role_of("U1047", "CONN-TH_4P-P1.25_WAFER-MX1.25"),
                          "connector")
@@ -901,7 +901,7 @@ class TestSkippedBoards(unittest.TestCase):
     """
 
     def test_other_boards_is_reported(self) -> None:
-        from hw_velxio.design.easyeda_import import build_design
+        from dsh_embagent.design.easyeda_import import build_design
 
         parsed = {
             "status": "ok", "title": "multi", "units": {},
@@ -936,7 +936,7 @@ class TestSkippedBoards(unittest.TestCase):
         self.assertEqual(skipped[0]["size_mm"]["w"], 20.0)
 
     def test_warning_says_how_many_were_dropped(self) -> None:
-        from hw_velxio.design.easyeda_import import build_design
+        from dsh_embagent.design.easyeda_import import build_design
 
         parsed = {
             "status": "ok", "title": "multi", "units": {},
@@ -963,7 +963,7 @@ class TestSkippedBoards(unittest.TestCase):
         self.assertIn("未导入 1 个元件", joined)
 
     def test_single_board_has_no_skip_warning(self) -> None:
-        from hw_velxio.design.easyeda_import import build_design
+        from dsh_embagent.design.easyeda_import import build_design
 
         parsed = {
             "status": "ok", "title": "single", "units": {},
@@ -992,7 +992,7 @@ class TestMultiBoard(unittest.TestCase):
     """
 
     def _multi(self) -> DesignModel:
-        from hw_velxio.design.model import Board
+        from dsh_embagent.design.model import Board
 
         main = Board(id="PCB#A", kind="easyeda:x", name="主板",
                      size_mm={"w": 60.0, "h": 40.0},
@@ -1101,7 +1101,7 @@ class TestMultiBoard(unittest.TestCase):
         self.assertEqual(len(bad), 1, "同板同位置必须报重叠")
 
     def test_projection_lays_boards_side_by_side(self) -> None:
-        from hw_velxio.design.projection import panel_layout
+        from dsh_embagent.design.projection import panel_layout
 
         design = self._multi()
         panel = panel_layout(design)
@@ -1119,7 +1119,7 @@ class TestMultiBoard(unittest.TestCase):
 
         不转换的话，子板元件会画在主板范围内 —— 看起来像"元件跑到别的板上"。
         """
-        from hw_velxio.design.projection import panel_layout, to_2d
+        from dsh_embagent.design.projection import panel_layout, to_2d
 
         design = self._multi()
         panel = panel_layout(design)
@@ -1141,8 +1141,8 @@ class TestMultiBoard(unittest.TestCase):
         第一版只断言"落在范围内"，但子板被排在右侧（y 相同），翻转后
         恰好也在范围内，于是变异测试漏过。
         """
-        from hw_velxio.design.model import Board
-        from hw_velxio.design.projection import panel_layout, to_2d
+        from dsh_embagent.design.model import Board
+        from dsh_embagent.design.projection import panel_layout, to_2d
 
         # 子板窄而主板宽 → panel_layout 只能把子板排到**下一行**（y 方向）
         main = Board(id="A", kind="easyeda:x", name="主板",
@@ -1175,14 +1175,14 @@ class TestMultiBoard(unittest.TestCase):
 
     def test_projection_skips_cross_board_ratlines(self) -> None:
         """跨板网络不画飞线：那不是 PCB 铜线。"""
-        from hw_velxio.design.projection import to_2d
+        from dsh_embagent.design.projection import to_2d
 
         design = self._multi()
         design.parts[0].pads = [__import__(
-            "hw_velxio.design.model", fromlist=["Pad"]
+            "dsh_embagent.design.model", fromlist=["Pad"]
         ).Pad(num="1", x_mm=10.0, y_mm=10.0, w_mm=1.0, h_mm=0.5)]
         design.parts[1].pads = [__import__(
-            "hw_velxio.design.model", fromlist=["Pad"]
+            "dsh_embagent.design.model", fromlist=["Pad"]
         ).Pad(num="1", x_mm=5.0, y_mm=5.0, w_mm=1.0, h_mm=0.5)]
         design.nets = [{"net": "GND", "pins": [{"ref": "R1", "pin": "1"},
                                                {"ref": "C1", "pin": "1"}]}]
@@ -1192,7 +1192,7 @@ class TestMultiBoard(unittest.TestCase):
         self.assertEqual(payload["cross_board_ratlines_skipped"], 1)
 
     def test_panel_layout_is_deterministic(self) -> None:
-        from hw_velxio.design.projection import panel_layout
+        from dsh_embagent.design.projection import panel_layout
 
         design = self._multi()
         first = [(e["board"].id, e["x"], e["y"])
@@ -1215,7 +1215,7 @@ class TestRoleMapping(unittest.TestCase):
 
         抄一份就是第二个事实源：hwforge 改了名字，这边静默失效。
         """
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         keys = roles.template_keys()
         if not keys:
@@ -1226,7 +1226,7 @@ class TestRoleMapping(unittest.TestCase):
             self.assertIn(expected, keys)
 
     def test_validate_ok_on_current_table(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         check = roles.validate()
         if check.hwforge_unavailable:
@@ -1242,7 +1242,7 @@ class TestRoleMapping(unittest.TestCase):
         grep 出来的（`role="…"`），硬编码在这里是有意的：新增角色时
         这条测试会失败，逼着人更新映射表。
         """
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         spec_roles = ["camera", "display_peer", "encoder", "gimbal_pan",
                       "gimbal_tilt", "mount", "radio", "servo_power",
@@ -1255,7 +1255,7 @@ class TestRoleMapping(unittest.TestCase):
 
     def test_unknown_role_is_reported_not_ignored(self) -> None:
         """表里没有的角色必须报出来，**不能静默跳过**。"""
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         check = roles.validate(["camera", "totally_made_up_role"])
         self.assertFalse(check.ok)
@@ -1268,7 +1268,7 @@ class TestRoleMapping(unittest.TestCase):
 
         "查不到"和"故意不占元件"必须能区分开，否则分不清是设计还是遗漏。
         """
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         mapping = roles.BY_ROLE.get("display_peer")
         self.assertIsNotNone(mapping, "display_peer 必须有显式映射")
@@ -1281,7 +1281,7 @@ class TestRoleMapping(unittest.TestCase):
         第一版拿 `needs=("pwm",)` 去对工厂签名，一次报 5 条假问题
         （签名里只有 w_mm/d_mm/axis）。错的是"消费"的定义，不是检查本身。
         """
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         pins = roles.template_pins("gimbal_servo")
         if not pins:
@@ -1296,7 +1296,7 @@ class TestRoleMapping(unittest.TestCase):
 
         把"不知道"混进"通过"是这套系统一直在防的事。
         """
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         if not roles.template_keys():
             self.skipTest("hwforge 不可用")
@@ -1304,7 +1304,7 @@ class TestRoleMapping(unittest.TestCase):
         self.assertIsNone(roles.capability_available("gimbal_servo", "量子纠缠"))
 
     def test_plan_builds_one_part_per_role(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         if not roles.template_keys():
             self.skipTest("hwforge 不可用")
@@ -1317,7 +1317,7 @@ class TestRoleMapping(unittest.TestCase):
         self.assertEqual(sum(1 for p in plan.parts if p.template == "gimbal_servo"), 2)
 
     def test_plan_separates_external_roles(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         if not roles.template_keys():
             self.skipTest("hwforge 不可用")
@@ -1329,7 +1329,7 @@ class TestRoleMapping(unittest.TestCase):
 
     def test_plan_reports_unmatched_without_guessing(self) -> None:
         """未映射的角色进 `unmatched`，**不猜一个最像的模板**。"""
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         if not roles.template_keys():
             self.skipTest("hwforge 不可用")
@@ -1343,7 +1343,7 @@ class TestRoleMapping(unittest.TestCase):
 
         ESP32-S3 自带 Wi-Fi，装两块板是浪费且会引入第二份电源/天线。
         """
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         if not roles.template_keys():
             self.skipTest("hwforge 不可用")
@@ -1352,7 +1352,7 @@ class TestRoleMapping(unittest.TestCase):
         self.assertEqual(plan.parts[0].template, "mcu_board")
 
     def test_plan_carries_reason_through(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         if not roles.template_keys():
             self.skipTest("hwforge 不可用")
@@ -1360,7 +1360,7 @@ class TestRoleMapping(unittest.TestCase):
         self.assertEqual(plan.parts[0].why, "采集实时图像")
 
     def test_size_comes_from_template(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         if not roles.template_keys():
             self.skipTest("hwforge 不可用")
@@ -1376,7 +1376,7 @@ class TestRoleMapping(unittest.TestCase):
         并把 `ok` 置 False。现在那个状态从根上消失了，`hwforge_unavailable`
         字段恒为 False（保留只为兼容快照格式）。
         """
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         check = roles.validate(["camera", "mcu", "gimbal_pan"])
         self.assertFalse(check.hwforge_unavailable)
@@ -1391,12 +1391,12 @@ class TestR3Assemble(unittest.TestCase):
     """
 
     def _needs_hwforge(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
         if not roles.template_keys():
             self.skipTest("hwforge 不可用")
 
     def test_roles_assemble_produces_design(self) -> None:
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs_hwforge()
         result = assemble.assemble_roles(
@@ -1414,7 +1414,7 @@ class TestR3Assemble(unittest.TestCase):
         猜一个"应该叫 VCC"的引脚名会让 `pins.audit()` 报它不存在 ——
         但那时错误已经离需求很远了。
         """
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs_hwforge()
         result = assemble.assemble_roles(
@@ -1430,7 +1430,7 @@ class TestR3Assemble(unittest.TestCase):
 
     def test_nets_are_built_from_real_pins(self) -> None:
         """网表里的每个引脚都必须在元件的 `pins` 里真实存在。"""
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs_hwforge()
         result = assemble.assemble_roles(
@@ -1446,7 +1446,7 @@ class TestR3Assemble(unittest.TestCase):
 
     def test_design_passes_validate(self) -> None:
         """装出来的设计必须 `validate()` 干净 —— 否则它不该被落盘。"""
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs_hwforge()
         result = assemble.assemble_roles(
@@ -1457,7 +1457,7 @@ class TestR3Assemble(unittest.TestCase):
         self.assertEqual(problems, [], f"装配出的设计有问题：{problems[:4]}")
 
     def test_design_passes_physical_checks(self) -> None:
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs_hwforge()
         result = assemble.assemble_roles(
@@ -1474,7 +1474,7 @@ class TestR3Assemble(unittest.TestCase):
 
         这是**确定性**的：同一份计划永远得到同一组坐标。
         """
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs_hwforge()
         first = assemble.assemble_roles(
@@ -1491,7 +1491,7 @@ class TestR3Assemble(unittest.TestCase):
 
     def test_board_grows_to_fit_parts(self) -> None:
         """板子必须装得下所有元件（预设不够就扩）。"""
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs_hwforge()
         result = assemble.assemble_roles(
@@ -1516,7 +1516,7 @@ class TestR3Assemble(unittest.TestCase):
         这条测试第一版只断言"没有单脚网"，把 `unrouted.append` 删掉
         照样通过（变异测试当场揭穿）。现在同时断言 `unrouted` **非空**。
         """
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs_hwforge()
         result = assemble.assemble_roles(["camera"], design_id="t1")
@@ -1535,7 +1535,7 @@ class TestR3Assemble(unittest.TestCase):
 
     def test_two_servos_share_ground_net(self) -> None:
         """两个舵机 + 电源：GND 必须把三者的 GND 脚连成一网。"""
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs_hwforge()
         result = assemble.assemble_roles(
@@ -1550,8 +1550,8 @@ class TestR3Assemble(unittest.TestCase):
 
     def test_design_renders_in_2d_and_3d(self) -> None:
         """装出来的设计必须能出 2D 投影与 3D 场景（否则视图又是一片空）。"""
-        from hw_velxio.design import assemble
-        from hw_velxio.design.projection import to_2d
+        from dsh_embagent.design import assemble
+        from dsh_embagent.design.projection import to_2d
 
         self._needs_hwforge()
         result = assemble.assemble_roles(
@@ -1569,7 +1569,7 @@ class TestR3Assemble(unittest.TestCase):
 
         把网格排布当优化布局看，会高估这个设计的成熟度。
         """
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs_hwforge()
         result = assemble.assemble_roles(["camera", "servo_power"],
@@ -1585,7 +1585,7 @@ class TestR3Assemble(unittest.TestCase):
         早先 `assemble` 调 `hwforge.assembly_build.build_from_spec()`，
         没有 checkout 就整条链路 `not_ready`。迁移后这条测试守住它。
         """
-        from hw_velxio.design import assemble, library
+        from dsh_embagent.design import assemble, library
 
         result = assemble.assemble_roles(["camera", "mcu", "servo_power"],
                                          design_id="t")
@@ -1605,7 +1605,7 @@ class TestPinInvariant(unittest.TestCase):
     """
 
     def _needs(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
         if not roles.template_keys():
             self.skipTest("hwforge 不可用")
 
@@ -1617,7 +1617,7 @@ class TestPinInvariant(unittest.TestCase):
         return total, in_net, len(result.wiring.unrouted)
 
     def test_every_pin_is_accounted_for(self) -> None:
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs()
         for roles_list in (
@@ -1635,7 +1635,7 @@ class TestPinInvariant(unittest.TestCase):
 
     def test_pin_with_no_rule_is_named(self) -> None:
         """没有规则能处理的脚，`unrouted` 要指名道姓。"""
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs()
         # 电源的 AC 输入脚没有源，必然悬空
@@ -1647,7 +1647,7 @@ class TestPinInvariant(unittest.TestCase):
 
     def test_mcu_connects_camera_data(self) -> None:
         """补了 mcu 之后，`CAM1.DATA` 必须真的接到 `U1.CAM_DATA`。"""
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs()
         result = assemble.assemble_roles(
@@ -1667,7 +1667,7 @@ class TestPinInvariant(unittest.TestCase):
         `5V` 和 `SIG_CAM_PWR` 两个网里。这条测试是被上面那条引脚守恒
         （17 != 16+2）暴露出来的。
         """
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
 
         self._needs()
         for roles_list in (
@@ -1688,10 +1688,10 @@ class TestPinInvariant(unittest.TestCase):
 
 
 class TestRoleEnhancement(unittest.TestCase):
-    """P0-b：`spec` 不产出 `mcu`，由 hw_velxio 侧补。"""
+    """P0-b：`spec` 不产出 `mcu`，由 dsh_embagent 侧补。"""
 
     def test_mcu_added_when_signals_need_one(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         enhanced = roles.enhance(["camera", "gimbal_pan", "servo_power"])
         self.assertIn("mcu", enhanced.roles)
@@ -1699,14 +1699,14 @@ class TestRoleEnhancement(unittest.TestCase):
         self.assertIn("悬空", enhanced.reason)
 
     def test_mcu_added_when_goal_names_one(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         enhanced = roles.enhance([], "做一个 STM32 主控的板子")
         self.assertIn("mcu", enhanced.roles)
 
     def test_no_mcu_when_radio_already_provides_it(self) -> None:
         """`radio` 已映射到 `mcu_board`，不该再补一个主控（否则两块板）。"""
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         enhanced = roles.enhance(["camera", "radio", "servo_power"])
         self.assertNotIn("mcu", enhanced.roles)
@@ -1714,7 +1714,7 @@ class TestRoleEnhancement(unittest.TestCase):
 
     def test_undefined_hw_blocks_inference_but_not_explicit(self) -> None:
         """`undefined_hw` 挡住"推断补 mcu"，但不挡用户明说。"""
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         # 需求没说主控、也没说硬件形态 → 不推断
         suppressed = roles.enhance(["undefined_hw"], "做个好玩的东西")
@@ -1724,7 +1724,7 @@ class TestRoleEnhancement(unittest.TestCase):
         self.assertIn("mcu", explicit.roles)
 
     def test_enhance_is_idempotent(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
 
         once = roles.enhance(["camera", "servo_power"]).roles
         twice = roles.enhance(once).roles
@@ -1736,7 +1736,7 @@ class TestCapabilityTable(unittest.TestCase):
 
     def test_three_different_requirements_all_resolve(self) -> None:
         """三种**完全不同**的需求都必须产出角色（不能只剩 undefined_hw）。"""
-        from hw_velxio.design import requirements
+        from dsh_embagent.design import requirements
 
         cases = {
             "做一个 STM32 主控的温湿度采集板": ("mcu", "sensor"),
@@ -1752,7 +1752,7 @@ class TestCapabilityTable(unittest.TestCase):
 
     def test_unknown_requirement_says_so(self) -> None:
         """认不出时明确说"没认出来"，并列出试过的说法。"""
-        from hw_velxio.design import requirements
+        from dsh_embagent.design import requirements
 
         result = requirements.analyse("做个好玩的东西")
         self.assertIn("undefined_hw", result.roles)
@@ -1761,7 +1761,7 @@ class TestCapabilityTable(unittest.TestCase):
 
     def test_hits_name_the_word(self) -> None:
         """命中的是**哪个词**要能看见 —— 便于人核对是不是误判。"""
-        from hw_velxio.design import requirements
+        from dsh_embagent.design import requirements
 
         result = requirements.analyse("带电池的四轮小车")
         words = {h.word for h in result.hits}
@@ -1769,7 +1769,7 @@ class TestCapabilityTable(unittest.TestCase):
         self.assertTrue(words, "命中必须记录具体词")
 
     def test_merge_drops_undefined_when_specific_exists(self) -> None:
-        from hw_velxio.design import requirements
+        from dsh_embagent.design import requirements
 
         merged = requirements.merge(["undefined_hw"], ["mcu", "sensor"])
         self.assertNotIn("undefined_hw", merged)
@@ -1781,7 +1781,7 @@ class TestCapabilityTable(unittest.TestCase):
 
         否则 P1-b 会让"认得出来"和"装得出来"之间出现新的断层。
         """
-        from hw_velxio.design import requirements, roles
+        from dsh_embagent.design import requirements, roles
 
         for capability in requirements.CAPABILITIES:
             for role in capability.roles:
@@ -1794,13 +1794,13 @@ class TestCoverify(unittest.TestCase):
     """P2-a：需求数值 vs 硬件能力的矛盾扫描。"""
 
     def _needs(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
         if not roles.template_keys():
             self.skipTest("hwforge 不可用")
 
     def test_runs_and_gives_both_numbers(self) -> None:
         """每条检查都必须**同时给出两个数字**（硬件能力 + 软件需求）。"""
-        from hw_velxio.design import assemble, coverify
+        from dsh_embagent.design import assemble, coverify
 
         self._needs()
         result = assemble.assemble_roles(
@@ -1818,7 +1818,7 @@ class TestCoverify(unittest.TestCase):
 
     def test_undeclared_numbers_are_not_verified(self) -> None:
         """需求数值没给就不算"验过"—— 默认值不代表需求。"""
-        from hw_velxio.design import assemble, coverify
+        from dsh_embagent.design import assemble, coverify
 
         self._needs()
         result = assemble.assemble_roles(["camera", "mcu"], design_id="t")
@@ -1827,7 +1827,7 @@ class TestCoverify(unittest.TestCase):
                         "没声明需求数值时必须有 not_verified，不能静默按默认值通过")
 
     def test_declared_numbers_clear_the_notice(self) -> None:
-        from hw_velxio.design import assemble, coverify, tiers
+        from dsh_embagent.design import assemble, coverify, tiers
 
         self._needs()
         result = assemble.assemble_roles(["camera", "gimbal_pan", "mcu"],
@@ -1844,12 +1844,12 @@ class TestTiers(unittest.TestCase):
     """P3：验收阶梯 —— 哪些验过、哪些没工具、哪些没跑、哪些要人。"""
 
     def _needs(self) -> None:
-        from hw_velxio.design import roles
+        from dsh_embagent.design import roles
         if not roles.template_keys():
             self.skipTest("hwforge 不可用")
 
     def test_ladder_is_read_from_hwforge(self) -> None:
-        from hw_velxio.design import tiers
+        from dsh_embagent.design import tiers
 
         self._needs()
         table = tiers.describe()
@@ -1864,7 +1864,7 @@ class TestTiers(unittest.TestCase):
 
         混成一句"未验证"就等于没说 —— 这正是 P3 要解决的事。
         """
-        from hw_velxio.design import assemble, coverify, physical, tiers
+        from dsh_embagent.design import assemble, coverify, physical, tiers
 
         self._needs()
         result = assemble.assemble_roles(
@@ -1885,7 +1885,7 @@ class TestTiers(unittest.TestCase):
         实测第一版就是这样错的：报告宣称"O1 引脚语义验过"，而工作台根本
         没有类型格检查。
         """
-        from hw_velxio.design import tiers
+        from dsh_embagent.design import tiers
 
         self._needs()
         self.assertNotIn("space.net_reach", tiers.CHECK_TIERS,
@@ -1898,7 +1898,7 @@ class TestTiers(unittest.TestCase):
 
     def test_ladder_always_available(self) -> None:
         """**阶梯表在本地** —— 不存在"取不到阶梯"的状态。"""
-        from hw_velxio.design import tiers
+        from dsh_embagent.design import tiers
 
         self.assertEqual(len(tiers.describe()), 22)
         report = tiers.report()
@@ -1942,7 +1942,7 @@ class TestStandalone(unittest.TestCase):
 
     def test_library_is_local(self) -> None:
         """模板库是本地数据，不需要外部 checkout。"""
-        from hw_velxio.design import library
+        from dsh_embagent.design import library
 
         with self._BlockHwforge():
             keys = library.keys()
@@ -1955,7 +1955,7 @@ class TestStandalone(unittest.TestCase):
 
     def test_full_chain_without_hwforge(self) -> None:
         """需求 → 角色 → 装配 → 检查 → 协同 → 阶梯，一环不少。"""
-        from hw_velxio.design import (assemble, coverify, physical,
+        from dsh_embagent.design import (assemble, coverify, physical,
                                       requirements, roles, tiers)
 
         with self._BlockHwforge():
@@ -1989,7 +1989,7 @@ class TestStandalone(unittest.TestCase):
             self.assertEqual(len(report.tiers), 22)
 
     def test_budget_and_ledger_are_local(self) -> None:
-        from hw_velxio.design import budget, ledger
+        from dsh_embagent.design import budget, ledger
 
         with self._BlockHwforge():
             tree = budget.BudgetTree()
@@ -2009,7 +2009,7 @@ class TestStandalone(unittest.TestCase):
 
     def test_scene_roundtrip_is_local(self) -> None:
         """`DesignModel → scene.json → DesignModel` 不需要 hwforge。"""
-        from hw_velxio.design import assemble, scene, scene_import
+        from dsh_embagent.design import assemble, scene, scene_import
 
         with self._BlockHwforge():
             built = assemble.assemble_roles(["camera", "mcu"], design_id="t")
@@ -2024,7 +2024,7 @@ class TestElectrical(unittest.TestCase):
     """DC 电学：压降 / 轨跌 / 结温。降额表补不了的那一块。"""
 
     def test_wire_drop_matches_ohms_law(self) -> None:
-        from hw_velxio.design import electrical
+        from dsh_embagent.design import electrical
 
         # 26AWG = 0.133 Ω/m；500mm、1.4A → 0.093 V
         result = electrical.wire_drop(26, 500.0, 1.4)
@@ -2039,7 +2039,7 @@ class TestElectrical(unittest.TestCase):
         28AWG 是 0.298V（超 0.25V 预算）。这就是"只看数据手册"会漏的地方 ——
         两种线都标着"能过 2A"。
         """
-        from hw_velxio.design import electrical
+        from dsh_embagent.design import electrical
 
         thin = electrical.wire_drop(28, 1000.0, 1.4)
         thick = electrical.wire_drop(26, 1000.0, 1.4)
@@ -2051,7 +2051,7 @@ class TestElectrical(unittest.TestCase):
 
     def test_ldo_cooks_at_full_load(self) -> None:
         """5→3.3V @1A 在 SOT-223 里 Tj 135°C —— 会热关断。"""
-        from hw_velxio.design import electrical
+        from dsh_embagent.design import electrical
 
         hot = electrical.regulator_thermal("linear", 5.0, 3.3, 1.0)
         cool = electrical.regulator_thermal("linear", 5.0, 3.3, 0.5)
@@ -2065,7 +2065,7 @@ class TestElectrical(unittest.TestCase):
         2A 电源带 2.1A：压降只有 0.19V（看着正常），但电源在过载工作。
         两种失效的修法不同，所以不能折进同一个布尔。
         """
-        from hw_velxio.design import electrical
+        from dsh_embagent.design import electrical
 
         over = electrical.rail_under_load("5V", 5.0, 2.1, 90.0, 4.8,
                                           rated_a=2.0)
@@ -2076,8 +2076,8 @@ class TestElectrical(unittest.TestCase):
 
     def test_no_data_is_not_a_pass(self) -> None:
         """没有负载数据时报未验证，不拿默认值冒充通过。"""
-        from hw_velxio.design import electrical
-        from hw_velxio.design.model import Board, DesignModel, Part, Placement
+        from dsh_embagent.design import electrical
+        from dsh_embagent.design.model import Board, DesignModel, Part, Placement
 
         design = DesignModel(id="t", board=Board(kind="x",
                                                  size_mm={"w": 40, "h": 30}),
@@ -2097,7 +2097,7 @@ class TestElectrical(unittest.TestCase):
         `5.0 >= 4.8` 直接算出 `ok=True`。整个 141 元件的工程因此拿到
         一条绿色 5V 轨。
         """
-        from hw_velxio.design import electrical
+        from dsh_embagent.design import electrical
 
         got = electrical.rail_under_load("5V", 5.0, 0.0, 90.0, 4.8,
                                          rated_a=2.0)
@@ -2107,8 +2107,8 @@ class TestElectrical(unittest.TestCase):
 
     def test_zero_load_design_reports_not_verified(self) -> None:
         """整条 `run()` 路径上零负载也要落到 `not_verified`，不只是单元函数。"""
-        from hw_velxio.design import electrical
-        from hw_velxio.design.model import Board, DesignModel, Part, Placement
+        from dsh_embagent.design import electrical
+        from dsh_embagent.design.model import Board, DesignModel, Part, Placement
 
         design = DesignModel(
             id="t", board=Board(kind="x", size_mm={"w": 80, "h": 60}),
@@ -2129,8 +2129,8 @@ class TestElectrical(unittest.TestCase):
         任何工程都会得到一个 `Tj=82.7°C → ok:true` 的热结论 ——
         而这个工程里可能一颗稳压器都没有。
         """
-        from hw_velxio.design import electrical
-        from hw_velxio.design.model import Board, DesignModel
+        from dsh_embagent.design import electrical
+        from dsh_embagent.design.model import Board, DesignModel
 
         design = DesignModel(id="t", board=Board(kind="x",
                                                  size_mm={"w": 40, "h": 30}),
@@ -2143,8 +2143,8 @@ class TestElectrical(unittest.TestCase):
 
     def test_declared_electrical_still_passes(self) -> None:
         """补上数据之后必须能真的通过 —— 否则这个修法只是把绿灯换成红灯。"""
-        from hw_velxio.design import electrical
-        from hw_velxio.design.model import Board, DesignModel, Part, Placement
+        from dsh_embagent.design import electrical
+        from dsh_embagent.design.model import Board, DesignModel, Part, Placement
 
         design = DesignModel(
             id="t", board=Board(kind="x", size_mm={"w": 80, "h": 60}),
@@ -2188,7 +2188,7 @@ class TestFirmware(unittest.TestCase):
         `mat_mul_4x4(F, kf->P, F);` 这种调用语句被算成声明，
         函数看起来没人调 —— 计数膨胀、真结果被埋。
         """
-        from hw_velxio.design import firmware
+        from dsh_embagent.design import firmware
 
         report = firmware.run(self._tree(), scope=["uncalled"])
         names = {f.symbol for f in report.findings}
@@ -2200,7 +2200,7 @@ class TestFirmware(unittest.TestCase):
 
     def test_every_finding_says_what_it_cannot_see(self) -> None:
         """每条 finding 必须写明"看不见什么" —— 否则会被当成结论。"""
-        from hw_velxio.design import firmware
+        from dsh_embagent.design import firmware
 
         report = firmware.run(self._tree())
         self.assertGreater(len(report.findings), 0)
@@ -2210,7 +2210,7 @@ class TestFirmware(unittest.TestCase):
                             f"{finding.message[:50]}")
 
     def test_timeout_path_is_detected(self) -> None:
-        from hw_velxio.design import firmware
+        from dsh_embagent.design import firmware
 
         report = firmware.run(self._tree(), scope=["timeout"])
         self.assertTrue(any(f.symbol == "armed" for f in report.findings),
@@ -2224,7 +2224,7 @@ class TestFirmware(unittest.TestCase):
         早先正则锚在结尾（`(\d{4})[A-Z]?$`），型号后面还有 `FT` 后缀，
         一个都没匹配上 —— 检查看起来在跑，实际永远 0 条。
         """
-        from hw_velxio.design import firmware
+        from dsh_embagent.design import firmware
 
         rows = [{"ref": "R290", "value": "0Ω", "mpn": "RS-05K1002FT"},
                 {"ref": "R1", "value": "10k", "mpn": "RS-05K1002FT"}]
@@ -2237,7 +2237,7 @@ class TestFirmware(unittest.TestCase):
         """没有源码 → 不是"没有问题"，是"没读到东西"。"""
         import tempfile
         from pathlib import Path
-        from hw_velxio.design import firmware
+        from dsh_embagent.design import firmware
 
         empty = Path(tempfile.mkdtemp())
         report = firmware.run(empty)
@@ -2247,7 +2247,7 @@ class TestFirmware(unittest.TestCase):
 
     def test_never_writes(self) -> None:
         """**只读**：跑完检查后文件内容不变。"""
-        from hw_velxio.design import firmware
+        from dsh_embagent.design import firmware
 
         root = self._tree()
         before = (root / "app.cpp").read_text(encoding="utf-8")
@@ -2270,7 +2270,7 @@ class TestSemantics(unittest.TestCase):
         `camera_module` 查不到 `camera`。靠字符串启发式猜不准
         （`ultrasonic_ranger` 猜不出 `ranger`）。
         """
-        from hw_velxio.design import semantics
+        from dsh_embagent.design import semantics
 
         check = semantics.validate()
         self.assertTrue(check.ok, f"映射表应通过：{[p.detail for p in check.problems]}")
@@ -2287,7 +2287,7 @@ class TestSemantics(unittest.TestCase):
 
         "没建模"和"忘了填"必须能分开。
         """
-        from hw_velxio.design import library, semantics
+        from dsh_embagent.design import library, semantics
 
         for template in library.keys():
             self.assertIn(template, semantics.TEMPLATE_TO_SEMANTIC,
@@ -2295,7 +2295,7 @@ class TestSemantics(unittest.TestCase):
 
     def test_unmodelled_is_reported_not_hidden(self) -> None:
         """没建模的模板要如实列出 —— 不是"这个件简单"。"""
-        from hw_velxio.design import semantics
+        from dsh_embagent.design import semantics
 
         cov = semantics.coverage()
         self.assertGreater(cov["modelled"], 0)
@@ -2310,7 +2310,7 @@ class TestSemantics(unittest.TestCase):
         `(1.0, 2.0)ms` 的脉宽取中值 1.5ms 算出来的角度是编的 ——
         判定链下游没法知道它是编的。
         """
-        from hw_velxio.design import semantics
+        from dsh_embagent.design import semantics
 
         q = semantics.Quantity(value=(1.0, 2.0), unit="ms", source="datasheet")
         self.assertIsNone(q.scalar(), "范围必须返回 None，不能取中值")
@@ -2327,7 +2327,7 @@ class TestSemantics(unittest.TestCase):
         不能因为数值来自 datasheet，就把"它在哪个子系统里"这个推断
         也当成可信 —— 那条链路的强度是最弱一环。
         """
-        from hw_velxio.design import semantics
+        from dsh_embagent.design import semantics
 
         tree = semantics.tree_for_template("gimbal_servo")
         gear = next(s for _d, s in tree.flat() if s.name == "gear_train")
@@ -2340,7 +2340,7 @@ class TestSemantics(unittest.TestCase):
 
     def test_every_spec_is_a_quantity(self) -> None:
         """结构化树里不能有裸字符串 —— 判定层拿到字符串没法比较。"""
-        from hw_velxio.design import semantics
+        from dsh_embagent.design import semantics
 
         for key, tree in semantics.TREES.items():
             for _depth, subsystem in tree.flat():
@@ -2354,7 +2354,7 @@ class TestSemantics(unittest.TestCase):
 
         这条守的是"树成为判定链上游数据源"，而不是一份平行文档。
         """
-        from hw_velxio.design import coverify, semantics
+        from dsh_embagent.design import coverify, semantics
 
         tree = semantics.tree_for_template("gimbal_servo")
         for axis_field in ("deadband_us", "stall_current_ma"):
@@ -2369,14 +2369,14 @@ class TestRootCause(unittest.TestCase):
     """coverify 失败项 → 语义树里的物理来源。"""
 
     def _design(self) -> "object":
-        from hw_velxio.design import assemble
+        from dsh_embagent.design import assemble
         result = assemble.assemble_roles(
             ["camera", "gimbal_pan", "mcu", "servo_power"], design_id="t")
         return result.design
 
     def test_failed_check_gets_root_cause(self) -> None:
         """收紧指向精度让 cv01 失败 → 必须带 root_cause。"""
-        from hw_velxio.design import coverify
+        from dsh_embagent.design import coverify
 
         design = self._design()
         if design is None:
@@ -2390,10 +2390,10 @@ class TestRootCause(unittest.TestCase):
 
     def test_root_cause_names_the_subsystem_and_the_culprit(self) -> None:
         """root_cause 必须指出**哪个子系统**、**哪个数值**。"""
-        from hw_velxio.design import semantics
+        from dsh_embagent.design import semantics
 
         tree = semantics.tree_for_template("gimbal_servo")
-        from hw_velxio.design import coverify
+        from dsh_embagent.design import coverify
 
         cause = coverify.root_cause_for("cv.servo_resolution", tree)
         self.assertIsNotNone(cause)
@@ -2407,7 +2407,7 @@ class TestRootCause(unittest.TestCase):
 
         它把"硬件下限"变成一条可执行判断，让调用方不在错误的层浪费时间。
         """
-        from hw_velxio.design import coverify, semantics
+        from dsh_embagent.design import coverify, semantics
 
         tree = semantics.tree_for_template("gimbal_servo")
         cause = coverify.root_cause_for("cv.servo_resolution", tree)
@@ -2422,7 +2422,7 @@ class TestRootCause(unittest.TestCase):
 
         `cv.vision_resolution` 考的是相机，不在舵机树里。
         """
-        from hw_velxio.design import coverify, semantics
+        from dsh_embagent.design import coverify, semantics
 
         tree = semantics.tree_for_template("gimbal_servo")
         self.assertIsNone(
@@ -2431,7 +2431,7 @@ class TestRootCause(unittest.TestCase):
 
     def test_root_cause_carries_the_tree_caveats(self) -> None:
         """root_cause 要带出树的 caveats —— 决定这条解释能被引用到什么程度。"""
-        from hw_velxio.design import coverify, semantics
+        from dsh_embagent.design import coverify, semantics
 
         tree = semantics.tree_for_template("gimbal_servo")
         cause = coverify.root_cause_for("cv.servo_resolution", tree)
@@ -2449,7 +2449,7 @@ class TestPsuSemantics(unittest.TestCase):
     """
 
     def test_tree_exists_and_is_validated(self) -> None:
-        from hw_velxio.design import semantics
+        from dsh_embagent.design import semantics
 
         tree = semantics.tree_for_template("psu_5v")
         self.assertIsNotNone(tree, "psu_5v 必须有语义树")
@@ -2461,7 +2461,7 @@ class TestPsuSemantics(unittest.TestCase):
         早先 `DEFAULT_INPUTS` 和树里各写一份 2.0A / 90mΩ —— 改一处不
         改另一处就漂移。`rails_from_semantics()` 让 `electrical` 来取。
         """
-        from hw_velxio.design import electrical, semantics
+        from dsh_embagent.design import electrical, semantics
 
         rails = electrical.rails_from_semantics("psu_5v")
         self.assertEqual(len(rails), 1)
@@ -2475,8 +2475,8 @@ class TestPsuSemantics(unittest.TestCase):
         self.assertIn("semantics", rail["_source"])
 
     def test_electrical_run_uses_tree_by_default(self) -> None:
-        from hw_velxio.design import electrical
-        from hw_velxio.design.model import Board, DesignModel, Part, Placement
+        from dsh_embagent.design import electrical
+        from dsh_embagent.design.model import Board, DesignModel, Part, Placement
 
         design = DesignModel(
             id="t", board=Board(kind="x", size_mm={"w": 80, "h": 60}),
@@ -2492,8 +2492,8 @@ class TestPsuSemantics(unittest.TestCase):
 
     def test_overload_and_sag_are_both_reported(self) -> None:
         """4 个舵机堵转（2.8A）超过 2A 额定 —— **两种失效都要报**。"""
-        from hw_velxio.design import electrical
-        from hw_velxio.design.model import Board, DesignModel, Part, Placement
+        from dsh_embagent.design import electrical
+        from dsh_embagent.design.model import Board, DesignModel, Part, Placement
 
         design = DesignModel(
             id="t", board=Board(kind="x", size_mm={"w": 80, "h": 60}),
@@ -2509,7 +2509,7 @@ class TestPsuSemantics(unittest.TestCase):
 
     def test_coverage_grew(self) -> None:
         """加了 psu_5v 后覆盖率要真的变大，且 `unmodelled` 里不再有它。"""
-        from hw_velxio.design import semantics
+        from dsh_embagent.design import semantics
 
         cov = semantics.coverage()
         self.assertIn("psu_5v", cov["modelled_list"])
@@ -2524,7 +2524,7 @@ class TestPowerSideRootCause(unittest.TestCase):
     """
 
     def test_power_side_root_cause_exists(self) -> None:
-        from hw_velxio.design import coverify
+        from dsh_embagent.design import coverify
 
         cause = coverify.power_root_cause_for("cv.current")
         self.assertIsNotNone(cause)
@@ -2534,7 +2534,7 @@ class TestPowerSideRootCause(unittest.TestCase):
 
     def test_both_sides_are_reported(self) -> None:
         """同一条 `cv.current` 失败要同时带负载侧和电源侧原因。"""
-        from hw_velxio.design import assemble, coverify
+        from dsh_embagent.design import assemble, coverify
 
         result = assemble.assemble_roles(
             ["camera", "gimbal_pan", "gimbal_tilt", "mcu", "servo_power"],
@@ -2553,7 +2553,7 @@ class TestPowerSideRootCause(unittest.TestCase):
                          "converter")
 
     def test_unrelated_check_gets_no_power_cause(self) -> None:
-        from hw_velxio.design import coverify
+        from dsh_embagent.design import coverify
 
         self.assertIsNone(
             coverify.power_root_cause_for("cv.vision_resolution"),
@@ -2569,7 +2569,7 @@ class TestPhase(unittest.TestCase):
     """
 
     def _design(self, parts: list[Part], open_irreversible=None) -> DesignModel:
-        from hw_velxio.design import phase as phase_module
+        from dsh_embagent.design import phase as phase_module
         design = DesignModel(id="p", title="t", board=board_preset("arduino-uno"))
         design.parts = parts
         return design, phase_module
@@ -2618,7 +2618,7 @@ class TestPhase(unittest.TestCase):
         self.assertTrue(any("package_family" in v for v in result["veto"]))
 
     def test_vacuous_lists_空集通过(self) -> None:
-        from hw_velxio.design import phase as phase_module
+        from dsh_embagent.design import phase as phase_module
         design = DesignModel(id="p", title="t", board=board_preset("arduino-uno"))
         findings = [{"check": "space.overlap", "ok": True},
                     {"check": "space.net_reach", "ok": True}]
@@ -2628,7 +2628,7 @@ class TestPhase(unittest.TestCase):
 
     def test_vacuous_shrinks_when_parts_exist(self) -> None:
         """有元件之后，不该再把所有检查都算成空集通过。"""
-        from hw_velxio.design import phase as phase_module
+        from dsh_embagent.design import phase as phase_module
         design = DesignModel(id="p", title="t", board=board_preset("arduino-uno"))
         design.parts = [Part(ref="r1", kind="resistor",
                              size_mm={"w": 1.6, "h": 0.8, "d": 0.45})]
@@ -2644,8 +2644,8 @@ class TestSurvey(unittest.TestCase):
     """勘察：初审.md 的**事实**段必须由机器生成，且判断段要保住。"""
 
     def test_survey_lists_projects_with_phase(self) -> None:
-        from hw_velxio import design_cli
-        from hw_velxio.design import survey as survey_module
+        from dsh_embagent import design_cli
+        from dsh_embagent.design import survey as survey_module
 
         design_cli.cmd_new(["_test_survey", "arduino-uno", "勘察"])
         payload = survey_module.survey()
@@ -2656,8 +2656,8 @@ class TestSurvey(unittest.TestCase):
         self.assertTrue(payload["fingerprint"].startswith("sha256:"))
 
     def test_initial_review_has_machine_facts(self) -> None:
-        from hw_velxio import design_cli
-        from hw_velxio.design import survey as survey_module
+        from dsh_embagent import design_cli
+        from dsh_embagent.design import survey as survey_module
 
         design_cli.cmd_new(["_test_review", "arduino-uno", "初审"])
         payload = survey_module.survey()
@@ -2670,8 +2670,8 @@ class TestSurvey(unittest.TestCase):
 
     def test_rewrite_preserves_judgement_section(self) -> None:
         """重写事实段不能冲掉 AI 写的判断——否则每轮初审都从零开始。"""
-        from hw_velxio import design_cli
-        from hw_velxio.design import survey as survey_module
+        from dsh_embagent import design_cli
+        from dsh_embagent.design import survey as survey_module
 
         design_cli.cmd_new(["_test_keep", "arduino-uno", "保留"])
         payload = survey_module.survey()
@@ -2686,8 +2686,8 @@ class TestSurvey(unittest.TestCase):
         self.assertIn("hwv-survey:begin", after, "事实段没刷新")
 
     def test_stale_detection(self) -> None:
-        from hw_velxio import design_cli
-        from hw_velxio.design import survey as survey_module
+        from dsh_embagent import design_cli
+        from dsh_embagent.design import survey as survey_module
 
         design_cli.cmd_new(["_test_stale", "arduino-uno", "过期"])
         survey_module.write_initial_review(survey_module.survey())
@@ -2705,14 +2705,14 @@ class TestPutValidation(unittest.TestCase):
     """`put` 是唯一**受校验**的设计写入路径（hw_put 的底座）。"""
 
     def test_put_rejects_invalid_model(self) -> None:
-        from hw_velxio import design_cli
+        from dsh_embagent import design_cli
         payload = design_cli.cmd_put(["_test_put", "missing-file.json"])
         self.assertEqual(payload["status"], "failed")
 
     def test_put_reports_validate_problems(self) -> None:
         """非法设计**允许落盘**但必须回报 problems（面板要能显示）。"""
-        from hw_velxio.design.model import DesignModel
-        from hw_velxio.design.boards import board_preset
+        from dsh_embagent.design.model import DesignModel
+        from dsh_embagent.design.boards import board_preset
 
         design = DesignModel(id="_test_put2", title="t",
                              board=board_preset("arduino-uno"))
@@ -2738,7 +2738,7 @@ class TestEntries(unittest.TestCase):
         shutil.rmtree(self.base, ignore_errors=True)
 
     def test_ioc_gives_real_mcu(self) -> None:
-        from hw_velxio.design import entries
+        from dsh_embagent.design import entries
         project = self.base / "F103-GPS-master"
         (project / "Core" / "Src").mkdir(parents=True)
         (project / "app.ioc").write_text(
@@ -2758,7 +2758,7 @@ class TestEntries(unittest.TestCase):
 
     def test_core_dir_is_counted(self) -> None:
         """`Core/` 是 CubeMX 的标准源码目录，**不能**当第三方残留跳过。"""
-        from hw_velxio.design import entries
+        from dsh_embagent.design import entries
         project = self.base / "p1"
         (project / "Core" / "Src").mkdir(parents=True)
         (project / "app.ioc").write_text("Mcu.UserName=X\n", encoding="utf-8")
@@ -2771,7 +2771,7 @@ class TestEntries(unittest.TestCase):
 
     def test_bench_project_is_an_entry(self) -> None:
         """工作台自己的工程也是条目（否则它们掉出条目总数）。"""
-        from hw_velxio.design import entries
+        from dsh_embagent.design import entries
         project = self.base / "bench-proj"
         project.mkdir()
         (project / "design.json").write_text("{}", encoding="utf-8")
@@ -2782,7 +2782,7 @@ class TestEntries(unittest.TestCase):
         self.assertEqual(row["phase"], "adopted")
 
     def test_loose_bom_and_firmware_detected(self) -> None:
-        from hw_velxio.design import entries
+        from dsh_embagent.design import entries
         (self.base / "BOM_board.csv").write_text(
             "Designator,Value\nR1,10k\n", encoding="utf-8")
         (self.base / "firmware.bin").write_bytes(b"\x00" * 64)
@@ -2805,7 +2805,7 @@ class TestLog(unittest.TestCase):
         shutil.rmtree(self.base, ignore_errors=True)
 
     def test_activity_is_append_only(self) -> None:
-        from hw_velxio.design import log
+        from dsh_embagent.design import log
         log.append_activity(self.base, step="survey", outcome="ok", detail="第一次")
         log.append_activity(self.base, step="check", outcome="ok", detail="第二次")
         rows = log.read_activity(self.base)["rows"]
@@ -2815,7 +2815,7 @@ class TestLog(unittest.TestCase):
         self.assertIn("第一次", rows[1], "旧记录内容被改写了")
 
     def test_coverage_reports_unread(self) -> None:
-        from hw_velxio.design import log
+        from dsh_embagent.design import log
         files = [self.base / "a.c", self.base / "b.h"]
         for path in files:
             path.write_text("x\n", encoding="utf-8")
@@ -2828,7 +2828,7 @@ class TestLog(unittest.TestCase):
         self.assertIn("未读取内容", coverage["note"])
 
     def test_report_written_and_listed(self) -> None:
-        from hw_velxio.design import log
+        from dsh_embagent.design import log
         payload = {
             "workspace": str(self.base), "fingerprint": "sha256:x",
             "elapsed_ms": 1, "projects": [], "entries": [],
@@ -2847,7 +2847,7 @@ class TestLog(unittest.TestCase):
 
     def test_reports_do_not_overwrite(self) -> None:
         """两份报告不能互相覆盖（时间戳命名 + 只追加）。"""
-        from hw_velxio.design import log
+        from dsh_embagent.design import log
         payload = {"workspace": str(self.base), "fingerprint": "sha256:y",
                    "elapsed_ms": 1, "projects": [], "entries": [],
                    "entries_by_kind": {}, "counts": {}}
@@ -2860,7 +2860,7 @@ class TestLog(unittest.TestCase):
 
 class TestPhaseNotAdopted(unittest.TestCase):
     def test_entry_with_content_is_not_adopted_not_empty(self) -> None:
-        from hw_velxio.design import phase
+        from dsh_embagent.design import phase
         result = phase.evaluate_entry({
             "adopted": False, "kind": "cubemx",
             "source_total": 30, "mcu": "STM32F103C8Tx",
@@ -2870,7 +2870,7 @@ class TestPhaseNotAdopted(unittest.TestCase):
         self.assertIn("30 个源文件", result["reason"])
 
     def test_empty_entry_says_so(self) -> None:
-        from hw_velxio.design import phase
+        from dsh_embagent.design import phase
         result = phase.evaluate_entry({"adopted": False, "kind": "cmake"})
         self.assertEqual(result["phase"], "not_adopted")
         self.assertTrue(result["veto"])
@@ -2978,7 +2978,7 @@ class TestEasyEda(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_parse_extracts_components_and_nets(self) -> None:
-        from hw_velxio.design import easyeda
+        from dsh_embagent.design import easyeda
         path = self.tmp / "p.epro2"
         _make_epro2(path,
                     components=[("R1", "10k"), ("C1", "100nF"), ("U1", "STM32")],
@@ -2995,7 +2995,7 @@ class TestEasyEda(unittest.TestCase):
 
     def test_coords_converted_from_mil(self) -> None:
         """坐标单位是 mil；1000 mil = 25.4 mm。这是 A 的核心断言。"""
-        from hw_velxio.design import easyeda
+        from dsh_embagent.design import easyeda
         path = self.tmp / "coord.epro2"
         _make_epro2(path, components=[("R1", "10k")], nets=[])
         result = easyeda.parse(path)
@@ -3008,7 +3008,7 @@ class TestEasyEda(unittest.TestCase):
 
     def test_board_outline_read_from_poly(self) -> None:
         """板框来自 `POLY.polyType=BOARD_OUTLINE`，不是板卡预设。"""
-        from hw_velxio.design import easyeda
+        from dsh_embagent.design import easyeda
         path = self.tmp / "outline.epro2"
         _make_epro2(path, components=[("R1", "10k")], nets=[])
         result = easyeda.parse(path)
@@ -3019,7 +3019,7 @@ class TestEasyEda(unittest.TestCase):
 
     def test_pad_net_keyed_id_gives_pins(self) -> None:
         """`["PAD_NET", 元件id, 焊盘号, 焊盘id]` → 真实引脚归属。"""
-        from hw_velxio.design import easyeda
+        from dsh_embagent.design import easyeda
         path = self.tmp / "padnet.epro2"
         _make_epro2(path, components=[("R1", ""), ("R2", "")],
                     nets=["GND", "GND"])
@@ -3031,7 +3031,7 @@ class TestEasyEda(unittest.TestCase):
 
     def test_placeholder_designator_counted_honestly(self) -> None:
         """`U?`/`C?` 是工程未标号的状态，要如实计数而不是当失败。"""
-        from hw_velxio.design import easyeda
+        from dsh_embagent.design import easyeda
         path = self.tmp / "ph.epro2"
         _make_epro2(path, components=[("R1", "10k"), ("C?", "100nF")],
                     nets=["GND"])
@@ -3040,7 +3040,7 @@ class TestEasyEda(unittest.TestCase):
         self.assertEqual(result["counts"]["named"], 2)
 
     def test_missing_epru_is_reported(self) -> None:
-        from hw_velxio.design import easyeda
+        from dsh_embagent.design import easyeda
         import zipfile
         path = self.tmp / "bad.epro2"
         with zipfile.ZipFile(path, "w") as archive:
@@ -3050,7 +3050,7 @@ class TestEasyEda(unittest.TestCase):
         self.assertIn(".epru", "；".join(result["findings"]))
 
     def test_not_a_zip_is_reported(self) -> None:
-        from hw_velxio.design import easyeda
+        from dsh_embagent.design import easyeda
         path = self.tmp / "notzip.epro2"
         path.write_bytes(b"not a zip at all")
         result = easyeda.parse(path)
@@ -3058,7 +3058,7 @@ class TestEasyEda(unittest.TestCase):
 
     def test_import_uses_real_coords_not_grid(self) -> None:
         """导入必须用真实坐标；尺寸未知要标 estimated，不编造数值。"""
-        from hw_velxio.design import easyeda_import
+        from dsh_embagent.design import easyeda_import
         path = self.tmp / "imp.epro2"
         _make_epro2(path,
                     components=[("R1", "10k"), ("C1", "100nF"), ("C?", "")],
@@ -3077,7 +3077,7 @@ class TestEasyEda(unittest.TestCase):
 
     def test_import_uses_project_outline(self) -> None:
         """板框来自工程，而不是 Arduino Uno 预设。"""
-        from hw_velxio.design import easyeda_import
+        from dsh_embagent.design import easyeda_import
         path = self.tmp / "board.epro2"
         _make_epro2(path, components=[("R1", "10k")], nets=[])
         design = easyeda_import.import_epro2(path, design_id="t")
@@ -3086,7 +3086,7 @@ class TestEasyEda(unittest.TestCase):
         self.assertIn("EasyEDA", design.board.name)
 
     def test_roles_from_ref_prefix(self) -> None:
-        from hw_velxio.design import easyeda_import
+        from dsh_embagent.design import easyeda_import
         path = self.tmp / "roles.epro2"
         _make_epro2(path,
                     components=[("R1", ""), ("U1", ""), ("J1", ""), ("LED1", "")],
@@ -3099,7 +3099,7 @@ class TestEasyEda(unittest.TestCase):
 
     def test_value_bridged_from_schematic(self) -> None:
         """值来自原理图 `Value`，按 Designator 桥接到 PCB 元件。"""
-        from hw_velxio.design import easyeda
+        from dsh_embagent.design import easyeda
         path = self.tmp / "value.epro2"
         _make_epro2(path, components=[("C1", "1uF"), ("R1", "10k")], nets=[])
         result = easyeda.parse(path)
@@ -3110,7 +3110,7 @@ class TestEasyEda(unittest.TestCase):
 
     def test_size_from_3d_model_transform(self) -> None:
         """尺寸来自 `3D Model Transform`：sizeX/Y/Z 单位 mil。"""
-        from hw_velxio.design import easyeda
+        from dsh_embagent.design import easyeda
         path = self.tmp / "size.epro2"
         _make_epro2(path, components=[("C1", "1uF")], nets=[])
         result = easyeda.parse(path)
@@ -3124,7 +3124,7 @@ class TestEasyEda(unittest.TestCase):
 
     def test_import_marks_derived_vs_estimated(self) -> None:
         """有真实尺寸 → derived；没有 → estimated。**不能一律标 estimated**。"""
-        from hw_velxio.design import easyeda_import
+        from dsh_embagent.design import easyeda_import
         import zipfile
         path = self.tmp / "mixed.epro2"
         # 一个有尺寸（有 SCH 3D Transform），一个没有。
@@ -3158,7 +3158,7 @@ class TestEasyEda(unittest.TestCase):
 
     def test_connector_recognised_from_footprint(self) -> None:
         """`U1` 可能是排针：角色靠**封装名**判断，不是只看标号前缀。"""
-        from hw_velxio.design import easyeda_import
+        from dsh_embagent.design import easyeda_import
         path = self.tmp / "conn.epro2"
         _make_epro2(path, components=[("U1", ""), ("RF1", ""), ("U2", "")],
                     nets=[])
@@ -3172,7 +3172,7 @@ class TestEasyEda(unittest.TestCase):
         self.assertEqual(easyeda_import._role_of("U1", "LQFP-64"), "module")
 
     def test_import_any_dispatches_epro2(self) -> None:
-        from hw_velxio.design.importers import import_any, supported_formats
+        from dsh_embagent.design.importers import import_any, supported_formats
         path = self.tmp / "dispatch.epro2"
         _make_epro2(path, components=[("R1", "10k")], nets=["GND"])
         design = import_any(path, design_id="d")
@@ -3200,7 +3200,7 @@ class TestPins(unittest.TestCase):
         return design
 
     def test_declared_pin_must_exist(self) -> None:
-        from hw_velxio.design import pins
+        from dsh_embagent.design import pins
         design = self._design(kind="mcu", pins=["1", "2", "3"],
                               net_pins=[("U1", "99")])
         audit = pins.audit(design)
@@ -3211,14 +3211,14 @@ class TestPins(unittest.TestCase):
         self.assertTrue(any("引脚不存在" in p for p in design.validate()))
 
     def test_declared_pin_case_insensitive(self) -> None:
-        from hw_velxio.design import pins
+        from dsh_embagent.design import pins
         design = self._design(kind="mcu", pins=["D13"], net_pins=[("U1", "d13")])
         audit = pins.audit(design)
         self.assertEqual(audit["missing"], [], "大小写不同不该判成缺引脚")
         self.assertEqual(audit["pins_checked"], 1)
 
     def test_convention_pins_used_when_not_declared(self) -> None:
-        from hw_velxio.design import pins
+        from dsh_embagent.design import pins
         design = self._design(kind="led", pins=None, net_pins=[("U1", "A")])
         audit = pins.audit(design)
         self.assertEqual(audit["sources"]["convention"], 1)
@@ -3226,7 +3226,7 @@ class TestPins(unittest.TestCase):
 
     def test_unknown_pin_table_is_unverified_not_passed(self) -> None:
         """没有引脚表时必须报"未核对"，**不能**静默算通过。"""
-        from hw_velxio.design import pins
+        from dsh_embagent.design import pins
         design = self._design(kind="mystery-chip", pins=None,
                               net_pins=[("U1", "WHATEVER")])
         audit = pins.audit(design)
@@ -3238,7 +3238,7 @@ class TestPins(unittest.TestCase):
         self.assertIn("不是通过", line)
 
     def test_pin_check_appears_in_not_verified(self) -> None:
-        from hw_velxio.design import physical
+        from dsh_embagent.design import physical
         design = self._design(kind="mystery-chip", pins=None,
                               net_pins=[("U1", "WHATEVER")])
         result = physical.run_checks(design)
@@ -3267,7 +3267,7 @@ class TestScene(unittest.TestCase):
         return design
 
     def test_placements_and_dims(self) -> None:
-        from hw_velxio.design import scene
+        from dsh_embagent.design import scene
         payload = scene.to_scene(self._design(), pitch_mm=0.5)
         space = payload["space"]
         self.assertEqual(len(space["placements"]), 2)
@@ -3282,7 +3282,7 @@ class TestScene(unittest.TestCase):
 
     def test_meta_role_present(self) -> None:
         """`inventory.bom` 只认 `meta.role`，缺了整件会被静默跳过。"""
-        from hw_velxio.design import scene
+        from dsh_embagent.design import scene
         payload = scene.to_scene(self._design())
         for placement in payload["space"]["placements"]:
             self.assertTrue(placement["meta"]["role"],
@@ -3290,7 +3290,7 @@ class TestScene(unittest.TestCase):
 
     def test_wires_are_marked_approximate(self) -> None:
         """端点只到元件中心，必须标注，不能让人当真实走线长度。"""
-        from hw_velxio.design import scene
+        from dsh_embagent.design import scene
         payload = scene.to_scene(self._design())
         wires = payload["wires"]
         self.assertEqual(len(wires["runs"]), 1)
@@ -3299,13 +3299,13 @@ class TestScene(unittest.TestCase):
         self.assertEqual(wires["runs"][0]["approx"], "component_centre")
 
     def test_rail_missing_is_reported(self) -> None:
-        from hw_velxio.design import scene
+        from dsh_embagent.design import scene
         payload = scene.to_scene(self._design())
         self.assertTrue(any("rail" in x for x in payload["unverified"]),
                         payload["unverified"])
 
     def test_empty_design_is_reported_not_silent(self) -> None:
-        from hw_velxio.design import scene
+        from dsh_embagent.design import scene
         design = DesignModel(id="e", title="t", board=board_preset("arduino-uno"))
         payload = scene.to_scene(design)
         self.assertEqual(payload["space"]["placements"], [])
@@ -3316,7 +3316,7 @@ class TestSynthesize(unittest.TestCase):
     """需求 → 设计：模板组装出的网表必须**引脚都真实存在**。"""
 
     def test_all_templates_produce_valid_pins(self) -> None:
-        from hw_velxio.design import pins, synthesize
+        from dsh_embagent.design import pins, synthesize
         for template in sorted(synthesize.TEMPLATES):
             with self.subTest(template=template):
                 design = synthesize.synthesize({"template": template},
@@ -3330,7 +3330,7 @@ class TestSynthesize(unittest.TestCase):
                                  f"{template} 用了没有引脚表的元件")
 
     def test_blink_binds_real_d13(self) -> None:
-        from hw_velxio.design import synthesize
+        from dsh_embagent.design import synthesize
         design = synthesize.synthesize({"template": "blink", "pin": "D13"},
                                        design_id="b")
         names = {entry["net"] for entry in design.nets}
@@ -3338,21 +3338,21 @@ class TestSynthesize(unittest.TestCase):
         self.assertIn("GND", names)
 
     def test_missing_pin_is_rejected_with_options(self) -> None:
-        from hw_velxio.design import synthesize
+        from dsh_embagent.design import synthesize
         with self.assertRaises(synthesize.SynthError) as caught:
             synthesize.synthesize({"template": "blink", "pin": "D99"},
                                   design_id="bad")
         self.assertIn("没有引脚", str(caught.exception))
 
     def test_unknown_template_rejected(self) -> None:
-        from hw_velxio.design import synthesize
+        from dsh_embagent.design import synthesize
         with self.assertRaises(synthesize.SynthError):
             synthesize.synthesize({"template": "quantum-radio"},
                                   design_id="bad")
 
     def test_layout_fits_inside_board(self) -> None:
         """模板默认要落在板内，而不是每张都把板子撑宽。"""
-        from hw_velxio.design import synthesize
+        from dsh_embagent.design import synthesize
         design = synthesize.synthesize({"template": "blink"}, design_id="fit")
         width = design.board.size_mm["w"]
         for part in design.parts:
@@ -3362,7 +3362,7 @@ class TestSynthesize(unittest.TestCase):
 
     def test_estimated_catalog_part_marked(self) -> None:
         """catalog 里标 estimated 的件必须保留这个标签，不能升格成 datasheet。"""
-        from hw_velxio.design import synthesize
+        from dsh_embagent.design import synthesize
         design = synthesize.synthesize({"template": "i2c-sensor",
                                         "sensor": "bme280"}, design_id="e")
         sensor = next(p for p in design.parts if p.ref == "U2")
@@ -3371,7 +3371,7 @@ class TestSynthesize(unittest.TestCase):
 
 def _claims_design() -> DesignModel:
     """最小可判设计：MCU + 上拉 + LED，三个元件身份都清楚。"""
-    from hw_velxio.design.model import Part, Placement, Wire
+    from dsh_embagent.design.model import Part, Placement, Wire
 
     design = DesignModel(id="_claims", title="claims",
                          board=board_preset("arduino-uno"))
@@ -3414,7 +3414,7 @@ class TestClaims(unittest.TestCase):
         这条是全部机制的要害：如果删掉元件后断言变成"没法判断"，
         那"删除即失败"就不成立，系统只是变安静。
         """
-        from hw_velxio.design import claims
+        from dsh_embagent.design import claims
 
         claim = claims.Claim(
             id="claim.X.powered", type="capability",
@@ -3426,7 +3426,7 @@ class TestClaims(unittest.TestCase):
 
     def test_removal_reddens_exactly_its_own_claims(self) -> None:
         """删 R1 → 只有 R1 的断言变红，别人的不受影响。"""
-        from hw_velxio.design import claims
+        from dsh_embagent.design import claims
 
         impact = claims.removal_impact(_claims_design(), "R1")
         self.assertIsNotNone(impact)
@@ -3439,7 +3439,7 @@ class TestClaims(unittest.TestCase):
 
     def test_removal_does_not_mutate_the_original(self) -> None:
         """`removal_impact` 在内存副本上做，原设计一个字节都不改。"""
-        from hw_velxio.design import claims
+        from dsh_embagent.design import claims
 
         design = _claims_design()
         before = len(design.parts)
@@ -3448,7 +3448,7 @@ class TestClaims(unittest.TestCase):
         self.assertIsNotNone(design.part("R1"))
 
     def test_removing_unknown_ref_returns_none(self) -> None:
-        from hw_velxio.design import claims
+        from dsh_embagent.design import claims
         self.assertIsNone(claims.removal_impact(_claims_design(), "NOPE"))
 
     def test_missing_data_is_unknown_never_pass(self) -> None:
@@ -3456,7 +3456,7 @@ class TestClaims(unittest.TestCase):
 
         这正是 `budgets.py:149` 那条纪律：缺失的值不许渲染成通过。
         """
-        from hw_velxio.design import claims
+        from dsh_embagent.design import claims
 
         claim = claims.Claim(
             id="claim.R1.rated_voltage", type="numeric",
@@ -3468,7 +3468,7 @@ class TestClaims(unittest.TestCase):
         self.assertIn("缺数据", outcome.basis)
 
     def test_numeric_failure_is_fail(self) -> None:
-        from hw_velxio.design import claims
+        from dsh_embagent.design import claims
 
         claim = claims.Claim(
             id="claim.U1.rated", type="numeric", requires=["part.U1"],
@@ -3479,8 +3479,8 @@ class TestClaims(unittest.TestCase):
 
     def test_isolated_part_fails_attached(self) -> None:
         """存在但不接任何网络的元件必须红——物理检查不会点名它。"""
-        from hw_velxio.design import claims
-        from hw_velxio.design.model import Part, Placement
+        from dsh_embagent.design import claims
+        from dsh_embagent.design.model import Part, Placement
 
         design = _claims_design()
         design.parts.append(Part(
@@ -3499,7 +3499,7 @@ class TestClaims(unittest.TestCase):
 
     def test_unknown_ref_prefix_is_false_not_lenient(self) -> None:
         """写错前缀（`par.R1`）必须算不存在，否则拼错会让断言静默失效。"""
-        from hw_velxio.design import claims
+        from dsh_embagent.design import claims
 
         design = _claims_design()
         self.assertTrue(claims.exists(design, "part.R1"))
@@ -3514,8 +3514,8 @@ class TestClaims(unittest.TestCase):
         实测背景：`示例-单板` 141 个元件 role 全是 component/module/connector，
         3 个按钮模块因此被误判成"没接电源"。
         """
-        from hw_velxio.design import claims
-        from hw_velxio.design.model import Part
+        from dsh_embagent.design import claims
+        from dsh_embagent.design.model import Part
 
         blob = Part(ref="U9", kind="015c378003ee92b1", role="module",
                     size_mm={"w": 5.0, "h": 5.0, "d": 1.0},
@@ -3529,8 +3529,8 @@ class TestClaims(unittest.TestCase):
 
     def test_coverage_exposes_green_but_empty(self) -> None:
         """全绿但零语义断言时，覆盖率必须把这件事说出来。"""
-        from hw_velxio.design import claims
-        from hw_velxio.design.model import Part, Placement
+        from dsh_embagent.design import claims
+        from dsh_embagent.design.model import Part, Placement
 
         design = DesignModel(id="_cov", title="cov",
                              board=board_preset("arduino-uno"))
@@ -3551,7 +3551,7 @@ class TestClaims(unittest.TestCase):
 
     def test_claims_are_deterministic(self) -> None:
         """同输入必须同输出 —— 断言顺序变了 diff 就没法比。"""
-        from hw_velxio.design import claims
+        from dsh_embagent.design import claims
 
         first = [c.to_dict() for c in claims.derive(_claims_design())]
         second = [c.to_dict() for c in claims.derive(_claims_design())]
@@ -3559,7 +3559,7 @@ class TestClaims(unittest.TestCase):
 
     def test_derive_binds_every_claim_to_its_part(self) -> None:
         """每条断言的第一条 requires 必须是它自己 —— 机制的结构保证。"""
-        from hw_velxio.design import claims
+        from dsh_embagent.design import claims
 
         for claim in claims.derive(_claims_design()):
             self.assertTrue(claim.requires, f"{claim.id} 没有 requires")
@@ -3584,7 +3584,7 @@ class TestClaims(unittest.TestCase):
         这条测试要求它被 `derive()` 消费，出现在 `requires` 里
         （`part.R1` + `net.D2` 同时出现才算真消费了）。
         """
-        from hw_velxio.design import claims, justify
+        from dsh_embagent.design import claims, justify
 
         design = _claims_design()
         report = justify.run(design)
@@ -3635,7 +3635,7 @@ class TestClaims(unittest.TestCase):
         `removal_impact` 报了什么。只断言 `connected` 的话，
         `hw_assert` 的输出对人几乎没有信息量。
         """
-        from hw_velxio.design import claims
+        from dsh_embagent.design import claims
 
         design = _claims_design()
         for ref in ("R1", "D1"):
@@ -3655,7 +3655,7 @@ class TestUnits(unittest.TestCase):
 
     @staticmethod
     def _multi() -> DesignModel:
-        from hw_velxio.design.model import Board, Part, Placement
+        from dsh_embagent.design.model import Board, Part, Placement
 
         boards = [
             Board(kind="custom", name="主板", size_mm={"w": 60, "h": 60},
@@ -3680,7 +3680,7 @@ class TestUnits(unittest.TestCase):
         return design
 
     def test_derive_groups_by_board_id(self) -> None:
-        from hw_velxio.design import units
+        from dsh_embagent.design import units
 
         design = self._multi()
         found = units.derive(design)
@@ -3689,7 +3689,7 @@ class TestUnits(unittest.TestCase):
         self.assertEqual(parts, ["U1", "U2"])
 
     def test_role_needs_evidence(self) -> None:
-        from hw_velxio.design import units
+        from dsh_embagent.design import units
 
         design = self._multi()
         design.nets = [
@@ -3706,7 +3706,7 @@ class TestUnits(unittest.TestCase):
         self.assertEqual(sub.named_nets, [])
 
     def test_no_netlist_is_not_pass(self) -> None:
-        from hw_velxio.design import units
+        from dsh_embagent.design import units
 
         design = self._multi()
         report = units.report(design)
@@ -3716,7 +3716,7 @@ class TestUnits(unittest.TestCase):
         self.assertEqual(report["missing_data"]["no_netlist_count"], 2)
 
     def test_apply_writes_units_list(self) -> None:
-        from hw_velxio.design import units
+        from dsh_embagent.design import units
 
         design = self._multi()
         units.apply(design)
@@ -3729,7 +3729,7 @@ class TestLinks(unittest.TestCase):
 
     @staticmethod
     def _design() -> DesignModel:
-        from hw_velxio.design.model import Part, Placement
+        from dsh_embagent.design.model import Part, Placement
 
         design = DesignModel(id="_links", title="links",
                              board=Board(kind="custom",
@@ -3749,7 +3749,7 @@ class TestLinks(unittest.TestCase):
         return design
 
     def test_protocol_mismatch(self) -> None:
-        from hw_velxio.design import links
+        from dsh_embagent.design import links
 
         design = self._design()
         table = [{
@@ -3765,7 +3765,7 @@ class TestLinks(unittest.TestCase):
         self.assertFalse(report["ok"])
 
     def test_inferred_never_fails(self) -> None:
-        from hw_velxio.design import links
+        from dsh_embagent.design import links
 
         design = self._design()
         table = [{
@@ -3780,14 +3780,14 @@ class TestLinks(unittest.TestCase):
         self.assertIn("l1", report["skipped_inferred"])
 
     def test_empty_table_is_not_ready(self) -> None:
-        from hw_velxio.design import links
+        from dsh_embagent.design import links
 
         report = links.validate(self._design(), [])
         self.assertEqual(report["status"], "not_ready")
         self.assertIn("不是通过", report["reason"])
 
     def test_baud_uses_fractional_prescaler(self) -> None:
-        from hw_velxio.design import links
+        from dsh_embagent.design import links
 
         # 8MHz 跑 115200：整数分频算不通（125000，偏差 8.5%），
         # 但 STM32 的 BRR 有 4 位小数分频，实际 115942，偏差 0.6% → 通。
@@ -3801,7 +3801,7 @@ class TestLinks(unittest.TestCase):
         self.assertIsNone(ok, "时钟未知必须是 None，不是 True")
 
     def test_orphan_declared_peripheral(self) -> None:
-        from hw_velxio.design import links
+        from dsh_embagent.design import links
 
         design = self._design()
         design.meta = {"interfaces": {"USART2": "unit:main"}}
@@ -3813,7 +3813,7 @@ class TestLinks(unittest.TestCase):
             "declared")
 
     def test_family_tokens(self) -> None:
-        from hw_velxio.design import links
+        from dsh_embagent.design import links
 
         self.assertEqual(links.family_of("USART2"), "uart")
         self.assertEqual(links.family_of("SPI1"), "spi")
@@ -3826,7 +3826,7 @@ class TestCapability(unittest.TestCase):
     """P6 能力表：来源不可信就不选；fills 挡住语义荒谬。"""
 
     def test_only_trusted_sources(self) -> None:
-        from hw_velxio.design import capability
+        from dsh_embagent.design import capability
 
         saved = dict(capability.CAPABILITY)
         try:
@@ -3841,14 +3841,14 @@ class TestCapability(unittest.TestCase):
             capability.CAPABILITY.update(saved)
 
     def test_fills_blocks_wrong_category(self) -> None:
-        from hw_velxio.design import capability
+        from dsh_embagent.design import capability
 
         radio = capability.candidates({"spi"}, role="radio")
         self.assertNotIn("bmp280", radio, "气压计不该当电台")
         self.assertIn("esp32s3", radio)
 
     def test_explain_miss_distinguishes(self) -> None:
-        from hw_velxio.design import capability
+        from dsh_embagent.design import capability
 
         miss = capability.explain_miss({"eth", "wifi"})
         self.assertIn(miss["reason"], ("filtered_out", "table_empty"))
@@ -3861,7 +3861,7 @@ class TestGenerate(unittest.TestCase):
 
     @staticmethod
     def _req(**kw):
-        from hw_velxio.design import generate
+        from dsh_embagent.design import generate
 
         base = {
             "id": "t", "roles": ["mcu", "radio", "sensor", "power_in"],
@@ -3874,7 +3874,7 @@ class TestGenerate(unittest.TestCase):
     def test_deterministic(self) -> None:
         import json
 
-        from hw_velxio.design import generate
+        from dsh_embagent.design import generate
 
         first = json.dumps(generate.generate(self._req(), max_candidates=10),
                            ensure_ascii=False, sort_keys=True)
@@ -3883,13 +3883,13 @@ class TestGenerate(unittest.TestCase):
         self.assertEqual(first, second, "同一需求两次结果必须一致")
 
     def test_respects_budget(self) -> None:
-        from hw_velxio.design import generate
+        from dsh_embagent.design import generate
 
         report = generate.generate(self._req(), max_candidates=4)
         self.assertLessEqual(len(report["candidates"]), 4)
 
     def test_candidates_are_distinct(self) -> None:
-        from hw_velxio.design import generate
+        from dsh_embagent.design import generate
 
         report = generate.generate(self._req(), max_candidates=12)
         signatures = []
@@ -3902,7 +3902,7 @@ class TestGenerate(unittest.TestCase):
                          "候选签名必须互不相同，不能靠改名凑数")
 
     def test_shared_part_collapsed(self) -> None:
-        from hw_velxio.design import generate
+        from dsh_embagent.design import generate
 
         report = generate.generate(self._req(), max_candidates=20)
         shared = [c for c in report["candidates"]
@@ -3914,7 +3914,7 @@ class TestGenerate(unittest.TestCase):
                              "同一颗料不能列两行（面积会重复计数）")
 
     def test_no_self_loop_nets(self) -> None:
-        from hw_velxio.design import generate
+        from dsh_embagent.design import generate
 
         report = generate.generate(self._req(), max_candidates=20)
         req = self._req()
@@ -3929,7 +3929,7 @@ class TestGenerate(unittest.TestCase):
                                     f"{net['net']} 是自环网（同一颗料连自己）")
 
     def test_no_candidates_is_not_ready(self) -> None:
-        from hw_velxio.design import generate
+        from dsh_embagent.design import generate
 
         report = generate.generate(self._req(roles=[]), max_candidates=4)
         self.assertEqual(report["status"], "not_ready")
@@ -3949,7 +3949,7 @@ class TestVectorTable(unittest.TestCase):
 
     def test_valid_vector_table(self) -> None:
         import tempfile
-        from hw_velxio.design import renode
+        from dsh_embagent.design import renode
 
         with tempfile.TemporaryDirectory() as tmp:
             info = renode.vector_table(self._bin(tmp, 0x20005000, 0x080033F5))
@@ -3959,7 +3959,7 @@ class TestVectorTable(unittest.TestCase):
 
     def test_rejects_sp_outside_sram(self) -> None:
         import tempfile
-        from hw_velxio.design import renode
+        from dsh_embagent.design import renode
 
         with tempfile.TemporaryDirectory() as tmp:
             info = renode.vector_table(self._bin(tmp, 0x12345000, 0x08000101))
@@ -3968,7 +3968,7 @@ class TestVectorTable(unittest.TestCase):
 
     def test_rejects_non_thumb_reset(self) -> None:
         import tempfile
-        from hw_velxio.design import renode
+        from dsh_embagent.design import renode
 
         with tempfile.TemporaryDirectory() as tmp:
             info = renode.vector_table(self._bin(tmp, 0x20005000, 0x08000100))
@@ -3978,7 +3978,7 @@ class TestVectorTable(unittest.TestCase):
     def test_rejects_short_file(self) -> None:
         import tempfile
         from pathlib import Path
-        from hw_velxio.design import renode
+        from dsh_embagent.design import renode
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "tiny.bin"
@@ -3987,7 +3987,7 @@ class TestVectorTable(unittest.TestCase):
             self.assertFalse(info["ok"])
 
     def test_platform_mapping(self) -> None:
-        from hw_velxio.design import renode
+        from dsh_embagent.design import renode
 
         self.assertEqual(renode._platform_for("STM32F103C8T6"), "stm32f103")
         self.assertEqual(renode._platform_for("STM32H743IIT6"), "stm32h743")
@@ -4000,7 +4000,7 @@ class TestRenodeScript(unittest.TestCase):
 
     @staticmethod
     def _two_board(link_source: str = "declared") -> DesignModel:
-        from hw_velxio.design.model import Board, Part, Placement
+        from dsh_embagent.design.model import Board, Part, Placement
 
         b0 = Board(kind="custom", name="A", size_mm={"w": 40, "h": 40}, id="A")
         b1 = Board(kind="custom", name="B", size_mm={"w": 40, "h": 40}, id="B")
@@ -4026,7 +4026,7 @@ class TestRenodeScript(unittest.TestCase):
         return design
 
     def test_declared_link_becomes_connector(self) -> None:
-        from hw_velxio.design import renode
+        from dsh_embagent.design import renode
 
         report = renode.build_resc(self._two_board("declared"))
         self.assertEqual(len(report["connectors"]), 1)
@@ -4034,7 +4034,7 @@ class TestRenodeScript(unittest.TestCase):
         self.assertIn("m0.sysbus.spi1", report["connectors"][0])
 
     def test_inferred_link_not_connected(self) -> None:
-        from hw_velxio.design import renode
+        from dsh_embagent.design import renode
 
         report = renode.build_resc(self._two_board("inferred"))
         self.assertEqual(report["connectors"], [],
@@ -4042,7 +4042,7 @@ class TestRenodeScript(unittest.TestCase):
         self.assertTrue(any("inferred" in w for w in report["warnings"]))
 
     def test_connector_before_start(self) -> None:
-        from hw_velxio.design import renode
+        from dsh_embagent.design import renode
 
         script = renode.build_resc(self._two_board())["script"]
         self.assertGreater(script.find("connector Connect"),
@@ -4052,7 +4052,7 @@ class TestRenodeScript(unittest.TestCase):
                         "connector 必须在 start 之前")
 
     def test_runnable_here_is_honest(self) -> None:
-        from hw_velxio.design import renode
+        from dsh_embagent.design import renode
 
         report = renode.report(self._two_board())
         self.assertIn("runnable_here", report)
@@ -4086,7 +4086,7 @@ PA15.Signal=GPIO_Output
 
     def test_parse_endpoints(self) -> None:
         import tempfile
-        from hw_velxio.design import ioc_links
+        from dsh_embagent.design import ioc_links
 
         with tempfile.TemporaryDirectory() as tmp:
             row = ioc_links.parse_ioc(self._write(tmp, "A"))
@@ -4101,7 +4101,7 @@ PA15.Signal=GPIO_Output
 
     def test_tx_pairs_with_rx(self) -> None:
         import tempfile
-        from hw_velxio.design import ioc_links
+        from dsh_embagent.design import ioc_links
 
         # B 板把 TX/RX 交换（正常接法）
         swapped = self.IOC.replace("PA2.Signal=USART2_TX", "PA2.Signal=USART2_RX") \
@@ -4120,8 +4120,8 @@ PA15.Signal=GPIO_Output
 
     def test_inferred_never_lands_by_default(self) -> None:
         import tempfile
-        from hw_velxio.design import ioc_links
-        from hw_velxio.design.model import Board
+        from dsh_embagent.design import ioc_links
+        from dsh_embagent.design.model import Board
 
         with tempfile.TemporaryDirectory() as tmp:
             self._write(tmp, "A")
@@ -4138,7 +4138,7 @@ PA15.Signal=GPIO_Output
 
     def test_empty_dir_is_not_ready(self) -> None:
         import tempfile
-        from hw_velxio.design import ioc_links
+        from dsh_embagent.design import ioc_links
 
         with tempfile.TemporaryDirectory() as tmp:
             report = ioc_links.extract(tmp)
@@ -4147,7 +4147,7 @@ PA15.Signal=GPIO_Output
 
     def test_all_links_are_inferred(self) -> None:
         import tempfile
-        from hw_velxio.design import ioc_links
+        from dsh_embagent.design import ioc_links
 
         with tempfile.TemporaryDirectory() as tmp:
             self._write(tmp, "A")
@@ -4163,8 +4163,8 @@ class TestPutAutoLock(unittest.TestCase):
     """`put` 必须和 `new`/`import` 一样自动锁板卡型号。"""
 
     def test_put_locks_mcu_family(self) -> None:
-        from hw_velxio import design_cli
-        from hw_velxio.design import discipline
+        from dsh_embagent import design_cli
+        from dsh_embagent.design import discipline
 
         design = DesignModel(id="_test_putlock", title="t",
                              board=board_preset("arduino-nano"))
@@ -4196,7 +4196,7 @@ class TestBodiesAndEnclosure(unittest.TestCase):
     """
 
     def test_body_roundtrip_and_source(self) -> None:
-        from hw_velxio.design import body
+        from dsh_embagent.design import body
 
         design = DesignModel(id="bodies")
         body.install(design, {"ref": "M1", "kind": "motor", "shape": "cylinder",
@@ -4211,7 +4211,7 @@ class TestBodiesAndEnclosure(unittest.TestCase):
         self.assertEqual(payload, again, "bodies 往返不稳定")
 
     def test_missing_source_is_reported_not_silently_ok(self) -> None:
-        from hw_velxio.design import body
+        from dsh_embagent.design import body
 
         design = DesignModel(id="no-source")
         body.install(design, {"ref": "M1", "kind": "motor", "shape": "cylinder"})
@@ -4221,8 +4221,8 @@ class TestBodiesAndEnclosure(unittest.TestCase):
         self.assertFalse(design.entity("M1").has_geometry)
 
     def test_body_ref_cannot_collide_with_part(self) -> None:
-        from hw_velxio.design import body
-        from hw_velxio.design.model import DesignError
+        from dsh_embagent.design import body
+        from dsh_embagent.design.model import DesignError
 
         design = DesignModel(id="collide")
         design.add_part(Part(ref="M1", kind="resistor"))
@@ -4231,7 +4231,7 @@ class TestBodiesAndEnclosure(unittest.TestCase):
                                   "source": "estimated"})
 
     def test_joint_may_end_on_a_body(self) -> None:
-        from hw_velxio.design import body, joints
+        from dsh_embagent.design import body, joints
 
         design = DesignModel(id="joint-body")
         design.add_part(Part(ref="R1", kind="resistor"))
@@ -4266,7 +4266,7 @@ class TestBodiesAndEnclosure(unittest.TestCase):
         self.assertAlmostEqual(outer["d"], 2.0 + 4.0 + 1.6 + 5.0 + 2.0, places=4)
 
     def test_shell_is_three_state(self) -> None:
-        from hw_velxio.design import shell
+        from dsh_embagent.design import shell
 
         self.assertEqual(shell.evaluate(DesignModel(id="none"))["status"],
                          "not_ready")
@@ -4288,8 +4288,8 @@ class TestBodiesAndEnclosure(unittest.TestCase):
         self.assertTrue(any("越界" in p for p in out.validate()))
 
     def test_scene3d_and_2d_carry_bodies_and_shell(self) -> None:
-        from hw_velxio import design_cli
-        from hw_velxio.design import body
+        from dsh_embagent import design_cli
+        from dsh_embagent.design import body
 
         design = DesignModel(id="projection")
         body.install(design, {"ref": "P1", "kind": "propeller", "shape": "disc",

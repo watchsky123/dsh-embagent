@@ -5,7 +5,7 @@
 
 ## 铁律（先读这四条，其余都可以慢慢看）
 
-1. **判定只有一份**：所有结论来自 `python -m hw_velxio.design_cli <cmd>` 的一行 JSON。
+1. **判定只有一份**：所有结论来自 `python -m dsh_embagent.design_cli <cmd>` 的一行 JSON。
    不要自己算"应该能通过"。
 2. **缺失 ≠ 通过**。`unknown` / `not_ready` / `not_verified` 都不是 pass。
    看到一个空表，先问"是没人查，还是查了没有"。

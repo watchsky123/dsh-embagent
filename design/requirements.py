@@ -36,7 +36,7 @@ hwforge 的 `spec.analyse_requirement()` 是一份**关键词表**，而且只�
    跨域契约、`LookupRequest`（不臆造型号）、未决清单。本模块只补
    **硬件角色**那一列。
 
-@module hw_velxio.design.requirements
+@module dsh_embagent.design.requirements
 """
 
 from __future__ import annotations

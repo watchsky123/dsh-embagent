@@ -375,7 +375,7 @@ def parse(path: str | Path) -> dict[str, Any]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.ioc",
+        "module": "dsh_embagent.design.ioc",
         "input": "CubeMX .ioc（key=value）",
         "extracts": ["芯片身份（Family/Package/UserName/CPN）", "时钟（RCC.*）",
                      "中断（NVIC.*，抢占/子优先级）", "复用功能（Signal=功能名）",

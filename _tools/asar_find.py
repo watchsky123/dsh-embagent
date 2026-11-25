@@ -1,6 +1,6 @@
 """Search the DSH app.asar for a byte pattern and print matching file names + snippets.
 
-Usage: python hw_velxio/_tools/asar_find.py <pattern> [--max-files N] [--snippet N]
+Usage: python dsh_embagent/_tools/asar_find.py <pattern> [--max-files N] [--snippet N]
 """
 import json
 import struct

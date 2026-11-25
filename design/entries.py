@@ -26,7 +26,7 @@
 **硬事实**，比 `board.kind` 可靠。同理 `RCC.APB1Freq_Value` 是时钟、
 `P<port>.Signal` 是引脚复用。这些都不需要 AI 猜。
 
-@module hw_velxio.design.entries
+@module dsh_embagent.design.entries
 """
 
 from __future__ import annotations

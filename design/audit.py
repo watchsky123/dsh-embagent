@@ -347,7 +347,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.audit",
+        "module": "dsh_embagent.design.audit",
         "stages": list(STAGES),
         "titles": dict(_STAGE_TITLE),
         "input_artifacts": {

@@ -342,7 +342,7 @@ def hover_test(*, mass_g: float = 1000.0, duration_s: float = 2.0,
 def describe() -> dict[str, Any]:
     ok, why = available()
     return {
-        "module": "hw_velxio.design.mujoco_backend",
+        "module": "dsh_embagent.design.mujoco_backend",
         "available": ok,
         "detail": why,
         "local_lib": str(LOCAL_LIB),

@@ -1,7 +1,7 @@
 """一次性探测：立创EDA 的 CLI / API 面 / 版本 —— **运维用，不是判定**。
 
-    python -m hw_velxio.scripts.lceda_probe              # 能力快照
-    python -m hw_velxio.scripts.lceda_probe --raw P      # 把完整 API 清单落盘
+    python -m dsh_embagent.scripts.lceda_probe              # 能力快照
+    python -m dsh_embagent.scripts.lceda_probe --raw P      # 把完整 API 清单落盘
 
 为什么单独一个脚本：`doc api` 有 525 个类型、`doc format` 还有几十个，
 全量拉一次要几分钟。发射层只需要用到的那 22 条（`lceda.CAPABILITIES`），
@@ -24,7 +24,7 @@ from typing import Any
 if __package__ in (None, ""):  # 允许直接 python scripts/lceda_probe.py
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import lceda  # noqa: E402
+from dsh_embagent.design import lceda  # noqa: E402
 
 
 def _out_dir() -> Path:

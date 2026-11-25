@@ -67,9 +67,9 @@ p='impl.py'; s=io.open(p,encoding='utf-8').read()
 s=s.replace('<关键判断>', 'pass  # TEMP: 模拟退化')
 io.open(p,'w',encoding='utf-8').write(s)
 PY
-python -m hw_velxio.scripts.check_xxx        # 必须 FAIL
+python -m dsh_embagent.scripts.check_xxx        # 必须 FAIL
 cp impl.bak impl.py && rm impl.bak
-python -m hw_velxio.scripts.check_xxx        # 必须 PASS
+python -m dsh_embagent.scripts.check_xxx        # 必须 PASS
 ```
 
 **特别注意**：所有 `if ...: continue` 形式的闸门，去掉后测试**天然还是绿的**
@@ -163,8 +163,8 @@ io.open("run.cmd", "wb").write(s.encode("ascii"))
 
 | 前提 | 怎么确认 |
 |---|---|
-| 在仓库根跑 | `pwd` 应是含 `hw_velxio/` 的目录 |
-| 工程存在 | `python -m hw_velxio.design_cli list` |
+| 在仓库根跑 | `pwd` 应是含 `dsh_embagent/` 的目录 |
+| 工程存在 | `python -m dsh_embagent.design_cli list` |
 | 产物已生成 | 看 `<工程>/ladder.json` 等是否在 |
 | 判定器返回 dataclass | 用 `.to_dict()`，不是下标访问 |
 | 中文限制 | 字符串值里不嵌中文引号 |
@@ -173,36 +173,36 @@ io.open("run.cmd", "wb").write(s.encode("ascii"))
 ### 8.7 验收脚本清单（一条命令验一层）
 
 ```bash
-cd <repo-root>                    # 必须在这里，不在 hw_velxio/
+cd <repo-root>                    # 必须在这里，不在 dsh_embagent/
 
 npm test                                         # 760 项单测
-python -m hw_velxio.scripts.check_m1             # M1 四条硬验收
-python -m hw_velxio.scripts.check_units_links    # P5
-python -m hw_velxio.scripts.check_generate       # P6
-python -m hw_velxio.scripts.check_m3             # M3 P7+P8
-python -m hw_velxio.scripts.check_ladder         # 阶梯
-python -m hw_velxio.scripts.check_justify        # 归因
-python -m hw_velxio.scripts.check_handoff        # 交接
-python -m hw_velxio.scripts.check_m18            # P18 统一判定
-python -m hw_velxio.scripts.check_p17            # P17 立创发射（真机那几条要装 lceda）
-python -m hw_velxio.scripts.check_p19            # P19 元件目录（真机那两条要联网）
-python -m hw_velxio.scripts.check_p20            # P20 固件（真编译那条要 gcc）
-python -m hw_velxio.scripts.check_p21            # P21 闭环（真 MuJoCo 那条可选）
-python -m hw_velxio.scripts.check_p22            # P22 agent 循环（全假模型，0 token）
-python -m hw_velxio.scripts.check_p23            # P23 测试规模与降级路径（子进程真跑）
-python -m hw_velxio.scripts.check_p0             # P0 结论层（前端契约 + 排序 + 过期）
-python -m hw_velxio.scripts.check_p1             # P1 下一步动作（映射表 + 前端接线）
-python -m hw_velxio.scripts.check_p2             # P2 按对象聚合（索引 + 画像 + 三态）
-python -m hw_velxio.scripts.check_p3             # P3 参数敏感度（接线扫描 + 两层扰动）
-python -m hw_velxio.scripts.check_p4             # P4 固件矩阵（每脚一行 + 四类状态）
-python -m hw_velxio.scripts.check_p5             # P5 需求草稿 + 从零开局（38 条）
-python -m hw_velxio.scripts.check_p26            # 几何/连通/自研布线/布局/通道（28 条，全离线）
-python -m hw_velxio.scripts.check_p40            # 机械模型 mjcf（15 条：构建/真加载/三态/退化）
-python -m hw_velxio.scripts.check_p41            # 四域 spec（21 条：来源分级/声明优先/归并/往返）
-python -m hw_velxio.scripts.check_p42            # 关节提案（12 条：有依据才提案/不编参数/应用后进 MJCF）
-python -m hw_velxio.scripts.check_p43            # 编排器（12 条：六段/不中止/确定性/发射隔离/退化）
-python -m hw_velxio.scripts.check_p44            # 机械判据（16 条：干涉/重心/扭矩/行程/并入 handoff/退化）
-python -m hw_velxio.scripts.check_p45            # 制造可行性（17 条：DFM 三态/DRC 分级/合成/命令/退化）
+python -m dsh_embagent.scripts.check_m1             # M1 四条硬验收
+python -m dsh_embagent.scripts.check_units_links    # P5
+python -m dsh_embagent.scripts.check_generate       # P6
+python -m dsh_embagent.scripts.check_m3             # M3 P7+P8
+python -m dsh_embagent.scripts.check_ladder         # 阶梯
+python -m dsh_embagent.scripts.check_justify        # 归因
+python -m dsh_embagent.scripts.check_handoff        # 交接
+python -m dsh_embagent.scripts.check_m18            # P18 统一判定
+python -m dsh_embagent.scripts.check_p17            # P17 立创发射（真机那几条要装 lceda）
+python -m dsh_embagent.scripts.check_p19            # P19 元件目录（真机那两条要联网）
+python -m dsh_embagent.scripts.check_p20            # P20 固件（真编译那条要 gcc）
+python -m dsh_embagent.scripts.check_p21            # P21 闭环（真 MuJoCo 那条可选）
+python -m dsh_embagent.scripts.check_p22            # P22 agent 循环（全假模型，0 token）
+python -m dsh_embagent.scripts.check_p23            # P23 测试规模与降级路径（子进程真跑）
+python -m dsh_embagent.scripts.check_p0             # P0 结论层（前端契约 + 排序 + 过期）
+python -m dsh_embagent.scripts.check_p1             # P1 下一步动作（映射表 + 前端接线）
+python -m dsh_embagent.scripts.check_p2             # P2 按对象聚合（索引 + 画像 + 三态）
+python -m dsh_embagent.scripts.check_p3             # P3 参数敏感度（接线扫描 + 两层扰动）
+python -m dsh_embagent.scripts.check_p4             # P4 固件矩阵（每脚一行 + 四类状态）
+python -m dsh_embagent.scripts.check_p5             # P5 需求草稿 + 从零开局（38 条）
+python -m dsh_embagent.scripts.check_p26            # 几何/连通/自研布线/布局/通道（28 条，全离线）
+python -m dsh_embagent.scripts.check_p40            # 机械模型 mjcf（15 条：构建/真加载/三态/退化）
+python -m dsh_embagent.scripts.check_p41            # 四域 spec（21 条：来源分级/声明优先/归并/往返）
+python -m dsh_embagent.scripts.check_p42            # 关节提案（12 条：有依据才提案/不编参数/应用后进 MJCF）
+python -m dsh_embagent.scripts.check_p43            # 编排器（12 条：六段/不中止/确定性/发射隔离/退化）
+python -m dsh_embagent.scripts.check_p44            # 机械判据（16 条：干涉/重心/扭矩/行程/并入 handoff/退化）
+python -m dsh_embagent.scripts.check_p45            # 制造可行性（17 条：DFM 三态/DRC 分级/合成/命令/退化）
 check_p46            # 前端两分区（26 条：分区/面板/动作/RPC/快照/跳转/退化）
 check_p47            # 审计/环境/样例/有界自修（21 条：八段/缺产物 not_ready/必需项/样例/停法/退化）
 check_p50            # 接口契约 + 纯 C 算法（14 条：逐引脚/外设 inferred/unknown/真编译/退化）
@@ -213,10 +213,10 @@ check_p48            # 闭环修复（20 条：网表不再丢/空网表判死/d
 **立创侧诊断脚本**（不是验收，是「说不清就量一遍」用的）：
 
 ```bash
-python -m hw_velxio.scripts.probe_route_geom     --session <sid>   # 元件/焊盘/板框/走线 + autoRouting
-python -m hw_velxio.scripts.probe_route_session  --path x.eprj3    # 同一工程不同窗口来源对照
-python -m hw_velxio.scripts.probe_migrate                          # §15.1 云槽位/save 真值 + §15.3 迁移配方
-python -m hw_velxio.scripts.lceda_probe                            # 版本/能力表/会话
+python -m dsh_embagent.scripts.probe_route_geom     --session <sid>   # 元件/焊盘/板框/走线 + autoRouting
+python -m dsh_embagent.scripts.probe_route_session  --path x.eprj3    # 同一工程不同窗口来源对照
+python -m dsh_embagent.scripts.probe_migrate                          # §15.1 云槽位/save 真值 + §15.3 迁移配方
+python -m dsh_embagent.scripts.lceda_probe                            # 版本/能力表/会话
 ```
 
 布线 0 段时**先跑 `probe_route_geom`**：它会同时打出板框源数组与焊盘坐标，
@@ -235,7 +235,7 @@ python -m hw_velxio.scripts.lceda_probe                            # 版本/能�
 # 1) 删夹具工程（先确认它确实是夹具）
 python -c "
 import sys; sys.path.insert(0,'.')
-from hw_velxio.design.store import DesignStore
+from dsh_embagent.design.store import DesignStore
 d=DesignStore('m1_p2_accept').load()
 print([p.ref for p in d.parts])   # 应等于 ['U1','R1','D1']
 "
@@ -243,7 +243,7 @@ print([p.ref for p in d.parts])   # 应等于 ['U1','R1','D1']
 # 2) 恢复被验收改动的真实工程（links_list 必须清空）
 python -c "
 import sys; sys.path.insert(0,'.')
-from hw_velxio.design.store import DesignStore
+from dsh_embagent.design.store import DesignStore
 s=DesignStore('示例-多板'); d=s.load()
 d.links_list=[]; s.save(d); print('restored')
 "
@@ -292,7 +292,7 @@ DSH 的 Job Object 有 `KILL_ON_JOB_CLOSE`，bash 调用结束时整棵进程树
 试过并失败的方案：`Popen`、`CREATE_BREAKAWAY_FROM_JOB`、`DETACHED_PROCESS`、
 WMI `Win32_Process.Create`。
 
-**可用方案**：`schtasks`（`hw_velxio/serve.py` 已封装）。
+**可用方案**：`schtasks`（`dsh_embagent/serve.py` 已封装）。
 三个必须注意的点：
 * 不要加 `/RL HIGHEST`（Access denied）
 * 包装 `.cmd` 必须写成**二进制 CRLF**，否则 `\r\r\n` 会破坏 `--port 3080`
@@ -306,7 +306,7 @@ board-manager URL 各耗一次超时。
 
 实测：清除后 `core list` 从 76.0s → 0.14s。
 
-修法：venv 的 `sitecustomize.py`（`hw_velxio/patch.py` 是唯一生成处）。
+修法：venv 的 `sitecustomize.py`（`dsh_embagent/patch.py` 是唯一生成处）。
 digest **是运行时算的**（`sha256(PATCH_BODY)[:16]`，见 `_expected_digest()`），
 不是写死的常量——改了 `PATCH_BODY` 就会自动重算，`status` 会报不匹配。
 **必须在模块 exec 之前打补丁**——第一版在 exec 之后替换
@@ -449,7 +449,7 @@ ValueError: ParseXML: Error opening file
 ### 13.1 装在哪
 
 ```
-workspace\hw_velxio\_tools\arm-gcc\13.3.rel1\      ← 仓库内，1.2 GB
+workspace\dsh_embagent\_tools\arm-gcc\13.3.rel1\      ← 仓库内，1.2 GB
     bin\arm-none-eabi-gcc.exe  (Arm GNU Toolchain 13.3.Rel1, build arm-13.24)
 ```
 
@@ -468,9 +468,9 @@ python -m zipfile -e _tools/_dl/arm-gcc.zip _tools/arm-gcc/
 # 再把 arm-gnu-toolchain-13.3.rel1-.../ 改名为 13.3.rel1/
 
 # 3) **必做**：去继承的 Low 完整性标签（见 13.5，不做则编译全 Permission denied）
-icacls "workspace\hw_velxio\_tools" /remove:d Everyone
-icacls "workspace\hw_velxio\_tools\arm-gcc" /grant "%USERNAME%:(OI)(CI)F" /T
-icacls "workspace\hw_velxio\_tools\arm-gcc" /setintegritylevel "(OI)(CI)Medium" /T /C
+icacls "workspace\dsh_embagent\_tools" /remove:d Everyone
+icacls "workspace\dsh_embagent\_tools\arm-gcc" /grant "%USERNAME%:(OI)(CI)F" /T
+icacls "workspace\dsh_embagent\_tools\arm-gcc" /setintegritylevel "(OI)(CI)Medium" /T /C
 # 实测：8604 个文件，各 1 秒级
 ```
 
@@ -524,7 +524,7 @@ cc1.exe: fatal error: cannot open 'd.s' for writing: Permission denied
 **根因**：本仓库目录带继承标签
 
 ```
-hw_velxio\  Mandatory Label\Low Mandatory Level:(I)(OI)(CI)(NW)
+dsh_embagent\  Mandatory Label\Low Mandatory Level:(I)(OI)(CI)(NW)
 ```
 
 于是**解压出来的 exe 也带 Low IL**；而 Windows 会**用镜像文件的 IL 启动进程**
@@ -1291,8 +1291,8 @@ blocks validate  6/6 结构通过（零件/引脚/尺寸/网表引用都对）
 `assemble <id> [--req=PATH] [--board=60x40] [--write]`
 
 ```bash
-python -m hw_velxio.design_cli assemble demo --write
-python -m hw_velxio.design_cli constraints demo --derive --write
+python -m dsh_embagent.design_cli assemble demo --write
+python -m dsh_embagent.design_cli constraints demo --derive --write
 ```
 
 映射是**显式表**（`assemble.ROLE_BLOCKS` / `INTERFACE_BLOCKS`）：

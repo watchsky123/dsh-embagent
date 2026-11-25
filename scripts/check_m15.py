@@ -2,7 +2,7 @@
 
 从仓库根运行：
 
-    python -m hw_velxio.scripts.check_m15
+    python -m dsh_embagent.scripts.check_m15
 
 ## 这个脚本守的五件事
 
@@ -32,10 +32,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hw_velxio.design import joints                     # noqa: E402
-from hw_velxio.design.model import (Board, DesignModel, Joint,   # noqa: E402
+from dsh_embagent.design import joints                     # noqa: E402
+from dsh_embagent.design.model import (Board, DesignModel, Joint,   # noqa: E402
                                     Part, Placement, Program)
-from hw_velxio.design.store import DesignStore, list_projects  # noqa: E402
+from dsh_embagent.design.store import DesignStore, list_projects  # noqa: E402
 
 
 class Failures:

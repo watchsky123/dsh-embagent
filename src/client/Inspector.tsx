@@ -8,7 +8,7 @@
  * 样式纪律（前端方案 F1）：布局与间距全走令牌类（`hwv-*`），组件里不留
  * 裸 px/hex；唯一的内联值是把手给来的列宽。
  *
- * @module dsh-hw-velxio/client/Inspector
+ * @module dsh-embagent/client/Inspector
  */
 
 import { useEffect, useRef, useState } from 'react'

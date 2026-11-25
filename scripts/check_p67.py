@@ -1,6 +1,6 @@
 """P67 验收 —— 发射前预检（LCSC 可解析 + 封装关联）。
 
-    python -m hw_velxio.scripts.check_p67
+    python -m dsh_embagent.scripts.check_p67
 
 ## 判据
 
@@ -24,8 +24,8 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import emit_preflight  # noqa: E402
-from hw_velxio.design.model import Board, DesignModel, Part, Placement  # noqa: E402
+from dsh_embagent.design import emit_preflight  # noqa: E402
+from dsh_embagent.design.model import Board, DesignModel, Part, Placement  # noqa: E402
 
 _failures: list[str] = []
 _checks = 0
@@ -107,9 +107,9 @@ def part_preflight() -> None:
 
 
 def part_gate() -> None:
-    from hw_velxio import design_cli  # noqa: PLC0415
-    from hw_velxio.design import emit_lceda  # noqa: PLC0415
-    from hw_velxio.design.store import DesignStore  # noqa: PLC0415
+    from dsh_embagent import design_cli  # noqa: PLC0415
+    from dsh_embagent.design import emit_lceda  # noqa: PLC0415
+    from dsh_embagent.design.store import DesignStore  # noqa: PLC0415
 
     root = Path(tempfile.mkdtemp(prefix="p67-ws-"))
     old = os.environ.get("HWV_WORKSPACE")

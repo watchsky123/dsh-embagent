@@ -25,7 +25,7 @@ const project = '_stdin_probe'
 const big = 'y'.repeat(60_000)
 
 const doc = {
-  schema: 'hw_velxio.design/1', units: 'mm', id: project, title: big,
+  schema: 'dsh_embagent.design/1', units: 'mm', id: project, title: big,
   board: { kind: 'arduino-uno', name: 'Arduino Uno',
     outline: [[0, 0], [72.58, 0], [72.58, 53.34], [0, 53.34]],
     size_mm: { w: 72.58, h: 53.34 }, thickness_mm: 1.6,

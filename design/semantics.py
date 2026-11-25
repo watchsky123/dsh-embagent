@@ -1,4 +1,4 @@
-"""语义树 —— **hw_velxio 自己的**：把"一个大元件不是原子"变成可判定的数据。
+"""语义树 —— **dsh_embagent 自己的**：把"一个大元件不是原子"变成可判定的数据。
 
 取代「照搬 hwforge 的 49 棵字符串树」，改成**按需补充的结构化树**。
 
@@ -64,7 +64,7 @@ not thereby simple, it is *unexamined*"。
 **`cannot_fix_by` 是最有价值的字段**：它把"硬件下限"变成一条可执行判断，
 让 AI 不在固件上浪费时间。
 
-@module hw_velxio.design.semantics
+@module dsh_embagent.design.semantics
 """
 
 from __future__ import annotations

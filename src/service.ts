@@ -5,10 +5,10 @@
  * 即线上字段名）。客户端用 `conn.rpc.call('/api', 'hwvelxio/snapshot', {args})`。
  *
  * 这一层**只编排，不判定**：模型、物理检查、预算、闸门、制造包都在
- * `hw_velxio.design`（Python）。任何"在 TS 里再算一遍"的冲动都要拒绝——那会
+ * `dsh_embagent.design`（Python）。任何"在 TS 里再算一遍"的冲动都要拒绝——那会
  * 造出第二个事实源，而两个事实源迟早会给出两个结论。
  *
- * @module dsh-hw-velxio/service
+ * @module dsh-embagent/service
  */
 
 import type { Context } from '@deepseek-ai/cordis'

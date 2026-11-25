@@ -472,7 +472,7 @@ def apply(store: Any, *, confirm: bool = False,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.req_draft",
+        "module": "dsh_embagent.design.req_draft",
         "fields": list(ReqDraft.__dataclass_fields__),
         "files": {"draft": DRAFT_FILE, "requirement": REQ_FILE},
         "consumed_constraints": list(CONSUMED_CONSTRAINTS),

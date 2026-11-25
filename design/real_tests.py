@@ -398,7 +398,7 @@ def contact_sheet(video: str | Path, out: str | Path = "", *,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.real_tests",
+        "module": "dsh_embagent.design.real_tests",
         "results": list(RESULTS),
         "sim_reproduced": "True / False / None（None = 没试过，不许写成 False）",
         "reference_rule": "implicated 用 ref:<位号>，位号必须存在（V0 同款检查）",

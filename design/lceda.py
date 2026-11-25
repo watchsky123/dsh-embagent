@@ -553,7 +553,7 @@ def probe(jobs: Iterable[str] = (), *, exe: str = "") -> dict[str, Any]:
 _JS_PROJECT = r"""
 const want = %(name)s;
 const projectUuid = await eda.dmt_Project.createProject(
-  want, undefined, undefined, undefined, 'hw_velxio emit');
+  want, undefined, undefined, undefined, 'dsh_embagent emit');
 if (!projectUuid) throw new Error('createProject 返回 undefined');
 const opened = await eda.dmt_Project.openProject(projectUuid);
 if (!opened) throw new Error('openProject 返回 false');

@@ -317,7 +317,7 @@ def describe() -> dict[str, Any]:
         key = str(row.get("source") or "?")
         by_source[key] = by_source.get(key, 0) + 1
     return {
-        "module": "hw_velxio.design.package_sizes",
+        "module": "dsh_embagent.design.package_sizes",
         "chip_sizes": len(CHIP_SIZES),
         "metric_aliases": len(METRIC_TO_IMPERIAL),
         "families": len(PACKAGE_FAMILIES),

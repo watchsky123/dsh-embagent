@@ -1,4 +1,4 @@
-"""DC 电学 —— **hw_velxio 自己的**：压降 / 轨跌 / 结温。
+"""DC 电学 —— **dsh_embagent 自己的**：压降 / 轨跌 / 结温。
 
 取代 `hwforge.electrical`。
 
@@ -38,7 +38,7 @@ O2 有降额表（Vds vs Vmax、电流 vs 额定），但**没有电路** ——
    过载要更大的电源。
 2. **没有数据就报未验证**，不拿默认值冒充"通过"。
 
-@module hw_velxio.design.electrical
+@module dsh_embagent.design.electrical
 """
 
 from __future__ import annotations
@@ -537,7 +537,7 @@ def run(design: Any, *, inputs: dict[str, Any] | None = None) -> ElectricalRepor
 
 
 def describe() -> dict[str, Any]:
-    return {"module": "hw_velxio.design.electrical",
+    return {"module": "dsh_embagent.design.electrical",
             "models": ["EL-01 wire_drop", "EL-02/03 regulator_thermal",
                        "EL-04 rail_under_load", "EL-05 current budget"],
             "limits": "DC only；20°C 线阻；Rθja 是典型值不是仿真"}

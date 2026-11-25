@@ -146,7 +146,7 @@ def validate(project_dir: Path) -> dict[str, Any]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.adr",
+        "module": "dsh_embagent.design.adr",
         "dir": DIR,
         "sections": list(_REQUIRED),
         "status": "ok / failed（缺节或索引对不上）/ not_ready（一条都没有）",

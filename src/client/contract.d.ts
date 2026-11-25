@@ -16,7 +16,7 @@
  * 风险明确写在这里：这是**内部契约**，DSH 升级可能改形状。`scripts/check_view.py`
  * 会对着安装包重读一次，把"类型对、运行时不对"的情况拦下来。
  *
- * @module dsh-hw-velxio/client/contract
+ * @module dsh-embagent/client/contract
  */
 
 import type {} from '@deepseek-ai/cordis'

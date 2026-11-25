@@ -7,7 +7,7 @@
  * 数据只有两个来源：宿主 RPC（`WorkbenchFace`）与本地 UI 选择。判定结果永远
  * 从 RPC 拿，客户端不重算。
  *
- * @module dsh-hw-velxio/client/store
+ * @module dsh-embagent/client/store
  */
 
 import { useSyncExternalStore } from 'react'

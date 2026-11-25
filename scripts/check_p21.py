@@ -1,6 +1,6 @@
 """P21 验收：闭环（实物测试记录 + 参数校准 + 交接单消费）。
 
-    python -m hw_velxio.scripts.check_p21
+    python -m dsh_embagent.scripts.check_p21
 
 六条对应 `docs/execution-plan-v3.md` §P21，第 6 条是**退化验证**。
 
@@ -31,14 +31,14 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import (  # noqa: E402
+from dsh_embagent.design import (  # noqa: E402
     handoff,
     real_tests,
     sim_calibration,
     sim_params,
 )
-from hw_velxio.design.model import DesignModel, Part  # noqa: E402
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design.model import DesignModel, Part  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PASS = "pass"
 FAIL = "fail"
@@ -269,7 +269,7 @@ def check_contact_sheet(tmp: Path) -> None:
 
 
 def check_real_runner() -> None:
-    from hw_velxio.design import mujoco_backend
+    from dsh_embagent.design import mujoco_backend
 
     ok, why = mujoco_backend.available()
     if not ok:

@@ -2,7 +2,7 @@
 
 从仓库根运行：
 
-    python -m hw_velxio.scripts.check_m3
+    python -m dsh_embagent.scripts.check_m3
 
 ## 这个脚本守的四件事
 
@@ -38,8 +38,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hw_velxio.design import ioc_links, renode            # noqa: E402
-from hw_velxio.design.model import (Board, DesignModel, Part,   # noqa: E402
+from dsh_embagent.design import ioc_links, renode            # noqa: E402
+from dsh_embagent.design.model import (Board, DesignModel, Part,   # noqa: E402
                                     Placement)
 
 #: 用户工作区（.ioc 与固件都在这里）。
@@ -167,7 +167,7 @@ def check_ioc(f: Failures) -> None:
     f.check("promote 后 apply_draft 真的写入了",
             added > 0, f"added={added}")
 
-    from hw_velxio.design import links as links_module
+    from dsh_embagent.design import links as links_module
     result = links_module.validate(design, design.links_list, [])
     f.check("写入后 links.validate 真的检查了这些链路",
             result["checked"]["declared_links"] > 0,
@@ -344,7 +344,7 @@ def check_real_project(f: Failures) -> None:
     if not _have_workspace():
         print("  skip")
         return
-    from hw_velxio.design.store import DesignStore, list_projects
+    from dsh_embagent.design.store import DesignStore, list_projects
 
     if not any(p.get("id") == "示例-多板" and p.get("has_design")
                for p in list_projects()):

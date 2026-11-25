@@ -132,7 +132,7 @@ def derive_needs(spec: dict[str, Any] | None) -> list[str]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.pin_assign",
+        "module": "dsh_embagent.design.pin_assign",
         "protocols": {key: roles for key, (_, roles) in PROTOCOLS.items()},
         "algorithm": "候选=AF 表功能名；按候选数升序贪心；冲突换组",
         "status": "ok / partial / not_ready（没有 AF 表）",

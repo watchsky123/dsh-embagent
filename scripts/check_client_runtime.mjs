@@ -43,7 +43,7 @@ globalThis.document = undefined // styles.ts 会据此跳过注入
 let clientModule = null
 globalThis.__ModuleLoader__ = {
   load: ({ id, factory }) => {
-    if (id !== 'dsh-hw-velxio') throw new Error(`unexpected bundle id: ${id}`)
+    if (id !== 'dsh-embagent') throw new Error(`unexpected bundle id: ${id}`)
     // 模块表：bundler 把这些留作 external，由宿主 require 提供
     clientModule = factory((name) => require(name))
   },

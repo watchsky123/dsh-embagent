@@ -1,13 +1,13 @@
-"""``hw_velxio.bridge`` —— 插件的 Python 侧统一 JSON 入口。
+"""``dsh_embagent.bridge`` —— 插件的 Python 侧统一 JSON 入口。
 
 契约（与 ``hwforge.blocks_cli`` 完全一致）：**一次调用、一行 JSON**。
 
-    python -m hw_velxio.bridge status
-    python -m hw_velxio.bridge catalog
-    python -m hw_velxio.bridge run <project> <capability> <params-json>
-    python -m hw_velxio.bridge velxio_health
-    python -m hw_velxio.bridge velxio_boards
-    python -m hw_velxio.bridge velxio_compile '<params-json>'
+    python -m dsh_embagent.bridge status
+    python -m dsh_embagent.bridge catalog
+    python -m dsh_embagent.bridge run <project> <capability> <params-json>
+    python -m dsh_embagent.bridge velxio_health
+    python -m dsh_embagent.bridge velxio_boards
+    python -m dsh_embagent.bridge velxio_compile '<params-json>'
 
 **三种状态**：``ok``（工作完成）/ ``not_ready``（前置缺失或后端不可达，属于顺序
 /环境问题）/ ``failed``（跑了但出错）。
@@ -62,7 +62,7 @@ def hwforge_root() -> str:
     candidates.append(str(cwd))
     here = _module_dir()
     if here is not None:
-        candidates.append(str(here.parent))  # hw_velxio/ -> 仓库根
+        candidates.append(str(here.parent))  # dsh_embagent/ -> 仓库根
     for cand in candidates:
         p = Path(cand)
         if (p / ROOT_MARKER).is_file():
@@ -194,7 +194,7 @@ def _run_hwforge(project: str, name: str, params: dict[str, Any]) -> dict[str, A
             findings.append(
                 "参数形状不对：hwforge 积木的参数由 catalog 声明，"
                 "例如 assemble 的 spec 是**文件路径字符串**，不是 JSON 对象；"
-                "用 python -m hw_velxio.bridge catalog 查每个积木的 params。")
+                "用 python -m dsh_embagent.bridge catalog 查每个积木的 params。")
         return {"status": "failed", "engine": "hwforge", "block": name,
                 "findings": findings}
     return {
@@ -226,7 +226,7 @@ def _run_velxio(name: str, params: dict[str, Any]) -> dict[str, Any]:
             "status": "not_ready", "engine": "velxio", "block": name,
             "findings": [
                 f"Velxio 后端不可达（{health.get('url')}）：{health.get('error')}",
-                "用 hw_velxio action=start 启动本机后端；"
+                "用 dsh_embagent action=start 启动本机后端；"
                 "纯电路的 velxio_circuit 不需要后端。",
             ],
         }
@@ -354,7 +354,7 @@ def _circuit(params: dict[str, Any]) -> dict[str, Any]:
             "status": "not_ready",
             "findings": [
                 "找不到 Velxio checkout 的 app 包（需要 <root>/backend/app/mcp/wokwi.py）。",
-                "设 HW_VELXIO_VELXIO_ROOT 指向 velxio 仓库根，或配置 velxio_root。",
+                "设 DSH_EMBAGENT_VELXIO_ROOT 指向 velxio 仓库根，或配置 velxio_root。",
                 "注意：电路转换不需要后端在线，只需要源码在盘上。",
             ],
         }
@@ -404,7 +404,7 @@ def _run(project: str, name: str, params: dict[str, Any]) -> dict[str, Any]:
             return {"status": "not_ready", "block": name,
                     "findings": [
                         f"hwforge 不可用，无法运行它的积木 {name}。",
-                        "hw_velxio 自己的能力不受影响（design_cli 的全部命令都可用）；"
+                        "dsh_embagent 自己的能力不受影响（design_cli 的全部命令都可用）；"
                         "hwforge 积木是**可选增强**，需要单独 clone hwforge 并设 "
                         "HWFORGE_ROOT。",
                     ]}

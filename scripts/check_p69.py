@@ -1,6 +1,6 @@
 """P69 验收 —— PCB 导入"没导全"不许报 ok。
 
-    python -m hw_velxio.scripts.check_p69
+    python -m dsh_embagent.scripts.check_p69
 
 ## 背景（实测）
 
@@ -26,8 +26,8 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import emit_lceda  # noqa: E402
-from hw_velxio.design.model import Board, DesignModel, Part, Placement  # noqa: E402
+from dsh_embagent.design import emit_lceda  # noqa: E402
+from dsh_embagent.design.model import Board, DesignModel, Part, Placement  # noqa: E402
 
 _failures: list[str] = []
 _checks = 0

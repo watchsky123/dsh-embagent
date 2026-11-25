@@ -19,7 +19,7 @@
 第 3 档刻意不猜。给一个猜出来的引脚表，等于把"未验证"伪装成"已验证"——
 比不校验更糟，因为用户会信它。
 
-@module hw_velxio.design.pins
+@module dsh_embagent.design.pins
 """
 
 from __future__ import annotations

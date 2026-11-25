@@ -1,27 +1,27 @@
-"""``hw_velxio.design_cli`` —— 规范模型的 Python 入口。
+"""``dsh_embagent.design_cli`` —— 规范模型的 Python 入口。
 
 契约与 ``hwforge.blocks_cli`` 一致：**一次调用、一行 JSON**。
 
-    python -m hw_velxio.design_cli boards
-    python -m hw_velxio.design_cli catalog
-    python -m hw_velxio.design_cli new <id> <board-kind> [title]
-    python -m hw_velxio.design_cli list
-    python -m hw_velxio.design_cli snapshot <id>
-    python -m hw_velxio.design_cli get <id>
-    python -m hw_velxio.design_cli put <id> <design.json|-> 
-    python -m hw_velxio.design_cli import <id> <path> [--bom <path>] [--boards all|main|<doc>]
-    python -m hw_velxio.design_cli bom <id> <bom-path> [--dry-run]
-    python -m hw_velxio.design_cli roles [--validate] [--roles a,b,c] [--goal "…"] [--assemble <id>]
-    python -m hw_velxio.design_cli project2d <id>
-    python -m hw_velxio.design_cli scene3d <id>
-    python -m hw_velxio.design_cli check <id> [--pitch 0.5]
-    python -m hw_velxio.design_cli budget <id> [--limits '<json>']
-    python -m hw_velxio.design_cli deferred <id> [lock|defer|show] ...
-    python -m hw_velxio.design_cli trace <id> [list|verify|append]
-    python -m hw_velxio.design_cli crosscheck <id>
-    python -m hw_velxio.design_cli export <id>
-    python -m hw_velxio.design_cli evidence <id>
-    python -m hw_velxio.design_cli survey [--write] [--json]
+    python -m dsh_embagent.design_cli boards
+    python -m dsh_embagent.design_cli catalog
+    python -m dsh_embagent.design_cli new <id> <board-kind> [title]
+    python -m dsh_embagent.design_cli list
+    python -m dsh_embagent.design_cli snapshot <id>
+    python -m dsh_embagent.design_cli get <id>
+    python -m dsh_embagent.design_cli put <id> <design.json|-> 
+    python -m dsh_embagent.design_cli import <id> <path> [--bom <path>] [--boards all|main|<doc>]
+    python -m dsh_embagent.design_cli bom <id> <bom-path> [--dry-run]
+    python -m dsh_embagent.design_cli roles [--validate] [--roles a,b,c] [--goal "…"] [--assemble <id>]
+    python -m dsh_embagent.design_cli project2d <id>
+    python -m dsh_embagent.design_cli scene3d <id>
+    python -m dsh_embagent.design_cli check <id> [--pitch 0.5]
+    python -m dsh_embagent.design_cli budget <id> [--limits '<json>']
+    python -m dsh_embagent.design_cli deferred <id> [lock|defer|show] ...
+    python -m dsh_embagent.design_cli trace <id> [list|verify|append]
+    python -m dsh_embagent.design_cli crosscheck <id>
+    python -m dsh_embagent.design_cli export <id>
+    python -m dsh_embagent.design_cli evidence <id>
+    python -m dsh_embagent.design_cli survey [--write] [--json]
 
 三种状态：``ok`` / ``not_ready``（前置缺失）/ ``failed``（跑了但出错）。
 """
@@ -5131,7 +5131,7 @@ def survey_client() -> dict[str, Any]:
 def cmd_serve(args: list[str]) -> dict[str, Any]:
     """``serve [status|start|stop|logs|prepare|ensure]`` —— Velxio 后端生命周期。
 
-    实现全在 ``hw_velxio/serve.py``（进程/venv/工具链都在那一层）。这里只做
+    实现全在 ``dsh_embagent/serve.py``（进程/venv/工具链都在那一层）。这里只做
     **一次转发**：不能让 design_cli 自己再写一份进程管理，那是第二事实源。
 
     注意调用的是 `serve.call()` 而不是 `serve.main()` —— 后者会把 JSON 打到

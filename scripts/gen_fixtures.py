@@ -1,6 +1,6 @@
 """生成 P23 的 15 个合成夹具 —— **可重跑**，产物是普通 `design.json`。
 
-    python -m hw_velxio.scripts.gen_fixtures
+    python -m dsh_embagent.scripts.gen_fixtures
 
 ## 为什么要留这个生成器
 
@@ -18,7 +18,7 @@
 """
 import json
 from pathlib import Path
-from hw_velxio.design.model import Board, DesignModel, Joint, Part, Placement, Program
+from dsh_embagent.design.model import Board, DesignModel, Joint, Part, Placement, Program
 
 OUT = Path(__file__).resolve().parents[1] / 'tests' / 'fixtures' / 'designs'
 OUT.mkdir(parents=True, exist_ok=True)

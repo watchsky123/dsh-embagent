@@ -1,7 +1,7 @@
 """Extract selected entries from the DSH app.asar into a local reference tree.
 
 Usage:
-  python hw_velxio/_tools/asar_extract.py <dest-dir> <substring> [<substring> ...]
+  python dsh_embagent/_tools/asar_extract.py <dest-dir> <substring> [<substring> ...]
 
 Only entries whose path contains one of the substrings are written.
 """

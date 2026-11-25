@@ -15,7 +15,7 @@
 对应地，`vacuous` 列出"因为无对象而通过"的检查——那是**假绿灯**的来源，
 必须与"真的通过了"分开呈现。
 
-@module hw_velxio.design.phase
+@module dsh_embagent.design.phase
 """
 
 from __future__ import annotations

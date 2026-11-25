@@ -12,7 +12,7 @@
  *
  * 不做缓存、不做重试——那些在 `queries.ts`。
  *
- * @module dsh-hw-velxio/client/api
+ * @module dsh-embagent/client/api
  */
 
 import type { WorkbenchFace, WorkspacePayload } from './rpc.js'

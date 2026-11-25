@@ -162,7 +162,7 @@ def impact(design: Any, targets: list[str]) -> dict[str, Any]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.graph",
+        "module": "dsh_embagent.design.graph",
         "file": FILE,
         "nodes": ["part", "net", "block", "firmware"],
         "edges": ["pin", "block_part", "block_net", "firmware"],

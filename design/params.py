@@ -365,7 +365,7 @@ def render(payload: dict[str, Any]) -> str:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.params",
+        "module": "dsh_embagent.design.params",
         "file": FILE,
         "formats": ["key=value（.param）", "MF_PARAM(name, def, type, 'x') /*注释*/"],
         "families": sorted(FAMILIES),

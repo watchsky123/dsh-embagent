@@ -34,7 +34,7 @@
  *
  * 判定永远来自确定性检查器；工具只负责**触发与呈现**，从不自造结论。
  *
- * @module dsh-hw-velxio/tools
+ * @module dsh-embagent/tools
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -104,7 +104,7 @@ function requireProject(args: unknown): string {
 export function registerTools(ctx: Context): Array<() => void> {
   const tools = ctx.get('tools') as ToolsService | undefined
   if (tools === undefined) {
-    console.warn('[dsh-hw-velxio] tools 服务不可用，工具未注册')
+    console.warn('[dsh-embagent] tools 服务不可用，工具未注册')
     return []
   }
   const disposers: Array<() => void> = []
@@ -2549,7 +2549,7 @@ export function registerTools(ctx: Context): Array<() => void> {
       '跑一个 hwforge 积木（assemble/import/modify/coverify/simulate/generate/' +
       'build/electrical/internals/review/fw_check/interfaces/…）做跨层判定。写操作。' +
       '**hwforge 是可选增强**：没 clone 时返回 not_ready 并说明原因；' +
-      'hw_velxio 自己的判定（hw_check/hw_budget/hw_crosscheck）不依赖它。',
+      'dsh_embagent 自己的判定（hw_check/hw_budget/hw_crosscheck）不依赖它。',
     parameters: {
       project: { type: 'string', description: '工程目录名' },
       block: { type: 'string', description: '积木名' },
@@ -3368,7 +3368,7 @@ export function registerTools(ctx: Context): Array<() => void> {
     },
   })))
 
-  // ---- 17. hw_velxio ----------------------------------------------------
+  // ---- 17. dsh_embagent ----------------------------------------------------
   //
   // 后端生命周期。**没有这个工具，模型永远不知道后端有没有起** —— 在此之前
   // 只有 `hw_block(velxio_compile)` 会失败，而失败信息说"后端不可达"，
@@ -3377,7 +3377,7 @@ export function registerTools(ctx: Context): Array<() => void> {
   // 纪律：`not_ready`（没起）与 `failed`（起了但坏）必须分开，因为处理方式
   // 完全不同——前者点一下 start，后者要看日志。
   disposers.push(tools.register(defineTool({
-    name: 'hw_velxio',
+    name: 'dsh_embagent',
     description:
       'Velxio 后端（真实编译 / 电路 / 库）的生命周期：action=status 看状态，'
       + 'start 启动，stop 停止，logs 读日志。'
@@ -3443,9 +3443,9 @@ export function registerTools(ctx: Context): Array<() => void> {
         if (status !== 'ok') {
           lines.push('', '原因：', ...findings(payload).map((f) => `! ${f}`))
           if (status === 'not_ready') {
-            lines.push('', '下一步：hw_velxio action=start')
+            lines.push('', '下一步：dsh_embagent action=start')
           } else {
-            lines.push('', '下一步：hw_velxio action=logs 看日志尾部')
+            lines.push('', '下一步：dsh_embagent action=logs 看日志尾部')
           }
         }
       }
@@ -3473,7 +3473,7 @@ export function registerTools(ctx: Context): Array<() => void> {
     name: 'hw_compile',
     description:
       '用 Velxio 后端**真实编译** Arduino/ESP-IDF 源码，返回 hex/bin。'
-      + '需要后端在跑（hw_velxio action=start）。'
+      + '需要后端在跑（dsh_embagent action=start）。'
       + 'boardFqbn 形如 arduino:avr:uno / arduino:avr:nano / esp32:esp32:esp32。'
       + 'files 是 [{name, content}]；只想编工程里已有的 sketch 时给 project 即可。'
       + '**编译是真的**：hex 来自 arduino-cli，不是占位符。',
@@ -3594,10 +3594,10 @@ export function registerTools(ctx: Context): Array<() => void> {
       const stderr = str(data.stderr)
       if (stderr !== '') lines.push('', `stderr：${stderr.slice(-800)}`)
       if (!success && err === '' && stderr === '') {
-        lines.push('', '编译没有成功但后端没给原因——用 hw_velxio action=logs 看后端日志。')
+        lines.push('', '编译没有成功但后端没给原因——用 dsh_embagent action=logs 看后端日志。')
       }
       if (!success && /not found in PATH|not_ready/i.test(str(payload.findings))) {
-        lines.push('', '提示：后端可能没起来或缺 arduino-cli，用 hw_velxio action=status 查。')
+        lines.push('', '提示：后端可能没起来或缺 arduino-cli，用 dsh_embagent action=status 查。')
       }
       noteHint(project, 'velxio')
       return {

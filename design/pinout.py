@@ -284,7 +284,7 @@ def find(kind: str, lcsc: str = "") -> dict[str, Any] | None:
 def describe() -> dict[str, Any]:
     tables = list_tables()
     return {
-        "module": "hw_velxio.design.pinout",
+        "module": "dsh_embagent.design.pinout",
         "dir": str(DIR),
         "tables": len(tables),
         "parts": [row.get("part") for row in tables],

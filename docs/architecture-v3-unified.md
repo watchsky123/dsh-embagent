@@ -16,7 +16,7 @@
 
 我把两边的设计数据模型并排比对后，发现它们是**同构的**：
 
-| | RoboBuilder `Design` | hw_velxio `DesignModel` |
+| | RoboBuilder `Design` | dsh_embagent `DesignModel` |
 |---|---|---|
 | 节点 | `DesignPart(name, part, pos_mm, yaw, spin)` | `Part(ref, kind, placement{x,y,z,rot}, pins, pads)` |
 | 关系 1 | `DesignConnection(child, parent, kind, studs)` | `nets[{net, pins[{ref,pin}]}]` |
@@ -31,7 +31,7 @@
 - 它的边：`stud`（凸柱）/ `pin`（销）/ `axle`（轴穿孔）/ `gear_mesh`（齿轮啮合）/ `chain` / `tread` / `rack` / `cv` / `diff` / `port`（电气）
 - 我们的边：`net`（电气节点）/ `link`（板间协议）/ `board`（同板归属）
 
-**所以最终形态不是"把 RoboBuilder 塞进 hw_velxio"，而是：把两边的设计统一成一个多域图，仿真按域分派到不同后端，判定协议统一。**
+**所以最终形态不是"把 RoboBuilder 塞进 dsh_embagent"，而是：把两边的设计统一成一个多域图，仿真按域分派到不同后端，判定协议统一。**
 
 ---
 

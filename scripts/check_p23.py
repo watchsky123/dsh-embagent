@@ -1,6 +1,6 @@
 """P23 验收：测试规模与降级路径。
 
-    python -m hw_velxio.scripts.check_p23
+    python -m dsh_embagent.scripts.check_p23
 
 四条对应 `docs/execution-plan-v3.md` §P23：
 
@@ -35,7 +35,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 REPO = Path(__file__).resolve().parents[2]
-PKG = REPO / "hw_velxio"
+PKG = REPO / "dsh_embagent"
 PASS = "pass"
 FAIL = "fail"
 SKIP = "not_ready"
@@ -68,7 +68,7 @@ def _run(argv: list[str], *, env: dict[str, str] | None = None,
     return proc.returncode, proc.stdout.decode("utf-8", errors="replace")
 
 
-_TEST_MODULES = ("hw_velxio.tests.test_design", "hw_velxio.tests.test_phases")
+_TEST_MODULES = ("dsh_embagent.tests.test_design", "dsh_embagent.tests.test_phases")
 
 
 def _unittest(argv_extra: list[str] | None = None,
@@ -122,7 +122,7 @@ def check_scale(tmp: Path) -> None:
 
 
 def check_degraded(tmp: Path) -> None:
-    from hw_velxio.design import lceda, mujoco_backend
+    from dsh_embagent.design import lceda, mujoco_backend
 
     # 4a. 没有 MuJoCo
     code, ran, out = _unittest(env={mujoco_backend.NO_MUJOCO_ENV: "1"})
@@ -142,12 +142,12 @@ def check_degraded(tmp: Path) -> None:
     env = {mujoco_backend.NO_MUJOCO_ENV: "1"}
     code3, out3 = _run([sys.executable, "-c",
                         "import sys;sys.path.insert(0,'.');"
-                        "from hw_velxio.design import mujoco_backend as m;"
+                        "from dsh_embagent.design import mujoco_backend as m;"
                         "print(m.available())"], env=env)
     off = "False" in out3
     code4, out4 = _run([sys.executable, "-c",
                         "import sys;sys.path.insert(0,'.');"
-                        "from hw_velxio.design import mujoco_backend as m;"
+                        "from dsh_embagent.design import mujoco_backend as m;"
                         "print(m.available())"])
     on = "True" in out4
     check("4c. 对照组：开关生效（同一台机器，一个 False 一个 True）",
@@ -158,7 +158,7 @@ def check_degraded(tmp: Path) -> None:
                 lceda.EXE_ENV: "C:/no-such-lceda-pro.exe"}
     bad: list[str] = []
     for script in ("check_ladder", "check_handoff", "check_p22"):
-        code5, out5 = _run([sys.executable, "-m", f"hw_velxio.scripts.{script}"],
+        code5, out5 = _run([sys.executable, "-m", f"dsh_embagent.scripts.{script}"],
                            env=degraded)
         if code5 != 0:
             bad.append(f"{script}: exit={code5} {out5.strip().splitlines()[-1][:120]}")

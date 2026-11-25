@@ -15,7 +15,7 @@
  * 面板（webview）没有文件系统访问。让它读 `<工程>/velxio_compile.json` 是把
  * 宿主的能力错配给客户端。所以面板传空 hex，宿主在这里补上。
  *
- * @module dsh-hw-velxio/velxio/artifact
+ * @module dsh-embagent/velxio/artifact
  */
 
 import { existsSync, readFileSync } from 'node:fs'

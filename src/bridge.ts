@@ -3,13 +3,13 @@
  *
  * 设计纪律（与 hwforge 宿主半同一条）：
  *
- * 1. **不重写判定。** 模型、检查、预算、闸门全在 Python（`hw_velxio.design`），
+ * 1. **不重写判定。** 模型、检查、预算、闸门全在 Python（`dsh_embagent.design`），
  *    这里只做进程调用与 JSON 解析。TS 侧再写一份就是第二个事实源。
  * 2. **不把失败变成空成功。** 三种状态原样透传：`ok` / `not_ready`（前置缺失）
  *    / `failed`（跑了但出错）。解析不出 JSON 也是 `failed`，绝不当成 `{}`。
  * 3. **一次调用一行 JSON。** 契约来自 `hwforge.blocks_cli`，两边一致。
  *
- * @module dsh-hw-velxio/bridge
+ * @module dsh-embagent/bridge
  */
 
 import { execFile } from 'node:child_process'
@@ -37,13 +37,13 @@ function moduleDir(): string | null {
   }
 }
 
-/** 仓库根：同时能找到 `hw_velxio/bridge.py` 与（通常）`hwforge/` 的目录。 */
+/** 仓库根：同时能找到 `dsh_embagent/bridge.py` 与（通常）`hwforge/` 的目录。 */
 export function repoRoot(): string {
   const candidates: string[] = []
   const push = (value: string | undefined): void => {
     if (value !== undefined && value !== '') candidates.push(resolve(value))
   }
-  push(process.env.HW_VELXIO_ROOT)
+  push(process.env.DSH_EMBAGENT_ROOT)
   const here = moduleDir()
   if (here !== null) {
     push(join(here, '..'))
@@ -52,14 +52,14 @@ export function repoRoot(): string {
   }
   push(process.cwd())
   for (const candidate of candidates) {
-    if (existsSync(join(candidate, 'hw_velxio', 'bridge.py'))) return candidate
+    if (existsSync(join(candidate, 'dsh_embagent', 'bridge.py'))) return candidate
   }
   return candidates[0] ?? process.cwd()
 }
 
 /** Python 解释器。允许用环境变量覆盖（虚拟环境/多版本共存）。 */
 export function pythonExecutable(): string {
-  const configured = process.env.HW_VELXIO_PYTHON
+  const configured = process.env.DSH_EMBAGENT_PYTHON
   if (configured !== undefined && configured !== '') return configured
   return process.platform === 'win32' ? 'python' : 'python3'
 }
@@ -175,9 +175,9 @@ function parseLastJson(stdout: string): Record<string, unknown> | null {
   return null
 }
 
-/** 规范模型入口（`hw_velxio.design_cli`）。 */
+/** 规范模型入口（`dsh_embagent.design_cli`）。 */
 export function design(...args: string[]): Promise<BridgeResult> {
-  return runPython('hw_velxio.design_cli', args)
+  return runPython('dsh_embagent.design_cli', args)
 }
 
 /**
@@ -193,7 +193,7 @@ export function design(...args: string[]): Promise<BridgeResult> {
  * 结构化的 `not_ready`（带日志尾部），而不是被外部砍断。
  */
 export function designLong(timeoutMs: number, ...args: string[]): Promise<BridgeResult> {
-  return runPython('hw_velxio.design_cli', args, { timeoutMs })
+  return runPython('dsh_embagent.design_cli', args, { timeoutMs })
 }
 
 /**
@@ -204,10 +204,10 @@ export function designLong(timeoutMs: number, ...args: string[]): Promise<Bridge
  * 后果是**静默写入一份残缺设计**。这类错误比失败更难发现。
  */
 export function designPut(project: string, json: string): Promise<BridgeResult> {
-  return runPython('hw_velxio.design_cli', ['put', project, '-'], { stdin: json })
+  return runPython('dsh_embagent.design_cli', ['put', project, '-'], { stdin: json })
 }
 
-/** hwforge 积木 / Velxio HTTP 能力入口（`hw_velxio.bridge`）。 */
+/** hwforge 积木 / Velxio HTTP 能力入口（`dsh_embagent.bridge`）。 */
 export function bridge(...args: string[]): Promise<BridgeResult> {
-  return runPython('hw_velxio.bridge', args)
+  return runPython('dsh_embagent.bridge', args)
 }

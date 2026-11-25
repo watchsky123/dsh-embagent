@@ -177,7 +177,7 @@ def check(design: Any, *, lookup: Lookup | None = None,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.emit_preflight",
+        "module": "dsh_embagent.design.emit_preflight",
         "file": FILE,
         "checks": ["lcsc present", "resolves via getByLcscIds", "footprint uuid"],
         "status": "ok / not_ready（解析不到或没编号）/ not_ready（没验成）",

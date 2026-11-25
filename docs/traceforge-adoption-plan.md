@@ -2,11 +2,11 @@
 > 现行版本：`adoption-plan.md`（决策层）+ `adoption-detail.md`（实现层，
 > 含文件/签名/代码骨架/验收与退化验证）。执行时以那两份为准。
 >
-# Traceforge 借鉴方案 —— 适配 hw_velxio（不执行，待确认）
+# Traceforge 借鉴方案 —— 适配 dsh_embagent（不执行，待确认）
 
 > 前提：源码已在 `workspace\vendor\traceforge`（MIT 许可，sdist SHA-256 已核对）。
 > 本文是**决策文档**：明确"搬什么、怎么改、不搬什么、什么顺序"。
-> 未动任何 `hw_velxio` 代码。
+> 未动任何 `dsh_embagent` 代码。
 > 配套源码分析见文末附录 A（关键文件与行数、已实测验证的声明）。
 
 ## 0. 用户已定的三个前提
@@ -24,7 +24,7 @@ MIT 许可允许移植代码（保留版权声明与许可文本即可）。
 ```
                  ┌─────────────────────────────────────────┐
 用户需求 ──► agent 循环（新增，R3）                            │
-                 │  工具集 = hw_velxio 现有 CLI 全套            │
+                 │  工具集 = dsh_embagent 现有 CLI 全套            │
                  │  产物 = design.json（唯一窄接口，过 validate）│
                  ▼                                           │
   ┌──────────────────────────────────────────────┐           │
@@ -49,7 +49,7 @@ MIT 许可允许移植代码（保留版权声明与许可文本即可）。
 
 **做什么**
 
-* 新增 `hw_velxio/design/parts_catalog.py`：
+* 新增 `dsh_embagent/design/parts_catalog.py`：
   LCSC/JLCPCB 目录的搜索 / lookup / 校验客户端。
   结构参考 `vendor/traceforge/src/traceforge/parts/`（net.py 的请求层、
   catalog.py 的解析、verify.py 的封装核对），**独立实现**，不 import 它的代码。
@@ -78,7 +78,7 @@ MIT 许可允许移植代码（保留版权声明与许可文本即可）。
 
 **做什么**
 
-* 新增 `hw_velxio/design/pinmap.py`：从 `.ioc` + design.json 的网名生成
+* 新增 `dsh_embagent/design/pinmap.py`：从 `.ioc` + design.json 的网名生成
   `pins.h`（宏名 = 网名，值 = 引脚），驱动代码引用宏而非裸引脚号。
 * `design.json` 新增 `firmware_manifest`（哪个板跑哪个固件、固件期望哪些引脚）——
   这是"固件放在哪块板"的一等公民化（回答之前 Q2）。
@@ -96,7 +96,7 @@ MIT 许可允许移植代码（保留版权声明与许可文本即可）。
 
 **做什么**
 
-* 移植 `kicad/route.py` 核心算法到 `hw_velxio/design/router.py`。
+* 移植 `kicad/route.py` 核心算法到 `dsh_embagent/design/router.py`。
   它是**纯几何算法**（栅格化 + A* + 协商拥塞 + 修复通道），KiCad 绑定只在输入/输出格式。
 * 输入适配：design.json 的 parts placement + nets + board 轮廓。
   **焊盘坐标是新依赖**——从封装数据来（R1 的 LCSC 封装库，或立创封装 JSON）。
@@ -116,7 +116,7 @@ MIT 许可允许移植代码（保留版权声明与许可文本即可）。
 
 **做什么**
 
-* 新增 `hw_velxio/agent.py`：模型循环，工具集 = 现有 CLI
+* 新增 `dsh_embagent/agent.py`：模型循环，工具集 = 现有 CLI
   （`hw_put / hw_synth / hw_generate / hw_ladder / hw_claims / hw_justify /
   hw_handoff / hw_units / hw_links / hw_ioc_links / parts 搜索…`）。
 * **窄接口不变**：agent 的唯一持久化产物是 design.json，必须过 `hw_put` 的

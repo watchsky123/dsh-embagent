@@ -2,8 +2,8 @@
 
 从仓库根运行：
 
-    python -m hw_velxio.scripts.probe_justify 示例-单板
-    python -m hw_velxio.scripts.probe_justify 示例-单板 R1 R96 C66
+    python -m dsh_embagent.scripts.probe_justify 示例-单板
+    python -m dsh_embagent.scripts.probe_justify 示例-单板 R1 R96 C66
 
 **这个脚本不判定对错**，它只是把理由摊开给人看。归因的部分正确性
 机器验不了：`1kΩ 上拉到 3.3V` 这句话对不对，取决于那是不是真的
@@ -19,8 +19,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hw_velxio.design import justify                     # noqa: E402
-from hw_velxio.design.store import DesignStore           # noqa: E402
+from dsh_embagent.design import justify                     # noqa: E402
+from dsh_embagent.design.store import DesignStore           # noqa: E402
 
 
 def main(argv: list[str]) -> int:

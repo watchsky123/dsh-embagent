@@ -1,6 +1,6 @@
 """P50 验收 —— 软硬接口契约（`interface`）+ 纯 C 算法与 PC 侧单元测试（`fw-algo`）。
 
-    python -m hw_velxio.scripts.check_p50
+    python -m dsh_embagent.scripts.check_p50
 
 ## 这一段补什么
 
@@ -36,12 +36,12 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio import design_cli  # noqa: E402
-from hw_velxio.design import fw_algo, interface  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent import design_cli  # noqa: E402
+from dsh_embagent.design import fw_algo, interface  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     Board, DesignModel, Part, Placement,
 )
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PROJECT = "p50-fixture"
 

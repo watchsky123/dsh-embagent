@@ -316,8 +316,8 @@ V1 之后可并行：丝印（需样本，阻塞）
 ## 8. 验收命令
 
 ```bash
-python -m hw_velxio.design_cli scene3d <project>     # 看 bodies/enclosure 投影
-python -m hw_velxio.design_cli snapshot <project>    # 2D/3D 全量载荷
+python -m dsh_embagent.design_cli scene3d <project>     # 看 bodies/enclosure 投影
+python -m dsh_embagent.design_cli snapshot <project>    # 2D/3D 全量载荷
 python scripts/check_scene3d.py                      # 投影契约
 python scripts/check_bodies.py                       # 目录 + 实体引用完整性
 node scripts/check_assembly3d.mjs                    # 3D 实渲染像素断言

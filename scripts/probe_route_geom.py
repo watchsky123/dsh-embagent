@@ -1,6 +1,6 @@
 """布线为什么 0/N：先量几何，再猜引擎。
 
-    python -m hw_velxio.scripts.probe_route_geom [--name X]
+    python -m dsh_embagent.scripts.probe_route_geom [--name X]
 
 ## 已经排除到只剩几何
 
@@ -43,7 +43,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import emit_lceda, lceda  # noqa: E402
+from dsh_embagent.design import emit_lceda, lceda  # noqa: E402
 
 OUT_FILE = "route_geom_probe.json"
 
@@ -157,7 +157,7 @@ def main(argv: list[str]) -> int:
                              ensure_ascii=False))
             return 2
 
-        from hw_velxio.scripts.probe_route import design as probe_design
+        from dsh_embagent.scripts.probe_route import design as probe_design
         d = probe_design()
         pieces = emit_lceda.EmitReport()
         emit_lceda._run_project(session, d, pieces, name=name, reuse=True)

@@ -8,20 +8,20 @@ P1 为了把后端启动从 76 秒压下来，在 venv 的 `site-packages/sitecu
 1. **不可复现**：重装 venv 就没了，而"重新生成它"没有任何代码承载。
 2. **不可见**：运行 `serve status` 看不出补丁在不在，于是"补丁丢了"
    会表现成"后端又变慢了"，而不是一条错误。
-3. **不好关**：`HW_VELXIO_EAGER_CLI=1` 藏在正经代码的注释里。
+3. **不好关**：`DSH_EMBAGENT_EAGER_CLI=1` 藏在正经代码的注释里。
 
 所以这里把补丁本身作为**本模块的一份常量**持有，并提供三个动作：
 
-    python -m hw_velxio.patch status   # 在不在、内容是否与预期一致
-    python -m hw_velxio.patch install  # 写入/刷新（幂等）
-    python -m hw_velxio.patch remove   # 删除，完全还原上游行为
+    python -m dsh_embagent.patch status   # 在不在、内容是否与预期一致
+    python -m dsh_embagent.patch install  # 写入/刷新（幂等）
+    python -m dsh_embagent.patch remove   # 删除，完全还原上游行为
 
 `serve.ensure_venv()` 会在装完依赖后**自动调用 install**（幂等），
 于是 venv 重建也不会丢。而 `serve status` 会带上 `patch` 字段。
 
 补丁只影响**这个 venv**：系统 Python、其它项目、Velxio 官方镜像都不受影响。
 
-@module hw_velxio.patch
+@module dsh_embagent.patch
 """
 
 from __future__ import annotations
@@ -38,8 +38,8 @@ from typing import Any
 #: 补丁要解决的问题、做法、开关，全部写在这里（生成的文件里也带着）。
 PATCH_DOC = '''"""DSH 专用：让 Velxio 后端在本机**不用每次启动都等 76 秒**。
 
-由 `hw_velxio.patch` 生成，**不要手改**——改 `hw_velxio/patch.py` 的
-PATCH_BODY 后跑 `python -m hw_velxio.patch install` 重新生成。
+由 `dsh_embagent.patch` 生成，**不要手改**——改 `dsh_embagent/patch.py` 的
+PATCH_BODY 后跑 `python -m dsh_embagent.patch install` 重新生成。
 
 ## 问题
 
@@ -66,7 +66,7 @@ board-manager 索引，而本机连不上 GitHub release。
 
 ## 开关
 
-`HW_VELXIO_EAGER_CLI=1` → 完全走上游原始行为（慢，但零介入）。
+`DSH_EMBAGENT_EAGER_CLI=1` → 完全走上游原始行为（慢，但零介入）。
 删掉本文件 → 同样完全还原。
 """
 
@@ -76,7 +76,7 @@ import os
 
 
 def _install() -> None:
-    if os.environ.get("HW_VELXIO_EAGER_CLI", "").strip() in ("1", "true", "yes"):
+    if os.environ.get("DSH_EMBAGENT_EAGER_CLI", "").strip() in ("1", "true", "yes"):
         return
 
     import importlib.abc
@@ -159,8 +159,8 @@ def _install() -> None:
 
         svc.ArduinoCLIService = LazyArduinoCLIService
         _patched["done"] = True
-        print("[hw_velxio] ArduinoCLIService 已替换为惰性版"
-              "（HW_VELXIO_EAGER_CLI=1 可关闭）")
+        print("[dsh_embagent] ArduinoCLIService 已替换为惰性版"
+              "（DSH_EMBAGENT_EAGER_CLI=1 可关闭）")
 
     class _Finder(importlib.abc.MetaPathFinder):
         """在本模块 exec **之前**包一层 loader。"""
@@ -196,7 +196,7 @@ try:
     _install()
 except Exception as exc:
     import sys as _sys
-    print("[hw_velxio] sitecustomize 未生效：%s: %s"
+    print("[dsh_embagent] sitecustomize 未生效：%s: %s"
           % (type(exc).__name__, exc), file=_sys.stderr)
 '''
 
@@ -209,7 +209,7 @@ def _home() -> Path:
 
 def sitecustomize_path() -> Path:
     """venv 的 sitecustomize 落点。"""
-    return _home() / ".dsh" / "hw_velxio" / "venv" / "Lib" / "site-packages" / "sitecustomize.py"
+    return _home() / ".dsh" / "dsh_embagent" / "venv" / "Lib" / "site-packages" / "sitecustomize.py"
 
 
 def _expected_digest() -> str:
@@ -236,10 +236,10 @@ def status() -> dict[str, Any]:
         "digest": digest,
         "expected": _expected_digest(),
         "up_to_date": matches,
-        "eager": os.environ.get("HW_VELXIO_EAGER_CLI", "").strip() in ("1", "true", "yes"),
+        "eager": os.environ.get("DSH_EMBAGENT_EAGER_CLI", "").strip() in ("1", "true", "yes"),
         "note": ("补丁存在且是当前版本" if matches
                  else "补丁缺失或是旧版本，用 patch install 刷新" if exists
-                 else "补丁未安装；后端启动会慢约 76 秒（详见 hw_velxio/patch.py）"),
+                 else "补丁未安装；后端启动会慢约 76 秒（详见 dsh_embagent/patch.py）"),
     }
 
 

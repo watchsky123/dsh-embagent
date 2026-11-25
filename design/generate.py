@@ -605,7 +605,7 @@ def _summary(ranked: list[Candidate], deliverable: list[Candidate],
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.generate",
+        "module": "dsh_embagent.design.generate",
         "approach": "有限枚举 + 批量排序，**没有收敛循环**",
         "stages": ["需求→单元", "单元→元件组合", "组合→链路", "组合→断言"],
         "ranking": ["hard_failures", "soft_failures", "unknowns", "cost"],

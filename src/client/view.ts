@@ -13,7 +13,7 @@
  * 与 v1 的关键差别：这里占据**中栏主区域**（整个会话宽度），才放得下
  * 「文件/2D/3D/检查器」四栏；v1 挤在右侧边栏里，控件位置和名称都不对。
  *
- * @module dsh-hw-velxio/client/view
+ * @module dsh-embagent/client/view
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -28,7 +28,7 @@ import type { DirectoryPickerSeams } from './directoryPicker.js'
 /** 视图 target，同时是 slot 注册的 `id`。 */
 export const HW_IDE_TARGET = 'hw-ide'
 /** 标签文字。不接 locale 字典：一个标签不值得引入一套翻译键。 */
-export const HW_IDE_LABEL = '硬件工作台'
+export const HW_IDE_LABEL = 'EmbAgent · 硬件工作台'
 /** Chat=0, Trajectory=10, 本视图=20。 */
 export const HW_IDE_ORDER = 20
 
@@ -49,7 +49,7 @@ function unavailableFace(reason: string): WorkbenchFace {
 export function registerHwIdeView(ctx: Context): void {
   const uiConversation = ctx.get('uiConversation') as HwUiConversation | undefined
   if (uiConversation === undefined || uiConversation.views === undefined) {
-    console.warn('[dsh-hw-velxio] 宿主没有 uiConversation.views，会话视图未注册'
+    console.warn('[dsh-embagent] 宿主没有 uiConversation.views，会话视图未注册'
       + '（工具仍可用）')
     return
   }
@@ -77,7 +77,7 @@ export function registerHwIdeView(ctx: Context): void {
       target: HW_IDE_TARGET,
       create: () => new HwIdeSnapshotBuilder(),
     }),
-    'dsh-hw-velxio: conversation view',
+    'dsh-embagent: conversation view',
   )
 
   ctx.slots.inject('conversation.view', () => ctx.slots.register({
@@ -110,7 +110,7 @@ export function registerHwIdeView(ctx: Context): void {
           /** 把上下文动作发进当前会话，走 DSH 正常提交路径。 */
           send: (text: string): void => {
             if (binding === undefined) {
-              console.warn('[dsh-hw-velxio] 会话不可用，AI 提示未发送')
+              console.warn('[dsh-embagent] 会话不可用，AI 提示未发送')
               return
             }
             void binding.session.prompt([{ type: 'text', text }], 'queue')

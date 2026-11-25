@@ -408,7 +408,7 @@ def _unit_needs(role: str) -> list[str]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.units",
+        "module": "dsh_embagent.design.units",
         "basis": "Placement.board_id（导入器已分组，不是推断）",
         "role_source": "板上的具名网络；自动名（$1N394 / w1）不算",
         "roles": [r for r, _w, _why in _ROLE_HINTS],

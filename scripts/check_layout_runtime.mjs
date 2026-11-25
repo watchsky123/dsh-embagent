@@ -135,7 +135,7 @@ function fakeSnapshot(projectId, { errors = 0, openDecisions = 0 } = {}) {
       artifacts: { 'design.json': true }, title: '冒烟', board: 'arduino-uno',
       board_name: 'Arduino Uno', parts: 2, nets: 1 },
     design: {
-      schema: 'hw_velxio.design/1', units: 'mm', id: projectId, title: '冒烟',
+      schema: 'dsh_embagent.design/1', units: 'mm', id: projectId, title: '冒烟',
       board: { kind: 'arduino-uno', name: 'Arduino Uno',
         outline: [[0, 0], [72.58, 0], [72.58, 53.34], [0, 53.34]],
         size_mm: { w: 72.58, h: 53.34 }, thickness_mm: 1.6,

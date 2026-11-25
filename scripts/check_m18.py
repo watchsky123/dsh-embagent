@@ -2,7 +2,7 @@
 
 从仓库根运行：
 
-    python -m hw_velxio.scripts.check_m18
+    python -m dsh_embagent.scripts.check_m18
 
 ## 这个脚本守的四件事
 
@@ -31,9 +31,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hw_velxio.design import (generate, handoff, ladder,   # noqa: E402
+from dsh_embagent.design import (generate, handoff, ladder,   # noqa: E402
                               robustness)
-from hw_velxio.design.model import (Board, DesignModel, Part,   # noqa: E402
+from dsh_embagent.design.model import (Board, DesignModel, Part,   # noqa: E402
                                     Placement)
 
 
@@ -174,7 +174,7 @@ def check_levels(f: Failures) -> None:
 
     print("\n== 6. V7 真跑（MuJoCo 可用时）==")
 
-    from hw_velxio.design import mujoco_backend
+    from dsh_embagent.design import mujoco_backend
     ok, why = mujoco_backend.available()
     if not ok:
         res = ladder.level_v7(_design())

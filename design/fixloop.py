@@ -150,7 +150,7 @@ def run(store: Any, *, editor: Editor | None = None, max_rounds: int = 3,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.fixloop",
+        "module": "dsh_embagent.design.fixloop",
         "stop_reasons": ["no_findings", "needs_editor", "stalled", "max_rounds",
                          "editor_failed"],
         "score": f"failed×{SCORE_FAIL} + not_ready×{SCORE_NOT_READY}",

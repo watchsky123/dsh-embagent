@@ -2,7 +2,7 @@
 
 从仓库根运行：
 
-    python -m hw_velxio.scripts.check_handoff
+    python -m dsh_embagent.scripts.check_handoff
 
 ## 这个脚本防的是什么
 
@@ -29,8 +29,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hw_velxio.design import handoff                        # noqa: E402
-from hw_velxio.design.model import (Board, DesignModel, Part,   # noqa: E402
+from dsh_embagent.design import handoff                        # noqa: E402
+from dsh_embagent.design.model import (Board, DesignModel, Part,   # noqa: E402
                                     Placement)
 
 

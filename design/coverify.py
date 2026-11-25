@@ -1,4 +1,4 @@
-"""软硬件协同验证 —— **hw_velxio 自己的**：需求数值 vs 硬件能力。
+"""软硬件协同验证 —— **dsh_embagent 自己的**：需求数值 vs 硬件能力。
 
 取代 `hwforge.coverify` + `hwforge.software`。
 
@@ -34,7 +34,7 @@
    陷阱本身，不是当前设计的缺陷。这一点必须写在输出里，否则会被误当
    成"设计有 bug"。
 
-@module hw_velxio.design.coverify
+@module dsh_embagent.design.coverify
 """
 
 from __future__ import annotations
@@ -390,7 +390,7 @@ class CoVerifier:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.coverify",
+        "module": "dsh_embagent.design.coverify",
         "checks": ["cv.servo_resolution", "cv.pwm_timer",
                    "cv.vision_resolution", "cv.slew_rate", "cv.bitrate",
                    "cv.latency", "cv.current", "cv.pin_capability"],

@@ -25,7 +25,7 @@
  * - 串口字节有**累计总数**、**上次读取以来新增**、**因缓冲被丢**三个数；
  *   丢字节不静默——那是"数据不完整"，必须能被看见。
  *
- * @module dsh-hw-velxio/velxio/sim
+ * @module dsh-embagent/velxio/sim
  */
 
 import { AvrSession, avrBoardSupport } from './avr.js'

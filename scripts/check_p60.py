@@ -1,6 +1,6 @@
 """P60 验收 —— A1 规格层 + A2 总线级网表。
 
-    python -m hw_velxio.scripts.check_p60
+    python -m dsh_embagent.scripts.check_p60
 
 ## 这一段补什么
 
@@ -34,12 +34,12 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import afmap  # noqa: E402
-from hw_velxio.design import bus as bus_module  # noqa: E402
-from hw_velxio.design import capability  # noqa: E402
-from hw_velxio.design import generate  # noqa: E402
-from hw_velxio.design import spec as spec_module  # noqa: E402
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design import afmap  # noqa: E402
+from dsh_embagent.design import bus as bus_module  # noqa: E402
+from dsh_embagent.design import capability  # noqa: E402
+from dsh_embagent.design import generate  # noqa: E402
+from dsh_embagent.design import spec as spec_module  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PROJECT = "p60-fixture"
 _failures: list[str] = []
@@ -125,7 +125,7 @@ def part_spec() -> None:
     old = os.environ.get("HWV_WORKSPACE")
     os.environ["HWV_WORKSPACE"] = str(sandbox)
     try:
-        from hw_velxio import design_cli  # noqa: PLC0415
+        from dsh_embagent import design_cli  # noqa: PLC0415
         store = DesignStore("spec_cli")
         store.delete()
         store.save(_empty_design())
@@ -159,7 +159,7 @@ def part_spec() -> None:
 
 
 def _empty_design():
-    from hw_velxio.design.model import Board, DesignModel  # noqa: PLC0415
+    from dsh_embagent.design.model import Board, DesignModel  # noqa: PLC0415
     board = Board(kind="custom", name="b", id="PCB#main",
                   size_mm={"w": 40, "h": 30},
                   outline=[(0.0, 0.0), (40.0, 0.0), (40.0, 30.0), (0.0, 30.0)])

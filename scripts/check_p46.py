@@ -1,6 +1,6 @@
 """P46 验收 —— 前端两个分区：`emit`（8 段状态 + 产物）与 `brief`（半成品待办）。
 
-    python -m hw_velxio.scripts.check_p46
+    python -m dsh_embagent.scripts.check_p46
 
 ## 这一段补的是什么
 
@@ -33,9 +33,9 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio import design_cli  # noqa: E402
-from hw_velxio.design.model import Board, DesignModel  # noqa: E402
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent import design_cli  # noqa: E402
+from dsh_embagent.design.model import Board, DesignModel  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT = "p46-fixture"

@@ -102,7 +102,7 @@ NEEDS: dict[str, dict[str, str]] = {
     },
     "import_netlist": {
         "kind": "run_command",
-        "command": "python -m hw_velxio.design_cli import {project} <源文件> --bom <BOM.csv>",
+        "command": "python -m dsh_embagent.design_cli import {project} <源文件> --bom <BOM.csv>",
         "label": "重新导入带网表的源文件",
     },
     "declare_link": {
@@ -167,7 +167,7 @@ NEEDS: dict[str, dict[str, str]] = {
     "run_emit": {
         "kind": "run_command",
         "label": "跑 `emit`（8 段）：拿到 verify 段才能说「可打板」",
-        "command": "python -m hw_velxio.design_cli emit {project}",
+        "command": "python -m dsh_embagent.design_cli emit {project}",
     },
     "mech_unknown": {
         "kind": "external",
@@ -177,22 +177,22 @@ NEEDS: dict[str, dict[str, str]] = {
     # -- 命令类：有确切命令 ---------------------------------------------
     "rerun_ladder": {
         "kind": "run_command",
-        "command": "python -m hw_velxio.design_cli ladder {project}",
+        "command": "python -m dsh_embagent.design_cli ladder {project}",
         "label": "重跑阶梯（设计改过，结论已过期）",
     },
     "rerun_checks": {
         "kind": "run_command",
-        "command": "python -m hw_velxio.design_cli check {project}",
+        "command": "python -m dsh_embagent.design_cli check {project}",
         "label": "重跑物理检查",
     },
     "apply_inferred_links": {
         "kind": "run_command",
-        "command": "python -m hw_velxio.design_cli links {project} --infer --apply",
+        "command": "python -m dsh_embagent.design_cli links {project} --infer --apply",
         "label": "把推断出的链路写进 links_list（仍标 inferred，需人确认）",
     },
     "lookup_part": {
         "kind": "run_command",
-        "command": "python -m hw_velxio.design_cli parts-enrich {lcsc} --project {project}",
+        "command": "python -m dsh_embagent.design_cli parts-enrich {lcsc} --project {project}",
         "label": "按 LCSC 查 {lcsc} 的尺寸并回填",
     },
     # -- 做不了：说清是谁做 ---------------------------------------------
@@ -228,12 +228,12 @@ NEEDS: dict[str, dict[str, str]] = {
     },
     "calibrate_sim": {
         "kind": "run_command",
-        "command": "python -m hw_velxio.design_cli calibrate {project} --test=<pt-id> --candidates='[{...}]'",
+        "command": "python -m dsh_embagent.design_cli calibrate {project} --test=<pt-id> --candidates='[{...}]'",
         "label": "补候选参数并跑 calibrate（采纳标准是「旧设计复现」，不是「新设计通过」）",
     },
     "run_budget": {
         "kind": "run_command",
-        "command": "python -m hw_velxio.design_cli budget {project}",
+        "command": "python -m dsh_embagent.design_cli budget {project}",
         "label": "跑一次五轨预算（此前完全没算过）",
     },
     "name_networks": {
@@ -382,7 +382,7 @@ def describe() -> dict[str, Any]:
     for need, spec in NEEDS.items():
         by_kind.setdefault(spec["kind"], []).append(need)
     return {
-        "module": "hw_velxio.design.nextstep",
+        "module": "dsh_embagent.design.nextstep",
         "kinds": list(KINDS),
         "needs": len(NEEDS),
         "by_kind": {k: sorted(v) for k, v in by_kind.items()},

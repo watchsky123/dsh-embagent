@@ -22,7 +22,7 @@ const CLIENT_EXTERNALS: readonly string[] = [
   '@deepseek-ai/dsh-client-runtime/client',
 ]
 
-const ID = 'dsh-hw-velxio'
+const ID = 'dsh-embagent'
 
 export default defineConfig({
   entry: { client: 'src/client/index.ts' },

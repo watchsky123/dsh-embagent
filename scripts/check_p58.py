@@ -1,6 +1,6 @@
 """P58 验收 —— 封装真几何：尺子从"目录猜"换成"封装源数据"。
 
-    python -m hw_velxio.scripts.check_p58
+    python -m dsh_embagent.scripts.check_p58
 
 ## 这一段补什么
 
@@ -34,12 +34,12 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import lceda  # noqa: E402
-from hw_velxio.design import lceda_geom as geom_module  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent.design import lceda  # noqa: E402
+from dsh_embagent.design import lceda_geom as geom_module  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     Board, DesignModel, Part, Placement,
 )
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PROJECT = "p58-fixture"
 REAL_DESIGN = Path(r"C:\Users\<user>\Desktop\示例复现区\复刻-示例\design.json")

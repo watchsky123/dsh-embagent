@@ -2,7 +2,7 @@
 
 从仓库根运行：
 
-    python -m hw_velxio.scripts.check_m16
+    python -m dsh_embagent.scripts.check_m16
 
 ## 两条止损线（计划里写死的）
 
@@ -38,9 +38,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hw_velxio.design import (mjcf, mujoco_backend,   # noqa: E402
+from dsh_embagent.design import (mjcf, mujoco_backend,   # noqa: E402
                               sim_dispatch, sim_params)
-from hw_velxio.design.model import (Board, DesignModel, Joint,   # noqa: E402
+from dsh_embagent.design.model import (Board, DesignModel, Joint,   # noqa: E402
                                     Part, Placement)
 
 
@@ -384,7 +384,7 @@ def check_weld(f: Failures) -> None:
 
     print("\n== 10d. 真实工程：weld 后能跑且稳定 ==")
 
-    from hw_velxio.design.store import DesignStore, list_projects
+    from dsh_embagent.design.store import DesignStore, list_projects
     row = next((p for p in list_projects()
                 if p.get("id") == "示例-单板" and p.get("has_design")), None)
     if row is None:

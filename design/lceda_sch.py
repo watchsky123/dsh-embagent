@@ -161,7 +161,7 @@ def run(project_dir: Path, *, session: lceda.LcedaSession | None = None,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.lceda_sch",
+        "module": "dsh_embagent.design.lceda_sch",
         "file": FILE,
         "api": "SCH_Drc.check(true, false, true)（详细模式，自行按 type 过滤）",
         "why_not_bool": ("布尔模式 strict 下 warn 也算 false；"

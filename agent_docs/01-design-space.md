@@ -44,7 +44,7 @@ estimated(0) < catalog(1) < datasheet(2) < measured(3)
 ## 一条自检
 
 ```
-python -m hw_velxio.design_cli get <id>
+python -m dsh_embagent.design_cli get <id>
 ```
 
 看 `design` 里每个键**是不是都有人负责**。多出来的键、互相矛盾的键

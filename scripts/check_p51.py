@@ -1,6 +1,6 @@
 """P51 验收 —— 软件能力的**任务分解**（写 → 测 → 验）。
 
-    python -m hw_velxio.scripts.check_p51
+    python -m dsh_embagent.scripts.check_p51
 
 ## 这一段解决什么
 
@@ -35,11 +35,11 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import plan as plan_module  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent.design import plan as plan_module  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     Board, DesignModel, Part, Placement,
 )
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PROJECT = "p51-fixture"
 SOFTWARE = ("S1", "S2", "S3", "S4", "S5", "S6")

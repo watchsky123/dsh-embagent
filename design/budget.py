@@ -1,4 +1,4 @@
-"""五轨预算代数 —— **hw_velxio 自己的**，不再依赖 `hwforge.budget`。
+"""五轨预算代数 —— **dsh_embagent 自己的**，不再依赖 `hwforge.budget`。
 
 ## 它在算什么
 
@@ -34,7 +34,7 @@
 * **完全没有 claim 时 `ok` 为 False** —— "没有数据"不是"可行"；
 * 违规项带 `action` —— 只说超了多少不给方向，等于没说。
 
-@module hw_velxio.design.budget
+@module dsh_embagent.design.budget
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-#: 五条轨。**名字以 hw_velxio 的既有约定为准**（`timing_ns` / `cost_usd`），
+#: 五条轨。**名字以 dsh_embagent 的既有约定为准**（`timing_ns` / `cost_usd`），
 #: 不沿用 hwforge 的 `timing_ms` / `cost_cny` —— 改名字会让已有工程里的
 #: `meta.budget.limits` 全部失配。
 CURRENCIES: tuple[str, ...] = ("power_w", "thermal_c", "emc_dbuv",
@@ -249,6 +249,6 @@ def build_default_tree(limits: dict[str, float] | None = None) -> BudgetTree:
 
 
 def describe() -> dict[str, Any]:
-    return {"module": "hw_velxio.design.budget",
+    return {"module": "dsh_embagent.design.budget",
             "currencies": list(CURRENCIES),
             "note": "耦合组池化判定（热/EMC 是共享物理资源）"}

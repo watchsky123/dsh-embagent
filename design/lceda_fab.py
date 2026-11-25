@@ -254,7 +254,7 @@ def export(project_dir: Path, *, kinds: list[str] | None = None,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.lceda_fab",
+        "module": "dsh_embagent.design.lceda_fab",
         "file": FILE,
         "out_dir": OUT_DIR,
         "kinds": {key: spec["label"] for key, spec in KINDS.items()},

@@ -168,7 +168,7 @@ def merge(drc: dict[str, Any] | None, dfm: dict[str, Any] | None,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.dfm",
+        "module": "dsh_embagent.design.dfm",
         "dfm_method": "eda.pcb_Dfm.checkDfm(options?)",
         "dfm_availability": "eda.pcb_Dfm.getDfmAvailability()",
         "trustworthy_drc": list(TRUSTWORTHY_DRC),

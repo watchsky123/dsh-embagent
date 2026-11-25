@@ -217,7 +217,7 @@ def _summary(rows: list[dict[str, Any]], counts: dict[str, int],
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.sim_dispatch",
+        "module": "dsh_embagent.design.sim_dispatch",
         "domains": {k: v[0] for k, v in DOMAINS.items()},
         "no_model": list(NO_MODEL),
         "discipline": ("没有模型的域返回 unknown；域之间不互相借用结论；"

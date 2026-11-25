@@ -11,7 +11,7 @@
  * 这里不做任何几何/判定计算：拿不到就让 store 进入错误态，绝不返回一个
  * "看起来空"的对象——空工程与读失败在面板上必须长得不一样。
  *
- * @module dsh-hw-velxio/client/rpc
+ * @module dsh-embagent/client/rpc
  */
 
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'

@@ -942,7 +942,7 @@ def ensure(store: Any, design: DesignModel, requirement: dict[str, Any] | None =
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.plan",
+        "module": "dsh_embagent.design.plan",
         "dir": PLAN_DIR,
         "index": INDEX,
         "capabilities": [t["id"] for t in CAPABILITY_TEMPLATES],

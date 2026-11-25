@@ -39,7 +39,7 @@ BOM 里没有坐标。补出来的元件只能按网格排（`synthesize._place`
 BOM 里**已经有**的 ref（来自 PCB 导入）**不覆盖**：那是真实布局，比排布
 位置可信得多。本模块只补 `missing` 的那部分。
 
-@module hw_velxio.design.bom_fill
+@module dsh_embagent.design.bom_fill
 """
 
 from __future__ import annotations

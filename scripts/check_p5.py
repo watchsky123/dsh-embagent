@@ -1,11 +1,11 @@
 """P5 验收：需求草稿 + 确认闸门。
 
-    python -m hw_velxio.scripts.check_p5
+    python -m dsh_embagent.scripts.check_p5
 
 P5 的初版方案有两处**错的前提**（见 `docs/p5-plan.md` §0）：
 
 * 「0 个 provider」→ 错。DSH 的 `ctx.llm` 已挂载，`dsh-our-free-model` 就是适配器；
-  hw_velxio 早就在用 `session.prompt()` 投递。**P5 不写 provider。**
+  dsh_embagent 早就在用 `session.prompt()` 投递。**P5 不写 provider。**
 * 「字段是 units/links」→ 错。`Requirement` 是
   `id/title/roles/interfaces/constraints/numbers/notes`。
 
@@ -43,7 +43,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import generate, req_draft  # noqa: E402
+from dsh_embagent.design import generate, req_draft  # noqa: E402
 
 PASS = "pass"
 FAIL = "fail"
@@ -51,7 +51,7 @@ SKIP = "not_ready"
 
 _RESULTS: list[dict[str, Any]] = []
 REPO = Path(__file__).resolve().parents[2]
-PKG = REPO / "hw_velxio"
+PKG = REPO / "dsh_embagent"
 
 
 def check(name: str, ok: bool, detail: str = "", *, status: str = "") -> bool:
@@ -94,7 +94,7 @@ def check_contract() -> None:
 
     # 角色清单也必须来自 roles.py（再写一份会分叉）
     known = req_draft._known_roles()
-    from hw_velxio.design import roles as roles_module
+    from dsh_embagent.design import roles as roles_module
     from_source = sorted({t.role for t in roles_module.ROLE_TEMPLATES})
     check("1b. 已知角色取自 `roles.ROLE_TEMPLATES`（不另写清单）",
           known == from_source,
@@ -216,8 +216,8 @@ def check_numbers() -> None:
 def check_end_to_end(tmp: Path) -> None:
     os.environ["HWV_WORKSPACE"] = str(tmp / "ws")
     try:
-        from hw_velxio import design_cli
-        from hw_velxio.design.store import DesignStore
+        from dsh_embagent import design_cli
+        from dsh_embagent.design.store import DesignStore
 
         store = DesignStore("p5-fixture")
         store.dir.mkdir(parents=True, exist_ok=True)
@@ -296,7 +296,7 @@ def check_zero_start(tmp: Path) -> None:
     """
     os.environ["HWV_WORKSPACE"] = str(tmp / "ws-zero")
     try:
-        from hw_velxio.design.store import DesignStore
+        from dsh_embagent.design.store import DesignStore
 
         store = DesignStore("from-zero")
         check("7a. 工程确实还不存在（这是本组的前提，不是假设）",

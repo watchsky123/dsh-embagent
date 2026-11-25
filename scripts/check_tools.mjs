@@ -61,7 +61,7 @@ const EXPECTED_TOOLS = [
   'hw_put', 'hw_setpart', 'hw_deferred', 'hw_workspace', 'hw_synth',
   'hw_roles', 'hw_scene', 'hw_log',
   // P3：Velxio 能力从"只有 hw_block 摸黑传 JSON"提升为一等工具。
-  'hw_velxio', 'hw_compile', 'hw_circuit', 'hw_libs',
+  'dsh_embagent', 'hw_compile', 'hw_circuit', 'hw_libs',
   // P1：验证阶梯（审查机）。
   'hw_ladder', 'hw_sim', 'hw_serial',
 ]

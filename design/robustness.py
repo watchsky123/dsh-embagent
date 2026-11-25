@@ -200,7 +200,7 @@ def triplicate(domain: str,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.robustness",
+        "module": "dsh_embagent.design.robustness",
         "domains": {k: [p["name"] for p in v]
                     for k, v in PERTURBATIONS.items()},
         "combine_rule": "任一 fail → fail；有 unknown → unknown；全 pass → pass",

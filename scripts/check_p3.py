@@ -1,6 +1,6 @@
 """P3 验收：参数敏感度。
 
-    python -m hw_velxio.scripts.check_p3
+    python -m dsh_embagent.scripts.check_p3
 
 P3 的问题不是"哪个参数敏感"，而是**136 个参数里 132 个根本没人读**。
 
@@ -35,8 +35,8 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import sensitivity, sim_params  # noqa: E402
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design import sensitivity, sim_params  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PASS = "pass"
 FAIL = "fail"
@@ -44,7 +44,7 @@ SKIP = "not_ready"
 
 _RESULTS: list[dict[str, Any]] = []
 REPO = Path(__file__).resolve().parents[2]
-PKG = REPO / "hw_velxio"
+PKG = REPO / "dsh_embagent"
 FIXTURES = PKG / "tests" / "fixtures" / "designs"
 
 
@@ -60,7 +60,7 @@ def check(name: str, ok: bool, detail: str = "", *, status: str = "") -> bool:
 
 
 def _design(name: str = "stacked-2layer") -> Any:
-    from hw_velxio.design.model import DesignModel
+    from dsh_embagent.design.model import DesignModel
     return DesignModel.from_dict(json.loads(
         (FIXTURES / f"{name}.json").read_text(encoding="utf-8")))
 
@@ -188,10 +188,10 @@ def check_verdict_layer() -> None:
     code, out = _run([sys.executable, "-c",
                       "import sys,json;sys.path.insert(0,'.');"
                       "from pathlib import Path;"
-                      "from hw_velxio.design.model import DesignModel;"
-                      "from hw_velxio.design import sim_params, sensitivity;"
+                      "from dsh_embagent.design.model import DesignModel;"
+                      "from dsh_embagent.design import sim_params, sensitivity;"
                       "d=DesignModel.from_dict(json.loads(Path("
-                      "'hw_velxio/tests/fixtures/designs/stacked-2layer.json'"
+                      "'dsh_embagent/tests/fixtures/designs/stacked-2layer.json'"
                       ").read_text(encoding='utf-8')));"
                       "r=sensitivity.sweep_verdict(d, sim_params.load(), keys=['dt']);"
                       "print(json.dumps(r['dt']))"], env=env)
@@ -210,7 +210,7 @@ def check_verdict_layer() -> None:
 
 
 def check_contract() -> None:
-    code, out = _run([sys.executable, "-m", "hw_velxio.design_cli", "sensitivity",
+    code, out = _run([sys.executable, "-m", "dsh_embagent.design_cli", "sensitivity",
                       "示例-多板"])
     try:
         payload = json.loads(out.strip().splitlines()[-1])
@@ -222,7 +222,7 @@ def check_contract() -> None:
           {"wired", "wired_noop", "unwired", "missing"},
           f"exit={code} counts={payload.get('counts')}")
 
-    code2, out2 = _run([sys.executable, "-m", "hw_velxio.design_cli", "snapshot",
+    code2, out2 = _run([sys.executable, "-m", "dsh_embagent.design_cli", "snapshot",
                         "001-blink"])
     try:
         snapshot = json.loads(out2.strip().splitlines()[-1])

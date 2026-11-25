@@ -1,6 +1,6 @@
 """P47 验收 —— 六段 `audit` + `doctor` + `examples` + **有界**自修循环。
 
-    python -m hw_velxio.scripts.check_p47
+    python -m dsh_embagent.scripts.check_p47
 
 ## 这一段补的是"最后四块拼图"
 
@@ -32,12 +32,12 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio import design_cli  # noqa: E402
-from hw_velxio.design import audit as audit_module  # noqa: E402
-from hw_velxio.design import doctor as doctor_module  # noqa: E402
-from hw_velxio.design import examples as examples_module  # noqa: E402
-from hw_velxio.design import fixloop as fixloop_module  # noqa: E402
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent import design_cli  # noqa: E402
+from dsh_embagent.design import audit as audit_module  # noqa: E402
+from dsh_embagent.design import doctor as doctor_module  # noqa: E402
+from dsh_embagent.design import examples as examples_module  # noqa: E402
+from dsh_embagent.design import fixloop as fixloop_module  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PROJECT = "p47-fixture"
 

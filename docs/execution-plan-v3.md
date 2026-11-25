@@ -725,7 +725,7 @@ def calibrate(design, test, params, candidates) -> dict:
 
 三处实测坑：12 个夹具的 V2 是 `unknown`（P18「警告→unknown」纪律在起作用，
 不是 bug）、夹具文件里 int/float 不一致导致往返测试全红（做一次规范化即可）、
-`npm test` 从包目录跑时 import 不到 `hw_velxio`（所有脚本前加 `cd ..`）。
+`npm test` 从包目录跑时 import 不到 `dsh_embagent`（所有脚本前加 `cd ..`）。
 
 未做：没有 gcc / arduino-cli 的降级路径没验；覆盖率没量化（665 条是按
 「每条判据一个实例」铺的）。

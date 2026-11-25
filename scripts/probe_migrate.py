@@ -1,6 +1,6 @@
 """工程正规化诊断 —— 「API 建的工程没有云文档槽位」这条在大佬手册里是不是真的。
 
-    python -m hw_velxio.scripts.probe_migrate [--keep]
+    python -m dsh_embagent.scripts.probe_migrate [--keep]
 
 ## 为什么值得单独测
 
@@ -39,7 +39,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import lceda  # noqa: E402
+from dsh_embagent.design import lceda  # noqa: E402
 
 OUT_FILE = "migrate_probe.json"
 
@@ -78,7 +78,7 @@ for (let i = 1; i <= 5 && !uuid; i++) {
   const n = (i === 1) ? name : (name + '-' + i);
   try {
     uuid = await eda.dmt_Project.createProject(
-      friendly, n, undefined, undefined, 'hw_velxio probe');
+      friendly, n, undefined, undefined, 'dsh_embagent probe');
   } catch (e) {
     why = String((e && e.message) || e);
     uuid = null;

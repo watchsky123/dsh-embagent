@@ -1,4 +1,4 @@
-"""外部工具探测与调用 —— **hw_velxio 自己的**，不依赖 `hwforge.downstream`。
+"""外部工具探测与调用 —— **dsh_embagent 自己的**，不依赖 `hwforge.downstream`。
 
 ## 它做什么
 
@@ -15,7 +15,7 @@
 2. **探测不到就说探测不到。** 把"没装"说成"生成失败"会让人去查代码，
    而问题在环境。
 
-@module hw_velxio.design.toolchain
+@module dsh_embagent.design.toolchain
 """
 
 from __future__ import annotations

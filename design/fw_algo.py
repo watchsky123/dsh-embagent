@@ -345,7 +345,7 @@ def build_and_run(algo: str, out_dir: str | Path, *, timeout_s: int = 60,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.fw_algo",
+        "module": "dsh_embagent.design.fw_algo",
         "algorithms": list(ALGOS),
         "why": ("Renode 在本机跑不了、也没有目标板；"
                 "所以只验**不依赖硬件**的纯 C 逻辑（状态机/滤波/PID/限幅）"),

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """死样式规则扫描：styles.ts 里定义的每个 .hwv-* 类必须被某个组件用到。
 
-    python hw_velxio/scripts/check_dead_css.py
+    python dsh_embagent/scripts/check_dead_css.py
 
 为什么值得单独一个脚本：CSS 是字符串，typecheck 看不见它，tsdown 也不管。
 "改了行为忘了删规则"（例如 .hwv-pane.hidden：布局从 display:none 改成条件

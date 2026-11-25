@@ -1,6 +1,6 @@
 """P20 验收：固件（引脚映射 / 驱动片段 / 项目骨架 / 交叉核对）。
 
-    python -m hw_velxio.scripts.check_p20
+    python -m dsh_embagent.scripts.check_p20
 
 七条对应 `docs/execution-plan-v3.md` §P20，第 7 条是**退化验证**。
 
@@ -30,7 +30,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design.fwgen import (  # noqa: E402
+from dsh_embagent.design.fwgen import (  # noqa: E402
     drivers,
     mcus,
     netlist,
@@ -487,8 +487,8 @@ def check_cli(tmp: Path) -> None:
     用 `HWV_WORKSPACE` 把工作区指到临时目录——**验收不往用户的工程里写东西**
     （AGENTS §4.4）。这里测的是 CLI 接线，模块本身在 1–9 条里已经测过。
     """
-    from hw_velxio.design.model import Board, DesignModel, Part, Placement
-    from hw_velxio.design.store import DesignStore
+    from dsh_embagent.design.model import Board, DesignModel, Part, Placement
+    from dsh_embagent.design.store import DesignStore
 
     workspace = tmp / "ws"
     demo = workspace / "demo"
@@ -516,7 +516,7 @@ def check_cli(tmp: Path) -> None:
     def run(*argv: str) -> dict[str, Any]:
         env = {**os.environ, "HWV_WORKSPACE": str(workspace)}
         proc = subprocess.run(  # noqa: S603
-            [sys.executable, "-m", "hw_velxio.design_cli", *argv],
+            [sys.executable, "-m", "dsh_embagent.design_cli", *argv],
             cwd=str(Path(__file__).resolve().parents[2]),
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, check=False)
         text = proc.stdout.decode("utf-8", errors="replace").strip()

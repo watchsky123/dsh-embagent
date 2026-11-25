@@ -436,7 +436,7 @@ def audit(design: Any) -> dict[str, Any]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.body",
+        "module": "dsh_embagent.design.body",
         "basis": "整机实体表 `bodies_list`，与 `parts` 共用 ref 命名空间",
         "kinds": list(BODY_KINDS),
         "shapes": list(BODY_SHAPES),

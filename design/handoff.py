@@ -1133,7 +1133,7 @@ def _cell(value: Any, limit: int = 220) -> str:
 def describe() -> dict[str, Any]:
     """给 CLI / 工具自省用。"""
     return {
-        "module": "hw_velxio.design.handoff",
+        "module": "dsh_embagent.design.handoff",
         "categories": list(CATEGORIES),
         "titles": {c: CATEGORY_TITLE[c] for c in CATEGORIES},
         "artifacts_read": ["design.json", "ladder.json", "claims.json", "emit.json",

@@ -310,7 +310,7 @@ def diff_summary(params_a: sp.ParamSet, params_b: sp.ParamSet) -> dict[str, Any]
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.sim_calibration",
+        "module": "dsh_embagent.design.sim_calibration",
         "max_params_per_failure": MAX_PARAMS_PER_FAILURE,
         "rule": "只有「旧设计在新参数下复现录像里的失败」才采纳",
         "rejections": {

@@ -1,6 +1,6 @@
 """P56 验收 —— **引脚定义表**：`.ioc` 的 `PA9` ↔ 网表的 `30`，逐脚对账。
 
-    python -m hw_velxio.scripts.check_p56
+    python -m dsh_embagent.scripts.check_p56
 
 ## 这一段补什么
 
@@ -47,13 +47,13 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio import design_cli  # noqa: E402
-from hw_velxio.design import interface as iface_module  # noqa: E402
-from hw_velxio.design import pinout as pinout_module  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent import design_cli  # noqa: E402
+from dsh_embagent.design import interface as iface_module  # noqa: E402
+from dsh_embagent.design import pinout as pinout_module  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     Board, DesignModel, Part, Placement,
 )
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PROJECT = "p56-fixture"
 REPO = Path(__file__).resolve().parents[1]
@@ -149,7 +149,7 @@ def part_tables() -> None:
           and pins.get("1", {}).get("name") == "VBAT",
           f"30={pins.get('30')} 44={pins.get('44')}")
 
-    from hw_velxio.design.fwgen import mcus  # noqa: PLC0415
+    from dsh_embagent.design.fwgen import mcus  # noqa: PLC0415
 
     # 两份资料（厂商符号 / 型号表）说同样的电源脚名。名字写法会有出入：
     # `VDDAVREF+` 把 VDDA 与 VREF+ 合成一个脚、H7 写 `PDR` 而 F4 写 `PDR_ON`、

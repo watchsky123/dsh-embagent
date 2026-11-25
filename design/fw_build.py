@@ -781,7 +781,7 @@ def build(store: Any, *, out_dir: str = OUT_DIR, timeout_s: int = 180,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.fw_build",
+        "module": "dsh_embagent.design.fw_build",
         "out_dir": OUT_DIR,
         "generates": ["startup.c", "link.ld", "main.c", "hwv_pins.h", "Makefile"],
         "hard_checks": ["编译返回 0", "Machine=ARM", "Entry 在 FLASH",

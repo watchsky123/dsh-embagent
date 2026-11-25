@@ -1,4 +1,4 @@
-"""``hw_velxio.serve`` —— Velxio 后端的**本机监督器**。
+"""``dsh_embagent.serve`` —— Velxio 后端的**本机监督器**。
 
 设计纪律（与 `bridge.py` 同一条）：
 
@@ -17,13 +17,13 @@ Dockerfile 里那些 apt-get 装的是**工具链**（arduino-cli / QEMU / ESP-I
 
 用法::
 
-    python -m hw_velxio.serve status
-    python -m hw_velxio.serve start [--port 3080]
-    python -m hw_velxio.serve stop
-    python -m hw_velxio.serve logs [--tail 80]
-    python -m hw_velxio.serve ensure      # 幂等：没起就起，起了就报状态
+    python -m dsh_embagent.serve status
+    python -m dsh_embagent.serve start [--port 3080]
+    python -m dsh_embagent.serve stop
+    python -m dsh_embagent.serve logs [--tail 80]
+    python -m dsh_embagent.serve ensure      # 幂等：没起就起，起了就报状态
 
-@module hw_velxio.serve
+@module dsh_embagent.serve
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ from . import velxio_client
 # ---------------------------------------------------------------------------
 
 HOME = Path(os.environ.get("USERPROFILE") or os.environ.get("HOME") or Path.home())
-STATE_DIR = HOME / ".dsh" / "hw_velxio"
+STATE_DIR = HOME / ".dsh" / "dsh_embagent"
 RUN_DIR = STATE_DIR / "run"
 VENV_DIR = STATE_DIR / "venv"
 TOOLCHAIN_DIR = STATE_DIR / "toolchain"
@@ -70,18 +70,18 @@ def _ensure_run_dir() -> None:
 def velxio_root() -> str:
     """解析 Velxio checkout 根（含 ``backend/app/main.py`` 的那一层）。
 
-    优先级：``HW_VELXIO_VELXIO_ROOT`` → 配置 ``velxio_root`` → 仓库内默认位置
+    优先级：``DSH_EMBAGENT_VELXIO_ROOT`` → 配置 ``velxio_root`` → 仓库内默认位置
     → 空串（调用方据此报 not_ready，而不是猜一个路径）。
     """
     candidates: list[str] = []
-    env = os.environ.get("HW_VELXIO_VELXIO_ROOT", "").strip()
+    env = os.environ.get("DSH_EMBAGENT_VELXIO_ROOT", "").strip()
     if env:
         candidates.append(env)
     cfg = velxio_client.load_config().get("velxio_root")
     if isinstance(cfg, str) and cfg.strip():
         candidates.append(cfg.strip())
     here = Path(__file__).resolve().parent
-    # 默认：与 hw_velxio 同级的 velxio-master（本机布局）
+    # 默认：与 dsh_embagent 同级的 velxio-master（本机布局）
     candidates.append(str(here.parent / "velxio-master"))
     candidates.append(str(here.parent / "velxio"))
     for cand in candidates:
@@ -107,7 +107,7 @@ def requirements_path() -> Path:
 
 def configured_port() -> int:
     """端口：环境变量 → 配置 → 3080（Velxio Docker 的默认映射）。"""
-    env = os.environ.get("HW_VELXIO_PORT", "").strip()
+    env = os.environ.get("DSH_EMBAGENT_PORT", "").strip()
     if env.isdigit():
         return int(env)
     cfg = velxio_client.load_config().get("velxio_port")
@@ -599,7 +599,7 @@ def _write_cmd_file(path: Path, lines: list[str]) -> None:
 
 
 #: 计划任务名。固定名字 + /Create /F 覆盖旧定义即可自愈。
-TASK_NAME = "dsh-hw-velxio-backend"
+TASK_NAME = "dsh-embagent-backend"
 
 
 def _spawn_via_schtask(cmd: list[str], cwd: Path, log) -> tuple[int | None, str]:
@@ -818,7 +818,7 @@ def spawn_self_hosted(port: int | None = None) -> dict[str, Any]:
         return prepared
     prepare_arduino_env()
     env = backend_env()
-    env["HW_VELXIO_EAGER_CLI"] = env.get("HW_VELXIO_EAGER_CLI", "")
+    env["DSH_EMBAGENT_EAGER_CLI"] = env.get("DSH_EMBAGENT_EAGER_CLI", "")
     cmd = [str(venv_python()), "-m", "uvicorn", "app.main:app",
            "--host", "127.0.0.1", "--port", str(port), "--log-level", "info"]
     return {
@@ -898,7 +898,7 @@ def status() -> dict[str, Any]:
         info["status"] = "not_ready"
         info["findings"] = [
             "找不到 Velxio checkout：需要一个含 backend/app/main.py 的目录。",
-            "设置 HW_VELXIO_VELXIO_ROOT，或写进 ~/.dsh/hw_velxio.json 的 velxio_root。",
+            "设置 DSH_EMBAGENT_VELXIO_ROOT，或写进 ~/.dsh/hw_velxio.json 的 velxio_root。",
         ]
         return info
     if not venv_ready():
@@ -928,7 +928,7 @@ def start(port: int | None = None, wait_s: float | None = None,
     # `_ensure_core_installed()` 两次网络往返，首次冷启动实测 75s，
     # 留够余量再报"起不来"——把慢误报成失败会让人去查一个不存在的问题。
     if wait_s is None:
-        wait_s = float(os.environ.get("HW_VELXIO_START_WAIT", "150"))
+        wait_s = float(os.environ.get("DSH_EMBAGENT_START_WAIT", "150"))
     current = status()
     if current["status"] == "ok":
         return {"status": "ok", "already_running": True, **current}
@@ -937,7 +937,7 @@ def start(port: int | None = None, wait_s: float | None = None,
     if not root:
         return {"status": "not_ready", "findings": [
             "找不到 Velxio checkout（需要 backend/app/main.py）。",
-            "设 HW_VELXIO_VELXIO_ROOT 或配置 velxio_root。",
+            "设 DSH_EMBAGENT_VELXIO_ROOT 或配置 velxio_root。",
         ]}
 
     port = port or configured_port()
@@ -946,7 +946,7 @@ def start(port: int | None = None, wait_s: float | None = None,
         return {"status": "failed", "findings": [
             f"端口 {port} 已被占用，不能启动第二个后端。",
             owner or "占用者未知",
-            "换端口：设 HW_VELXIO_PORT 或配置 velxio_port。",
+            "换端口：设 DSH_EMBAGENT_PORT 或配置 velxio_port。",
         ]}
 
     prepared = ensure_venv(with_deps=install_deps)

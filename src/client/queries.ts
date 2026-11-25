@@ -8,7 +8,7 @@
  * 这里只做三件事：**短期缓存、并发去重、按前缀失效**。没有后台刷新、
  * 没有重试策略——那些会改变"数据什么时候算新的"的语义，先不做。
  *
- * @module dsh-hw-velxio/client/queries
+ * @module dsh-embagent/client/queries
  */
 
 interface Entry<T> {

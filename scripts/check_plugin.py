@@ -1,6 +1,6 @@
 """插件自检：构建产物 + 宿主契约 + Python 端到端。
 
-    python hw_velxio/scripts/check_plugin.py
+    python dsh_embagent/scripts/check_plugin.py
 
 它检查三件**会真实出错**的事，而不是"文件存在"：
 
@@ -59,7 +59,7 @@ def check_artifacts() -> None:
     client_text = client.read_text(encoding="utf-8", errors="replace")
     check("client 使用 __ModuleLoader__ 闭包",
           "__ModuleLoader__.load(" in client_text
-          and "dsh-hw-velxio" in client_text)
+          and "dsh-embagent" in client_text)
     check("client 不引用 node: 内建模块",
           re.search(r'require\(["\']node:', client_text) is None)
     check("client 含 conversation.view 注册",
@@ -227,7 +227,7 @@ def cli(*args: str) -> dict:
     自检**不会**在用户真实工作区里留下任何东西。
     """
     proc = subprocess.run(
-        [sys.executable, "-m", "hw_velxio.design_cli", *args],
+        [sys.executable, "-m", "dsh_embagent.design_cli", *args],
         cwd=str(ROOT), capture_output=True, timeout=180,
     )
     stdout = proc.stdout.decode("utf-8", "replace").strip().splitlines()
@@ -244,7 +244,7 @@ def _run_cli_stdin(args: list[str], payload: str) -> dict:
     条通路。测这一条而不是 argv 版本，因为 argv 有 32K 上限而设计会超。
     """
     proc = subprocess.run(
-        [sys.executable, "-m", "hw_velxio.design_cli", *args],
+        [sys.executable, "-m", "dsh_embagent.design_cli", *args],
         cwd=str(ROOT), input=payload.encode("utf-8"),
         capture_output=True, timeout=180,
     )
@@ -555,7 +555,7 @@ def _check_python_body(project: str) -> None:
     # -- P1：引脚校验（从 0 搭的网表能不能被信任）--------------------------
     print("  -- P1 引脚校验")
     pin_design = {
-        "schema": "hw_velxio.design/1", "units": "mm", "id": "_check_pin",
+        "schema": "dsh_embagent.design/1", "units": "mm", "id": "_check_pin",
         "title": "引脚自检",
         "board": {"kind": "arduino-nano", "name": "Nano",
                   "outline": [[0, 0], [44.9, 0], [44.9, 17.8], [0, 17.8]],
@@ -647,7 +647,7 @@ def _check_python_body(project: str) -> None:
     # P1：受校验的写入路径
     print("  -- 受校验的写入（hw_put 的 CLI 底座）")
     good = {
-        "schema": "hw_velxio.design/1", "units": "mm", "id": project,
+        "schema": "dsh_embagent.design/1", "units": "mm", "id": project,
         "title": "put 自检",
         "board": {"kind": "arduino-uno", "name": "Arduino Uno",
                   "outline": [[0, 0], [72.58, 0], [72.58, 53.34], [0, 53.34]],

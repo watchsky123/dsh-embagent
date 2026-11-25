@@ -288,7 +288,7 @@ def apply(design: DesignModel, proposals: list[dict[str, Any]]) -> list[str]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.joint_propose",
+        "module": "dsh_embagent.design.joint_propose",
         "kinds": [k for k in JOINT_KINDS],
         "rules": {
             "stack/port/contact": "取 joints.infer() 的几何事实（有 z 间隙/重叠/网名依据）",

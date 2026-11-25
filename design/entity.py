@@ -256,7 +256,7 @@ def index(design: Any, *,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.entity",
+        "module": "dsh_embagent.design.entity",
         "sources": ["design.json", "claims.json", "justify.json",
                     "checks.json", "units.json", "design.physical_tests"],
         "caps": {"claims": MAX_CLAIMS, "tests": MAX_TESTS,

@@ -108,7 +108,7 @@ def compare(store: Any, design: Any) -> dict[str, Any]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.baseline",
+        "module": "dsh_embagent.design.baseline",
         "file": FILE,
         "mode": "可选（默认无基线）；record 后才 compare",
         "gate": False,

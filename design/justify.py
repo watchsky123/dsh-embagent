@@ -46,7 +46,7 @@
 实测 `示例-单板`：141 个元件里 125 个是 `role="component"`，
 按组能压到 20 组上下。
 
-@module hw_velxio.design.justify
+@module dsh_embagent.design.justify
 """
 
 from __future__ import annotations
@@ -306,7 +306,7 @@ def category_of(part: Part) -> str:
     **三条线索，顺序就是可信度**：
       1. `ref` 前缀（`R12`→电阻）——行业约定，最可靠
       2. `kind` 里的**真实类型名**（`C0603`→电容、`wokwi-resistor`→电阻、
-         `camera_module`→模组）——Wokwi/KiCad/hw_velxio 自己生成的工程
+         `camera_module`→模组）——Wokwi/KiCad/dsh_embagent 自己生成的工程
          都有可读的 kind
       3. 都判不出 → `unknown`（立创 EDA 的 `0deda055e6014e4e` 哈希）
 
@@ -1817,7 +1817,7 @@ def _group_why(design: DesignModel, kind: str, target: str,
 def describe() -> dict[str, Any]:
     """给 CLI / 工具自省用。"""
     return {
-        "module": "hw_velxio.design.justify",
+        "module": "dsh_embagent.design.justify",
         "rules": [name for name, _ in RULES],
         "rule_count": len(RULES),
         "confidence": ["asserted", "backfill",

@@ -206,7 +206,7 @@ def summarize(payload: dict[str, Any], *, limit: int = SUMMARY_ROWS
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.firmware_matrix",
+        "module": "dsh_embagent.design.firmware_matrix",
         "status_order": list(STATUS_ORDER),
         "labels": dict(STATUS_LABEL),
         "columns": ["引脚", "硬件配置(.ioc)", "固件使用(src/)", "结论"],

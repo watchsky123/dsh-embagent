@@ -1,6 +1,6 @@
 """P2 验收：按对象聚合。
 
-    python -m hw_velxio.scripts.check_p2
+    python -m dsh_embagent.scripts.check_p2
 
 P2 只做一件事：**点一个元件，五份产物里关于它的话一次看全**。
 
@@ -33,8 +33,8 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import entity  # noqa: E402
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design import entity  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PASS = "pass"
 FAIL = "fail"
@@ -42,7 +42,7 @@ SKIP = "not_ready"
 
 _RESULTS: list[dict[str, Any]] = []
 REPO = Path(__file__).resolve().parents[2]
-PKG = REPO / "hw_velxio"
+PKG = REPO / "dsh_embagent"
 FIXTURES = PKG / "tests" / "fixtures" / "designs"
 PROJECT = "示例-多板"
 
@@ -138,7 +138,7 @@ def check_profile() -> None:
     # **引用 model 的常量，不另写一份**：我第一版在这里写死了四个值，
     # 漏掉 `derived`，于是一个正确的件被判成"来源非法"。
     # 两个清单迟早会分叉，正确的做法是从唯一事实源取。
-    from hw_velxio.design.model import PHYSICAL_SOURCES
+    from dsh_embagent.design.model import PHYSICAL_SOURCES
     check("2d. 尺寸来源原样带出（取值必须在 model.PHYSICAL_SOURCES 里）",
           profile["physical_source"] in PHYSICAL_SOURCES,
           f"{profile['physical_source']} ∈ {PHYSICAL_SOURCES}")
@@ -164,7 +164,7 @@ def check_honest(tmp: Path) -> None:
     old = os.environ.get("HWV_WORKSPACE")
     os.environ["HWV_WORKSPACE"] = str(root)
     try:
-        from hw_velxio import design_cli
+        from dsh_embagent import design_cli
         payload = design_cli.cmd_entity(["p2-fixture", "U1"])
     finally:
         if old is None:
@@ -214,7 +214,7 @@ def check_rollup() -> None:
 
 
 def check_contract() -> None:
-    code, out = _run([sys.executable, "-m", "hw_velxio.design_cli", "snapshot",
+    code, out = _run([sys.executable, "-m", "dsh_embagent.design_cli", "snapshot",
                       "001-blink"])
     try:
         snapshot = json.loads(out.strip().splitlines()[-1])

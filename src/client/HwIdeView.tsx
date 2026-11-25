@@ -22,7 +22,7 @@
  * 3. **一个状态两个视图**：selectedRef 仍由 store 持有；3D 的
  *    爆炸/剖面/网格也上收到 store（组件卸载不丢）。
  *
- * @module dsh-hw-velxio/client/HwIdeView
+ * @module dsh-embagent/client/HwIdeView
  */
 
 import { useEffect, useRef, useState } from 'react'

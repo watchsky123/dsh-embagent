@@ -663,7 +663,7 @@ def description_of(design: DesignModel, result: dict[str, Any],
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.links",
+        "module": "dsh_embagent.design.links",
         "checks": ["link.protocol_match", "link.level_match",
                    "link.baud_feasible", "link.orphan"],
         "protocols": sorted(PROTOCOL_FAMILIES),

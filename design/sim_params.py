@@ -298,7 +298,7 @@ def effective(design: Any, *, base: ParamSet | None = None) -> ParamSet:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.sim_params",
+        "module": "dsh_embagent.design.sim_params",
         "default_file": DEFAULT_FILE.name,
         "groups": list(GROUPS),
         "trust_levels": TRUST_LEVEL,

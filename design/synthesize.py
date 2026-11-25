@@ -33,7 +33,7 @@
 按功能块分行摆：控制器在第 0 行，外设按顺序往后排。间距固定、可复现，
 **不是优化过的布局**——`space.*` 检查会如实指出重叠或越界。
 
-@module hw_velxio.design.synthesize
+@module dsh_embagent.design.synthesize
 """
 
 from __future__ import annotations

@@ -152,6 +152,6 @@ def copy_example(name: str, store: Any, *, title: str = "") -> dict[str, Any]:
 
 
 def describe() -> dict[str, Any]:
-    return {"module": "hw_velxio.design.examples",
+    return {"module": "dsh_embagent.design.examples",
             "examples": list(EXAMPLES),
             "discipline": "只读样例 + 复制；不覆盖已存在的工程"}

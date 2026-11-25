@@ -1,6 +1,6 @@
 """P4 验收：固件矩阵。
 
-    python -m hw_velxio.scripts.check_p4
+    python -m dsh_embagent.scripts.check_p4
 
 P4 把 `pinmap-check` 的三张**问题表**变成 **每脚一行**的矩阵。
 这一层最容易犯三个错，每个都对应一条断言：
@@ -33,8 +33,8 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import firmware_matrix as fm  # noqa: E402
-from hw_velxio.design.fwgen import pinmap as pm  # noqa: E402
+from dsh_embagent.design import firmware_matrix as fm  # noqa: E402
+from dsh_embagent.design.fwgen import pinmap as pm  # noqa: E402
 
 PASS = "pass"
 FAIL = "fail"
@@ -42,7 +42,7 @@ SKIP = "not_ready"
 
 _RESULTS: list[dict[str, Any]] = []
 REPO = Path(__file__).resolve().parents[2]
-PKG = REPO / "hw_velxio"
+PKG = REPO / "dsh_embagent"
 WORKSPACE = Path(os.environ.get(
     "HWV_WORKSPACE", r"C:\Users\<user>\Desktop\示例工作区"))
 IOC = WORKSPACE / "F401-Front-master" / "F401-Front.ioc"
@@ -219,7 +219,7 @@ def check_contract() -> None:
           f"counts={summary['counts']} total={summary['total']}")
 
     # CLI：**不能撞名**——`firmware` 已经在 P20 被占用（那次撞名会把原命令顶掉）
-    code, out = _run([sys.executable, "-m", "hw_velxio.design_cli", "firmware"])
+    code, out = _run([sys.executable, "-m", "dsh_embagent.design_cli", "firmware"])
     try:
         legacy = json.loads(out.strip().splitlines()[-1])
     except (ValueError, IndexError):
@@ -228,7 +228,7 @@ def check_contract() -> None:
           "columns" not in legacy,
           f"keys={sorted(legacy)[:5]}")
 
-    code2, out2 = _run([sys.executable, "-m", "hw_velxio.design_cli", "fw-matrix"])
+    code2, out2 = _run([sys.executable, "-m", "dsh_embagent.design_cli", "fw-matrix"])
     try:
         matrix_desc = json.loads(out2.strip().splitlines()[-1])
     except (ValueError, IndexError):
@@ -239,7 +239,7 @@ def check_contract() -> None:
           f"columns={matrix_desc.get('columns')}")
 
     # 快照：要么带 firmware 摘要，要么如实 not_ready——不能一条都不写
-    code3, out3 = _run([sys.executable, "-m", "hw_velxio.design_cli", "snapshot",
+    code3, out3 = _run([sys.executable, "-m", "dsh_embagent.design_cli", "snapshot",
                         "001-blink"])
     try:
         snapshot = json.loads(out3.strip().splitlines()[-1])
@@ -248,7 +248,7 @@ def check_contract() -> None:
     fw = snapshot.get("firmware")
     # 「扫了 0 个文件」不能和「扫到了但没有引脚用法」长得一样（AGENTS §0.2）
     code_f, out_f = _run([
-        sys.executable, "-m", "hw_velxio.design_cli", "fw-matrix", "001-blink",
+        sys.executable, "-m", "dsh_embagent.design_cli", "fw-matrix", "001-blink",
         f"--ioc={IOC}", f"--src={IOC.parent / 'App'}"])
     try:
         scanned = json.loads(out_f.strip().splitlines()[-1])

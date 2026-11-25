@@ -33,7 +33,7 @@ IPC 风格命名里 `L`/`W` 通常指**焊盘跨距**（lead span），而本体
 这给出一条不依赖任何表���**实测兜底**：`w = 焊盘外廓 - 0.4`。
 本表优先（更准），表里没有的用这条兜底，两者都标 `derived`（不是猜测）。
 
-@module hw_velxio.design.packages
+@module dsh_embagent.design.packages
 """
 
 from __future__ import annotations

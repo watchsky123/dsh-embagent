@@ -1,4 +1,4 @@
-"""体素空间与静力学 —— **hw_velxio 自己的**，不再依赖 `hwforge.space` / `hwforge.statics`。
+"""体素空间与静力学 —— **dsh_embagent 自己的**，不再依赖 `hwforge.space` / `hwforge.statics`。
 
 ## 为什么迁
 
@@ -26,7 +26,7 @@
 * 越界的盒子**不裁剪**，而是如实报出来（裁剪会把"跑出板外"伪装成"刚好在板内"）；
 * 同一 ref 重复添加视为调用方错误。
 
-@module hw_velxio.design.geometry
+@module dsh_embagent.design.geometry
 """
 
 from __future__ import annotations
@@ -431,7 +431,7 @@ class Statics:
 def describe() -> dict[str, Any]:
     """这个模块的能力自述（给面板/工具层）。"""
     return {
-        "module": "hw_velxio.design.geometry",
+        "module": "dsh_embagent.design.geometry",
         "provides": ["VoxelSpace", "Statics", "centre_of_mass",
                      "ground_contacts"],
         "pitch_mm": DEFAULT_PITCH_MM,

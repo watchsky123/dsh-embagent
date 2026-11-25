@@ -55,7 +55,7 @@ if (browser === undefined) {
 
 const workspace = mkdtempSync(join(tmpdir(), 'hwv-draw-'))
 function cli(args) {
-  return execFileSync('python', ['-m', 'hw_velxio.design_cli', ...args], {
+  return execFileSync('python', ['-m', 'dsh_embagent.design_cli', ...args], {
     cwd: resolve(repoRoot, '..'),
     env: { ...process.env, HWV_WORKSPACE: workspace },
     encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,

@@ -17,14 +17,14 @@
 |---|---|---|
 | `ctx.llm`（唯一受支持的 provider 入口） | `@deepseek-ai/dsh-llm` | 由 `@deepseek-ai/dsh-base` 挂载 |
 | provider 适配器 | **`dsh-our-free-model` 2.8.3**（有 `adapter/dsh-llm.d.ts`） | 你 profile 里已经挂着 |
-| 会话投递 | `sessions.binding(id).session.prompt(parts, 'queue')` | **hw_velxio 已在用**（`view.ts:116`） |
+| 会话投递 | `sessions.binding(id).session.prompt(parts, 'queue')` | **dsh_embagent 已在用**（`view.ts:116`） |
 
 `agent_loop.py`（P22）是**内层循环**，用于 0 token 回归；它和 DSH 会话是两条并行的
 会话。把 P5 建在内层上 = 在已经有会话的地方再造一条。
 
 **先例**：hwforge 试过在宿主侧投递（`agent.followup`），三轮花在
 `agent vs agentId`、`ctx.get vs ctx.sessions`、`inject` 上，结论是
-**「host composes, client delivers」**。hw_velxio 现在正是这个形状。
+**「host composes, client delivers」**。dsh_embagent 现在正是这个形状。
 
 ### ② 需求字段不是 `units / links`
 

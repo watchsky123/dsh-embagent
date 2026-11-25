@@ -1,6 +1,6 @@
 """P19 验收：LCSC 元件数据源（``parts_catalog`` + ``package_sizes`` + 能力表覆盖层）。
 
-    python -m hw_velxio.scripts.check_p19
+    python -m dsh_embagent.scripts.check_p19
 
 六条对应 `docs/execution-plan-v3.md` §P19，其中第 6 条是**退化验证**。
 
@@ -32,7 +32,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import capability, package_sizes, parts_catalog  # noqa: E402
+from dsh_embagent.design import capability, package_sizes, parts_catalog  # noqa: E402
 
 PASS = "pass"
 FAIL = "fail"
@@ -387,8 +387,8 @@ def check_backfill() -> None:
           f"physical_source={formula_fields.get('physical_source')}")
 
     # -- 与 P17 的接缝：回填出来的 lcsc 必须能被发射层认出 ------------------
-    from hw_velxio.design import emit_lceda  # noqa: PLC0415 - 只为一个纯函数
-    from hw_velxio.design.model import Part  # noqa: PLC0415
+    from dsh_embagent.design import emit_lceda  # noqa: PLC0415 - 只为一个纯函数
+    from dsh_embagent.design.model import Part  # noqa: PLC0415
     filled = parts_catalog.to_design_fields(part.to_dict())
     probe = Part(ref="U1", kind="mcu", physical_source="datasheet",
                  lcsc=filled.get("lcsc"), pins=["1"])

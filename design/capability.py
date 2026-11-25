@@ -491,7 +491,7 @@ def describe() -> dict[str, Any]:
         src = str(cap.get("source") or "")
         by_source[src] = by_source.get(src, 0) + 1
     return {
-        "module": "hw_velxio.design.capability",
+        "module": "dsh_embagent.design.capability",
         "entries": len(view),
         "builtin": len(CAPABILITY),
         "overlay": len(view) - len(CAPABILITY),

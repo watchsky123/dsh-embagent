@@ -2,7 +2,7 @@
 
 从仓库根运行：
 
-    python -m hw_velxio.scripts.check_bodies
+    python -m dsh_embagent.scripts.check_bodies
 
 ## 它证的是什么
 
@@ -27,13 +27,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hw_velxio import design_cli as cli  # noqa: E402
-from hw_velxio.design import body  # noqa: E402
-from hw_velxio.design import joints as joints_module  # noqa: E402
-from hw_velxio.design import shell  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent import design_cli as cli  # noqa: E402
+from dsh_embagent.design import body  # noqa: E402
+from dsh_embagent.design import joints as joints_module  # noqa: E402
+from dsh_embagent.design import shell  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     BODY_KINDS, BODY_SHAPES, SOURCE_ORDER, DesignModel, Enclosure, Part, Placement)
-from hw_velxio.design.projection import to_2d  # noqa: E402
+from dsh_embagent.design.projection import to_2d  # noqa: E402
 
 
 class Failures:

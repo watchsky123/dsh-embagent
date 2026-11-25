@@ -1,6 +1,6 @@
 """P63 验收 —— B 档：选型字段 / 网络类 / 块实例 / 变更图 / 引脚分配。
 
-    python -m hw_velxio.scripts.check_p63
+    python -m dsh_embagent.scripts.check_p63
 
 ## B 档五件事
 
@@ -22,10 +22,10 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import assemble_blocks as assemble_module  # noqa: E402
-from hw_velxio.design import graph as graph_module  # noqa: E402
-from hw_velxio.design import pin_assign as pin_module  # noqa: E402
-from hw_velxio.design.model import Board, DesignModel, Part, Placement  # noqa: E402
+from dsh_embagent.design import assemble_blocks as assemble_module  # noqa: E402
+from dsh_embagent.design import graph as graph_module  # noqa: E402
+from dsh_embagent.design import pin_assign as pin_module  # noqa: E402
+from dsh_embagent.design.model import Board, DesignModel, Part, Placement  # noqa: E402
 
 _failures: list[str] = []
 _checks = 0
@@ -49,7 +49,7 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 
 def _req(**kw):
-    from hw_velxio.design import generate  # noqa: PLC0415
+    from dsh_embagent.design import generate  # noqa: PLC0415
     base = dict(id="p63", title="t", roles=["mcu", "power_in"], interfaces=[],
                 constraints={}, numbers={"power_w": 30}, notes="")
     base.update(kw)

@@ -1,4 +1,4 @@
-"""验收阶梯（21 级）—— **hw_velxio 自己的**，不再依赖 `hwforge.tiers`。
+"""验收阶梯（21 级）—— **dsh_embagent 自己的**，不再依赖 `hwforge.tiers`。
 
 ## 这条阶梯是干什么的
 
@@ -22,7 +22,7 @@
 `CHECK_TIERS` 是**本地检查 → 阶梯**的映射。说过头就是假报告，所以下面
 几处刻意**不映射**（见注释）。
 
-@module hw_velxio.design.tiers
+@module dsh_embagent.design.tiers
 """
 
 from __future__ import annotations

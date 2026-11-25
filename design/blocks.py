@@ -375,7 +375,7 @@ def merge_into(design: DesignModel, parts: list[Part],
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.blocks",
+        "module": "dsh_embagent.design.blocks",
         "dir": str(LIB_DIR),
         "blocks": sorted(load_all()),
         "format": "id/title/family/params/parts(key,kind,ref_prefix,pins,size_mm)/nets(global)/rules/verified_by",

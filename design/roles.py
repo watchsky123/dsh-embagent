@@ -45,7 +45,7 @@ assembly_parts.TEMPLATES = {camera_module, gimbal_servo, mcu_board, …}   # 16 
 模板 key 早先从 hwforge 运行时读（`assembly_parts.TEMPLATES`）。那让
 整条需求→装配链路在没有 hwforge 时全部 `not_ready`。
 
-现在模板表在 **`design/library.py`** —— hw_velxio 自己的数据（16 个模板，
+现在模板表在 **`design/library.py`** —— dsh_embagent 自己的数据（16 个模板，
 尺寸 + 引脚 + 引脚位置）。所以：
 
 * `template_keys()` **永远返回非空**；
@@ -55,7 +55,7 @@ assembly_parts.TEMPLATES = {camera_module, gimbal_servo, mcu_board, …}   # 16 
 `hwforge` 只剩一个用途：`hw_block` 工具跑它的积木。那是**可选增强**，
 与本模块无关。
 
-@module hw_velxio.design.roles
+@module dsh_embagent.design.roles
 """
 
 from __future__ import annotations
@@ -156,7 +156,7 @@ ROLE_TEMPLATES: tuple[RoleMapping, ...] = (
         role="mcu", template="mcu_board",
         needs=("pwm",),
         mergeable_with=("radio",),
-        why="主控。**这是 hw_velxio 补的角色，不是 hwforge specs 产出的**"
+        why="主控。**这是 dsh_embagent 补的角色，不是 hwforge specs 产出的**"
             "（`spec.py` 没有 mcu 关键词，只有 `radio` 顺带映射到 mcu_board）。"
             "没有它，`CAM_DATA`/`PWM` 无处可接 —— 实测：只有相机+舵机+电源时，"
             "`CAM1.DATA` 与 `SV1.PWM` 全部悬空",
@@ -223,7 +223,7 @@ EXTERNAL_ROLES: frozenset[str] = frozenset(
 #
 # 早先这里从 hwforge 运行时读 `assembly_parts.TEMPLATES`。那让整套
 # 需求→装配链路在没有 hwforge 时全部 `not_ready`。现在模板表在
-# `design/library.py` 里，是 hw_velxio 自己的数据。
+# `design/library.py` 里，是 dsh_embagent 自己的数据。
 #
 # 保留 `hwforge_root()` 是因为 `hw_block` 仍然可以选择性地跑 hwforge 积木
 # （那本来就是它的功能），但**装配路径不再需要它**。
@@ -613,7 +613,7 @@ def enhance(roles_in: list[str], goal: str = "") -> RoleEnhancement:
       和舵机的 `PWM` 脚全部悬空；
     * “STM32 主控的温湿度采集板” → 直接退化成 `undefined_hw`。
 
-    这个函数在 **hw_velxio 侧**补这两件事，**不改 hwforge**：
+    这个函数在 **dsh_embagent 侧**补这两件事，**不改 hwforge**：
     需求分析仍归 hwforge，但"哪些角色必须有"是装配侧的知识。
 
     ## 补的两条规则（都是确定性的）

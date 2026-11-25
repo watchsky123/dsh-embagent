@@ -1,6 +1,6 @@
 """P65 验收 —— 块布局按尺寸排 + 预算读 spec.constraints。
 
-    python -m hw_velxio.scripts.check_p65
+    python -m dsh_embagent.scripts.check_p65
 
 ## 两个修正
 
@@ -25,11 +25,11 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import assemble_blocks as assemble_module  # noqa: E402
-from hw_velxio.design import blocks as blocks_module  # noqa: E402
-from hw_velxio.design import constraints as constraints_module  # noqa: E402
-from hw_velxio.design import generate  # noqa: E402
-from hw_velxio.design import spec as spec_module  # noqa: E402
+from dsh_embagent.design import assemble_blocks as assemble_module  # noqa: E402
+from dsh_embagent.design import blocks as blocks_module  # noqa: E402
+from dsh_embagent.design import constraints as constraints_module  # noqa: E402
+from dsh_embagent.design import generate  # noqa: E402
+from dsh_embagent.design import spec as spec_module  # noqa: E402
 
 _failures: list[str] = []
 _checks = 0
@@ -109,7 +109,7 @@ def _budget(req, spec=None) -> dict:
 
 
 def _small_design():
-    from hw_velxio.design.model import Board, DesignModel, Part, Placement  # noqa: PLC0415
+    from dsh_embagent.design.model import Board, DesignModel, Part, Placement  # noqa: PLC0415
     board = Board(kind="custom", id="PCB#main", size_mm={"w": 40, "h": 30},
                   outline=[(0.0, 0.0), (40.0, 0.0), (40.0, 30.0), (0.0, 30.0)])
     design = DesignModel(id="p65", board=board, boards=[board])

@@ -4,7 +4,7 @@
  * 分片：`styles/tokens`（令牌/主题色）、`layout`（骨架）、`panels`（分区
  * 局部样式）、`dark`（深色覆盖）。改样式请改对应分片，别在这里加规则。
  *
- * @module dsh-hw-velxio/client/styles
+ * @module dsh-embagent/client/styles
  */
 
 import { TOKENS } from './styles/tokens.js'
@@ -23,7 +23,7 @@ export function ensureStyles(): void {
   const doc = globalThis.document
   if (doc === undefined) return
   const style = doc.createElement('style')
-  style.setAttribute('data-hw-velxio', '')
+  style.setAttribute('data-embagent', '')
   style.textContent = CSS
   doc.head.appendChild(style)
 }

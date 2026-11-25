@@ -1,6 +1,6 @@
 """P53 验收 —— 飞控参数 → 能力映射（`params`）。
 
-    python -m hw_velxio.scripts.check_p53
+    python -m dsh_embagent.scripts.check_p53
 
 ## 判据
 
@@ -24,12 +24,12 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import params as params_module  # noqa: E402
-from hw_velxio.design import plan as plan_module  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent.design import params as params_module  # noqa: E402
+from dsh_embagent.design import plan as plan_module  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     Board, DesignModel, Part, Placement,
 )
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 _failures: list[str] = []
 _checks = 0

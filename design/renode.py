@@ -502,7 +502,7 @@ def build_resc(design: DesignModel, *,
             mcus[board_id] = mcu
 
     lines: list[str] = [
-        "# 由 hw_velxio 生成 —— 在 DSH 外执行（见 run.cmd）",
+        "# 由 dsh_embagent 生成 —— 在 DSH 外执行（见 run.cmd）",
         "# 加载地址从每个 .bin 的 Cortex-M 向量表读出，不是猜的",
         "",
     ]
@@ -607,7 +607,7 @@ def build_runner(resc_path: str, renode_exe: str) -> dict[str, str]:
     cmd = (
         "@echo off\r\n"
         "setlocal\r\n"
-        "rem 由 hw_velxio 生成 —— 在 DSH 外双击运行\r\n"
+        "rem 由 dsh_embagent 生成 —— 在 DSH 外双击运行\r\n"
         "rem 这一步预建 Renode 的配置目录：它只会写、不会建\r\n"
         'if not exist "%APPDATA%\\renode" mkdir "%APPDATA%\\renode"\r\n'
         'if not exist "%APPDATA%\\renode\\config.lock" type nul > "%APPDATA%\\renode\\config.lock"\r\n'
@@ -617,7 +617,7 @@ def build_runner(resc_path: str, renode_exe: str) -> dict[str, str]:
     )
     sh = (
         "#!/usr/bin/env bash\n"
-        "# 由 hw_velxio 生成\n"
+        "# 由 dsh_embagent 生成\n"
         "set -euo pipefail\n"
         'mkdir -p "$HOME/.config/renode" 2>/dev/null || true\n'
         f'"{renode_exe}" --disable-gui --console -e "include @{resc_path}"\n'
@@ -679,7 +679,7 @@ def report(design: DesignModel, *,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.renode",
+        "module": "dsh_embagent.design.renode",
         "platforms": [p for _k, p in dict.fromkeys(KNOWN_PLATFORMS)],
         "load_address": "从 Cortex-M 向量表读（前 8 字节），不默认 0x08000000",
         "multiboard": "connector Connect（Renode 原生命令）",

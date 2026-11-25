@@ -1,6 +1,6 @@
 """P64 验收 —— C 档：差异闭环 / 可选基线 / 成熟度 / ADR。
 
-    python -m hw_velxio.scripts.check_p64
+    python -m dsh_embagent.scripts.check_p64
 
 ## 判据（**反着判**最要紧）
 
@@ -27,12 +27,12 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import adr as adr_module  # noqa: E402
-from hw_velxio.design import baseline as baseline_module  # noqa: E402
-from hw_velxio.design import maturity as maturity_module  # noqa: E402
-from hw_velxio.design import readback_diff as diff_module  # noqa: E402
-from hw_velxio.design.model import Board, DesignModel, Part, Placement  # noqa: E402
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design import adr as adr_module  # noqa: E402
+from dsh_embagent.design import baseline as baseline_module  # noqa: E402
+from dsh_embagent.design import maturity as maturity_module  # noqa: E402
+from dsh_embagent.design import readback_diff as diff_module  # noqa: E402
+from dsh_embagent.design.model import Board, DesignModel, Part, Placement  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 _failures: list[str] = []
 _checks = 0
@@ -172,7 +172,7 @@ def part_baseline() -> None:
 def part_maturity() -> None:
     sandbox, old = _sandbox()
     try:
-        from hw_velxio import design_cli  # noqa: PLC0415
+        from dsh_embagent import design_cli  # noqa: PLC0415
         store = DesignStore("p64-mat")
         store.delete()
         store.save(_design("p64-mat"))
@@ -248,7 +248,7 @@ def part_adr() -> None:
             raised = True
         check("C4-4. 空决策/理由 → ValueError（不收口号）", raised)
 
-        from hw_velxio import design_cli  # noqa: PLC0415
+        from dsh_embagent import design_cli  # noqa: PLC0415
         store = DesignStore("p64-adr-cli")
         store.delete()
         store.save(_design("p64-adr-cli"))

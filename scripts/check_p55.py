@@ -1,6 +1,6 @@
 """P55 验收 —— `.ioc` 接进来，把「外设配置」这一层补上。
 
-    python -m hw_velxio.scripts.check_p55
+    python -m dsh_embagent.scripts.check_p55
 
 ## 这一段补什么
 
@@ -48,14 +48,14 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio import design_cli  # noqa: E402
-from hw_velxio.design import fw_build  # noqa: E402
-from hw_velxio.design import interface as iface_module  # noqa: E402
-from hw_velxio.design import ioc as ioc_module  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent import design_cli  # noqa: E402
+from dsh_embagent.design import fw_build  # noqa: E402
+from dsh_embagent.design import interface as iface_module  # noqa: E402
+from dsh_embagent.design import ioc as ioc_module  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     Board, DesignModel, Part, Placement,
 )
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PROJECT = "p55-fixture"
 REPO = Path(__file__).resolve().parents[1]

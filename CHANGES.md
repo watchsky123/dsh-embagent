@@ -1,4 +1,4 @@
-# CHANGES — hw_velxio 变更对照表
+# CHANGES — dsh_embagent 变更对照表
 
 > **用途：快速对照"某次改动动了什么"**，不用翻 git log 猜。
 > 每条记：改了什么 / 为什么 / 怎么验 / 回归是否全绿。
@@ -93,7 +93,7 @@ skipped = 13 条（11 条「只有无源件」，2 条「只有主控」）
 
 ```bash
 cd <repo-root>
-python -m hw_velxio.scripts.check_m15     # P15 六组验收
+python -m dsh_embagent.scripts.check_m15     # P15 六组验收
 ```
 
 覆盖：
@@ -111,7 +111,7 @@ python -m hw_velxio.scripts.check_m15     # P15 六组验收
 ### 回归
 
 ```
-python -m unittest hw_velxio.tests.test_design       266 项 OK
+python -m unittest dsh_embagent.tests.test_design       266 项 OK
 check_m15 / check_m1 / check_units_links / check_generate
 check_m3 / check_ladder / check_justify / check_handoff   全部通过
 npm run check → 0 错；build OK；check_tools OK
@@ -211,7 +211,7 @@ weld=False, free=True   → 每个零件自由（散件拼装，RoboBuilder 那�
 ### 验收
 
 ```bash
-python -m hw_velxio.scripts.check_m16
+python -m dsh_embagent.scripts.check_m16
 ```
 
 **两条止损线**（计划里写死，不过就停）：
@@ -352,8 +352,8 @@ V7 运动（MuJoCo 动力学 + 三次扰动） 跑了 3 项（pass）
 ### 验收
 
 ```bash
-python -m hw_velxio.scripts.check_m18
-python -m hw_velxio.design_cli ladder <id> --with-sim   # 显式跑 V7
+python -m dsh_embagent.scripts.check_m18
+python -m dsh_embagent.design_cli ladder <id> --with-sim   # 显式跑 V7
 ```
 
 九组：合并规则（5 个正反例）/ 异常→unknown / 按域适配 / 9 层 /
@@ -500,7 +500,7 @@ note 写「板上一块元件都没有，DRC 通过不算数」。
 | 3 个元件导入后只看到 2 个 | `importChanges` 返回 true ≠ 图元已全部落地 | 按**期望位号**轮询，最多 6 秒 |
 | `openProject` 偶发返回 false | 实测一次 false，紧接重试即成功 | 重试一次，仍失败才报错 |
 
-### 验收（`python -m hw_velxio.scripts.check_p17` → **26 条，26 通过**）
+### 验收（`python -m dsh_embagent.scripts.check_p17` → **26 条，26 通过**）
 
 ```
 纯函数 10 条
@@ -640,7 +640,7 @@ estimated(0) < catalog(1) < datasheet(2) < measured(3)
 | 0402 的 2D 投影是竖的 | 片式元件的 `CHIP_SIZES` 是 (长,宽,高)，我给了 `w=宽 h=长` | 长轴放 X（两个焊盘沿长轴排开） |
 | `parts-promote` 报 `Object of type set is not JSON serializable` | `fills`/`provides` 是 set，直接 `json.dumps` | 在**写盘那一个点**统一 `_jsonable()`，调用方不用记得 |
 
-### 验收（`python -m hw_velxio.scripts.check_p19` → **25 条，25 通过**）
+### 验收（`python -m dsh_embagent.scripts.check_p19` → **25 条，25 通过**）
 
 ```
 封装表 3 条
@@ -720,7 +720,7 @@ Python 不允许 `firmware.py` 与 `firmware/` 并存；改名比搬家安全。
 | 文件 | 来源 | 行数 | 改动 |
 |---|---|---|---|
 | `design/fwgen/drivers_data.py` | 搬（MIT） | 262 | 原样；每个器件保留 datasheet 章节引用 |
-| `design/fwgen/drivers.py` | 搬（MIT） | 379 | 生成代码的署名改成 hw_velxio |
+| `design/fwgen/drivers.py` | 搬（MIT） | 379 | 生成代码的署名改成 dsh_embagent |
 | `design/fwgen/scaffold.py` | 搬（MIT） | 477 | 导入改本包；清单名 `hwv_firmware.json`；5 个 target 不变 |
 | `design/fwgen/mcus.py` | 搬（MIT） | 258 | **3 → 7** 个 MCU |
 | `design/fwgen/netlist.py` | **重写** | 102 | 原实现读 KiCad/yaml；我们只读 `design.json` |
@@ -806,7 +806,7 @@ C6 必须排在通用 `stm32f103` **之前**：`find_mcu` 按插入顺序取第�
 第一条最值得记：`GPIO_Output` 型引脚恰恰是 `.ioc` 里**唯一带人起名字**的那几个，
 漏掉它们等于 `pins.h` 里一个有用的宏都没有。
 
-### 验收（`python -m hw_velxio.scripts.check_p20` → **24 条，24 通过**）
+### 验收（`python -m dsh_embagent.scripts.check_p20` → **24 条，24 通过**）
 
 ```
 pins.h 4 条
@@ -939,7 +939,7 @@ RoboBuilder 的实测最能说明代价——它的仿真器在修好 135 个参
 | 报告里「没评估新设计」和「新设计判不出」长得一样 | `new_status` 默认 `"unknown"` | 默认 `""`，另给 `new_evaluated` 布尔 |
 | `handoff.py` 字符串语法错 | `"这说明"仿真通过"在…"` —— 中文引号进了字符串值 | 换「」（AGENTS §3.3，又一次） |
 
-### 验收（`python -m hw_velxio.scripts.check_p21` → **19 条，19 通过**）
+### 验收（`python -m dsh_embagent.scripts.check_p21` → **19 条，19 通过**）
 
 ```
 记录与交接 6 条
@@ -1082,7 +1082,7 @@ payload 里可能有时间戳，比它会把"一致"变成随机失败；但**�
 第二条最值得记：**同一个仓库里两种 flag 风格并存**。统一成一种会让另一半
 全部失效，而失效方式是"参数被静默忽略"——正是 AGENTS §3.7 那个形状。
 
-### 验收（`python -m hw_velxio.scripts.check_p22` → **19 条，19 通过**）
+### 验收（`python -m dsh_embagent.scripts.check_p22` → **19 条，19 通过**）
 
 ```
 白名单 4 条
@@ -1217,7 +1217,7 @@ agent "读一下 r3demo 并判定" --project=r3demo --mode=auto --script=<3 步�
 |---|---|---|
 | 15 个夹具里 12 个 V2 是 `unknown` | P18 的纪律"警告 → unknown"（没 keepout / 没安装孔 / 没限高） | 期望表改成三档，`clean` 允许 `unknown`；只有 `geometry` 档要求 `fail` |
 | 往返测试 15 个全红 | 夹具文件里的 `0` 是 int，`from_dict` 后变 `0.0` | 夹具做一次**规范化**（写 `from_dict(file).to_dict()`），此后 file == round-trip |
-| `npm test` 报 `No module named 'hw_velxio'` | npm 在包目录里跑，而 `python -m hw_velxio` 要求仓库根在 `sys.path` | 所有脚本前加 `cd ..`（这条以前就有，只是没人从包目录跑过） |
+| `npm test` 报 `No module named 'dsh_embagent'` | npm 在包目录里跑，而 `python -m dsh_embagent` 要求仓库根在 `sys.path` | 所有脚本前加 `cd ..`（这条以前就有，只是没人从包目录跑过） |
 
 第一条不是 bug：它正是 P18 那条纪律在起作用。**警告不能当通过**，
 所以"只有警告"的设计 V2 只能是 `unknown`。
@@ -1236,7 +1236,7 @@ HWV_LCEDA=C:/no-such-lceda-pro.exe       → find_exe() 返回这个不存在的
 False 一个 True），4d 是降级下 `check_ladder` / `check_handoff` / `check_p22`
 仍通过。**没有 4c 的对照组，"降级后全绿"可能只是因为开关根本没生效。**
 
-### 验收（`python -m hw_velxio.scripts.check_p23` → **10 条，10 通过**）
+### 验收（`python -m dsh_embagent.scripts.check_p23` → **10 条，10 通过**）
 
 ```
 规模 6 条
@@ -1355,7 +1355,7 @@ blocking < missing_data < assumed < unverifiable < orphan < external
 现在 `poll()` 消费 `hint.view`：认**已知分区**才切（未知字符串忽略，不猜），
 切分区同时切分组（否则会出现"选中了不在当前分组里的分区"）。
 
-### 验收（`python -m hw_velxio.scripts.check_p0` → **17 条，17 通过**）
+### 验收（`python -m dsh_embagent.scripts.check_p0` → **17 条，17 通过**）
 
 ```
 空态 2 条
@@ -1492,7 +1492,7 @@ V2 几何失败 → "C146 与 Lora1 重叠…；C118 超界…；Q3 超界…；
 第二条最值得记：**降级不是"填空"，是换一句话**。填空出来的空位读起来像 bug，
 而人第一反应是怀疑工具，不是怀疑参数。
 
-### 验收（`python -m hw_velxio.scripts.check_p1` → **25 条，25 通过**）
+### 验收（`python -m dsh_embagent.scripts.check_p1` → **25 条，25 通过**）
 
 ```
 映射表 4 条
@@ -1638,7 +1638,7 @@ entity <id> U3     = 完整画像（按需取）
 
 第二条和 §1.1（判定只有一份）是同一个道理，只是发生在**常量**上。
 
-### 验收（`python -m hw_velxio.scripts.check_p2` → **24 条，24 通过**）
+### 验收（`python -m dsh_embagent.scripts.check_p2` → **24 条，24 通过**）
 
 ```
 索引 4 条
@@ -1783,7 +1783,7 @@ wired 键 build）。
 ` 拼接重插；**这个仓库的 Python 文件是 CRLF** |
 | f-string 里 `\'` 报 SyntaxError | `f"...{'case \'params\':' in view}"` | 先算布尔变量再插值（第三次踩，AGENTS §8.2） |
 
-### 验收（`python -m hw_velxio.scripts.check_p3` → **23 条，23 通过**）
+### 验收（`python -m dsh_embagent.scripts.check_p3` → **23 条，23 通过**）
 
 ```
 分类 5 条
@@ -1903,7 +1903,7 @@ PA13    Serial_Wire        —                  ✓（调试脚，不算闲置�
 字典同键不报错、不警告，只是**悄悄换掉**——和 §3.13 的"字段没人读"是同一形状的
 静默失效，只是这次发生在**注册表**上。
 
-### 验收（`python -m hw_velxio.scripts.check_p4` → **25 条，25 通过**）
+### 验收（`python -m dsh_embagent.scripts.check_p4` → **25 条，25 通过**）
 
 ```
 四类出行 5 条
@@ -1988,7 +1988,7 @@ fw-matrix 001-blink --ioc=F401-Front.ioc --src=F401-Front-master/App
 
 | 初版说法 | 实测 | 结论 |
 |---|---|---|
-| 「0 个 provider，agent_loop 只有假模型」 | `@deepseek-ai/dsh-llm` 的 `ctx.llm` 由 `dsh-base` 挂载；**`dsh-our-free-model` 2.8.3 就是适配器**；hw_velxio 早在用 `session.prompt()` 投递 | **P5 不写 provider** |
+| 「0 个 provider，agent_loop 只有假模型」 | `@deepseek-ai/dsh-llm` 的 `ctx.llm` 由 `dsh-base` 挂载；**`dsh-our-free-model` 2.8.3 就是适配器**；dsh_embagent 早在用 `session.prompt()` 投递 | **P5 不写 provider** |
 | 「字段是 `units` / `links`」 | `Requirement` 是 `id/title/roles/interfaces/constraints/numbers/notes` | 照真契约校验 |
 
 第二条错得很典型：我照着 `generate` 的**内部**结构猜外部契约。正确做法是
@@ -1997,7 +1997,7 @@ fw-matrix 001-blink --ioc=F401-Front.ioc --src=F401-Front-master/App
 `agent_loop.py`（P22）是**内层循环**（0 token 回归用），和 DSH 会话是**两条并行会话**。
 把 P5 建在内层上 = 在已经有会话的地方再造一条。**先例**：hwforge 试过在宿主侧投递，
 三轮花在 `agent vs agentId` / `ctx.get vs ctx.sessions` / `inject` 上，结论是
-**「host composes, client delivers」**——hw_velxio 现在正是这个形状。
+**「host composes, client delivers」**——dsh_embagent 现在正是这个形状。
 
 ### 第二个实测发现：`Requirement.numbers` 没有任何消费方
 
@@ -2050,7 +2050,7 @@ fw-matrix 001-blink --ioc=F401-Front.ioc --src=F401-Front-master/App
 第四条不是我的夹具问题，是**P5 的真实边界**：从零一句话开局时工程还不存在，
 而 `req-draft` 挂在已有工程上。见下方已知缺口。
 
-### 验收（`python -m hw_velxio.scripts.check_p5` → **29 条，29 通过**）
+### 验收（`python -m dsh_embagent.scripts.check_p5` → **29 条，29 通过**）
 
 ```
 契约 3 条
@@ -2251,8 +2251,8 @@ hw_generate(requirement=<project>/req.json)       # 出候选
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p26     # 20 条，全离线（几何 + 连通性 + 布线器）
-python -m hw_velxio.scripts.check_p17     # 26 条（真机那几条要装 lceda）
+python -m dsh_embagent.scripts.check_p26     # 20 条，全离线（几何 + 连通性 + 布线器）
+python -m dsh_embagent.scripts.check_p17     # 26 条（真机那几条要装 lceda）
 npm test                                  # 742 项（新增 13 条 pcb_geo/router 单测）
 ```
 
@@ -2302,7 +2302,7 @@ npm test                                  # 742 项（新增 13 条 pcb_geo/rout
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p26   # 28 条，全离线（几何/连通/布线/布局/通道）
+python -m dsh_embagent.scripts.check_p26   # 28 条，全离线（几何/连通/布线/布局/通道）
 npm test                                # 751 项（新增 9 条：布局 6 + 通道 3）
 ```
 
@@ -2383,7 +2383,7 @@ npm test                                # 751 项（新增 9 条：布局 6 + �
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p40   # 15/15
+python -m dsh_embagent.scripts.check_p40   # 15/15
 npm test                               # 752 通过
 node scripts/check_tools.mjs           # 44 个工具，全过
 npm run check                          # tsc 干净
@@ -2432,9 +2432,9 @@ npm run check                          # tsc 干净
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p41   # 21/21
-python -m hw_velxio.scripts.check_p40   # 15/15（没回归）
-python -m hw_velxio.scripts.check_p26   # 28/28
+python -m dsh_embagent.scripts.check_p41   # 21/21
+python -m dsh_embagent.scripts.check_p40   # 15/15（没回归）
+python -m dsh_embagent.scripts.check_p26   # 28/28
 npm test                                # 753 通过
 node scripts/check_tools.mjs            # 45 个工具
 ```
@@ -2495,7 +2495,7 @@ node scripts/check_tools.mjs            # 45 个工具
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p42   # 12/12
+python -m dsh_embagent.scripts.check_p42   # 12/12
 check_p1                                # 25/25（四个新 need 已进表）
 npm test                                # 754 通过
 node scripts/check_tools.mjs            # 46 个工具
@@ -2558,7 +2558,7 @@ AGENTS.md 降到 **56530 字节**，§8 只留一段指针。
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p43   # 12/12
+python -m dsh_embagent.scripts.check_p43   # 12/12
 npm test                                # 754 通过
 node scripts/check_tools.mjs            # 47 个工具
 全套离线验收 20 个 check_*              # 全 exit=0（含 p22/p23）
@@ -2606,7 +2606,7 @@ node scripts/check_tools.mjs            # 47 个工具
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p44   # 16/16
+python -m dsh_embagent.scripts.check_p44   # 16/16
 npm test                                # 755 通过
 node scripts/check_tools.mjs            # 48 个工具
 全套离线验收 22 个 check_*              # 全 exit=0
@@ -2678,7 +2678,7 @@ reasons = ["DFM unknown：DFM 调用失败：DFM 仅在私有化构建可用"]
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p45   # 15/15
+python -m dsh_embagent.scripts.check_p45   # 15/15
 npm test                                # 756 通过
 node scripts/check_tools.mjs            # 49 个工具
 全套离线验收 23 个 check_*              # 全 exit=0
@@ -2728,7 +2728,7 @@ P46 往组里加两个分区就红了 —— 而"firmware 属于 delivery 组"�
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p46   # 26/26
+python -m dsh_embagent.scripts.check_p46   # 26/26
 npm test                                # 756 通过
 npm run check / build                   # tsc 干净
 node scripts/check_tools.mjs            # 49 个工具
@@ -2786,7 +2786,7 @@ doctor : 必需项齐全（workspace + lceda 4.1.97）；可选缺 4（bridge/lc
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p47   # 21/21
+python -m dsh_embagent.scripts.check_p47   # 21/21
 npm test                                # 756 通过
 npm run check / build                   # tsc 干净
 node scripts/check_tools.mjs            # 53 个工具
@@ -3014,7 +3014,7 @@ check_p50 14/14    npm test 760    28 个离线 check_* 全 exit=0    check_tool
 ### 装了什么
 
 ```
-workspace\hw_velxio\_tools\arm-gcc\13.3.rel1\     1.2 GB
+workspace\dsh_embagent\_tools\arm-gcc\13.3.rel1\     1.2 GB
 Arm GNU Toolchain 13.3.Rel1 (build arm-13.24)
 ```
 
@@ -3380,9 +3380,9 @@ P50 的 `interface.json` 把时钟/中断/复用功能/时序**四类一律记 `
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p55     # 29 项
-python -m hw_velxio.scripts.check_p50     # 14 项（老契约形状不变）
-python -m hw_velxio.scripts.check_p54     # 13 项（负例 5 条仍全红）
+python -m dsh_embagent.scripts.check_p55     # 29 项
+python -m dsh_embagent.scripts.check_p50     # 14 项（老契约形状不变）
+python -m dsh_embagent.scripts.check_p54     # 13 项（负例 5 条仍全红）
 ```
 
 ### 诚实边界
@@ -3441,11 +3441,11 @@ P55 把 `.ioc` 的配置读进了契约，但只能**按名字对**：`.ioc` 说
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p56     # 23 项
-python -m hw_velxio.scripts.check_p55     # 29 项（改成表感知后仍全绿）
+python -m dsh_embagent.scripts.check_p56     # 23 项
+python -m dsh_embagent.scripts.check_p55     # 29 项（改成表感知后仍全绿）
 npm test                                  # 765
 npm run check / build                     # tsc 干净
-node hw_velxio/scripts/check_tools.mjs    # 59 个工具
+node dsh_embagent/scripts/check_tools.mjs    # 59 个工具
 ```
 
 ### 诚实边界
@@ -3506,8 +3506,8 @@ F401 夹具：PA9→AF7；负例 6/6 全部编不过
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p57     # 24 项
-python -m hw_velxio.scripts.check_p55/p56 # 全绿（已改成表感知）
+python -m dsh_embagent.scripts.check_p57     # 24 项
+python -m dsh_embagent.scripts.check_p55/p56 # 全绿（已改成表感知）
 npm test / npm run check / build / check_tools
 ```
 
@@ -3558,8 +3558,8 @@ lceda-panel：容器建出 + 改名成功；但 PNL_ManufactureData/Drc/Import �
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p58   # 13 项
-python -m hw_velxio.scripts.check_p59   # 12 项（约 80 秒，真调用）
+python -m dsh_embagent.scripts.check_p58   # 13 项
+python -m dsh_embagent.scripts.check_p59   # 12 项（约 80 秒，真调用）
 ```
 
 ### 诚实边界
@@ -3606,7 +3606,7 @@ bus ：SPI1_SCK=PA5 / MOSI=PA7 / MISO=PA6 / NSS=PA15（AF 表核对通过）
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_p60   # 15 项
+python -m dsh_embagent.scripts.check_p60   # 15 项
 npm test                                # 767 项
 ```
 
@@ -4174,8 +4174,8 @@ node scripts/check_assembly3d.mjs    # 真渲染：非纯色 / 不过曝 / 有�
 ### 验收
 
 ```
-python -m hw_velxio.scripts.check_bodies     # 42 项（含退化用例）
-python -m hw_velxio.scripts.check_scene3d    # 几何
+python -m dsh_embagent.scripts.check_bodies     # 42 项（含退化用例）
+python -m dsh_embagent.scripts.check_scene3d    # 几何
 node scripts/check_assembly3d.mjs            # 真渲染（注入 3 个实体）
 node scripts/check_layout_runtime.mjs        # 布局/面板
 python scripts/check_dead_css.py             # 样式同步
@@ -4185,6 +4185,80 @@ npm test                                     # 774 项
 
 实测：`check_bodies` 42/42、`check_scene3d` 通过、`check_assembly3d` 9/9、
 `check_layout_runtime` 通过、`check_dead_css` 绿、`npm run check` 通过、`npm test` 774 OK。
+
+---
+
+## 改名 — `hw_velxio` → `dsh-embagent`（2026-11-25）
+
+**性质：身份改名，不改判定逻辑。** 784 项测试、全部离线 check 在同一天跑过；
+`design.json` 的**旧 schema 仍可读**（见下），判定口径零改动。
+
+**触发**：用户「目前插件名不够直观」→ 决策 `dsh-embagent`（合规小写）+ 显示名
+`EmbAgent · 硬件工作台`。
+
+### 三层映射（不是一处改名）
+
+| 层 | 旧 | 新 | 谁看得见 |
+|---|---|---|---|
+| npm 包 / loader name | `dsh-hw-velxio` | `dsh-embagent` | 设置→插件 |
+| cordis row id | `hw-velxio` | `embagent` | `include:embagent` |
+| Python 包 / 仓库目录 | `hw_velxio` | `dsh_embagent` | 无（内部） |
+| 环境变量根 | `HW_VELXIO_ROOT` | `DSH_EMBAGENT_ROOT` | 无（内部） |
+| **显示名（locale）** | 无（回退包名） | `EmbAgent · 硬件工作台` | 设置→插件 |
+| 会话视图页签 | `硬件工作台` | `EmbAgent · 硬件工作台` | 会话页签 |
+
+### 新增
+
+| 文件 | 内容 |
+|---|---|
+| `locale/zh.json` / `locale/en.json` | `meta.title` / `meta.description` —— DSH 的 `readPluginMeta` 优先读它，缺失才回退包名。**这是"显示名"的唯一事实源** |
+| `icon.svg` | 插件列表图标（64×64，`package.json` 的 `icon` 字段指向它） |
+
+### 修改
+
+| 文件 | 改动 |
+|---|---|
+| `package.json` | `name` → `dsh-embagent`；`description` 换成一句人话；`exports` 加 `./locale/*.json` 与 `./icon`（**漏了就是静默无显示名**，因为 `exports` 是白名单）；`files` 加 `locale` / `icon.svg` |
+| `cordis.patch.yml` | `id: embagent` / `name: dsh-embagent`（**name 必须等于包名**，否则 loader 报 plugin not found） |
+| `design/model.py` | ① `SCHEMA = "dsh_embagent.design/1"`；② 新增 `LEGACY_SCHEMAS = ("hw_velxio.design/1",)` 并放行 —— **老工程必须还能读**，换个包名不该让磁盘上的 `design.json` 失效 |
+| `src/client/view.ts` | `HW_IDE_LABEL = 'EmbAgent · 硬件工作台'` |
+| 251 个文本文件 | 包名 / 模块名 / 环境变量 / 文档路径统一替换（1305 处）；工具名（60 个 `hw_*`）与 CSS 前缀（`hwv-`）**有意不动** |
+
+### 有意**不**改（T3 不做）
+
+* **60 个工具名**（`hw_check` / `hw_put` / …）：一改就断历史会话、提示词与用户习惯，
+  而直观性收益为零。
+* **CSS 前缀 `hwv-`**（1777 处）：纯内部，零收益。
+* **两个磁盘字符串**（必须原样保留，它们指向**已经存在的用户资产**）：
+  `~/.dsh/hw_velxio.json`（工作区 / Velxio 后端配置）与 `~/.dsh/hw_velxio/`
+  （`workspace/`、`toolchain/`）。这两个属于 **Velxio 后端**，不是本插件身份；
+  改了就读不到用户已有的工程与工具链。
+
+### 仓库外的改动（不在 git 里，但影响加载）
+
+| 位置 | 改动 |
+|---|---|
+| `workspace/hw_velxio` → `workspace/dsh_embagent` | 目录改名（Python 包名 = 目录名） |
+| `~/.dsh/profiles/desktop/package.json` | `dependencies` 换成 `dsh-embagent: file:workspace/dsh_embagent`；`dsh.profile.bundles` 里 `dsh-hw-velxio` → `dsh-embagent`；旧条目的备份在 `package.json.bak-rename-*` |
+| profile `pnpm install` | 生成 `node_modules/dsh-embagent`；旧指向已删目录的悬空链接已移除 |
+| `__pycache__` | 全仓清掉（旧模块名的 `.pyc` 会让 `python -m` 走错） |
+
+### 验收（实测）
+
+```
+npm test                                       774 OK（新模块名下）
+npm run check                                  通过（tsc build + client）
+python -m dsh_embagent.scripts.check_bodies    42/42
+python -m dsh_embagent.scripts.check_scene3d   通过
+python -m dsh_embagent.scripts.check_p70/71    16/16、16/16
+node scripts/check_assembly3d.mjs              10/10（真渲染，141 实体）
+node scripts/check_canvas_draw.mjs             通过
+python scripts/check_dead_css.py               绿
+python -m dsh_embagent.scripts.check_installed 只剩一条：**宿主早于产物 → 必须重启 DSH**
+```
+
+**重启后才生效的两件事**：① 设置→插件里的新名字与新图标（`meta` 由宿主侧读）；
+② 宿主侧 Python 入口（旧进程内存里仍是 `hw_velxio.*`，而目录已改名）。
 
 ---
 

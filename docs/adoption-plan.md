@@ -1,4 +1,4 @@
-# 借鉴方案：把 Traceforge 的能力适配进 hw_velxio
+# 借鉴方案：把 Traceforge 的能力适配进 dsh_embagent
 
 > **状态：方案，未执行。** 基于 `workspace\vendor\traceforge`（v1.0.1
 > sdist，SHA-256 已核对）的源码精读。每条都标了"搬什么、不搬什么、

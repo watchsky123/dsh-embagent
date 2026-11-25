@@ -1,6 +1,6 @@
 """P54 验收 —— `fw-build` 接 `interface.json`：**用错脚在编译期就炸**。
 
-    python -m hw_velxio.scripts.check_p54
+    python -m dsh_embagent.scripts.check_p54
 
 ## 这一段补什么
 
@@ -41,12 +41,12 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import fw_build  # noqa: E402
-from hw_velxio.design import interface as iface_module  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent.design import fw_build  # noqa: E402
+from dsh_embagent.design import interface as iface_module  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     Board, DesignModel, Part, Placement,
 )
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PROJECT = "p54-fixture"
 

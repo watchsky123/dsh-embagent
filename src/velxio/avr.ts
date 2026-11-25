@@ -26,7 +26,7 @@
  * - **不是实时**：CPU 在一个紧循环里尽量跑，串口字节进环形缓冲。
  *   不试图与墙钟同步（那会让单次工具调用挂住）。
  *
- * @module dsh-hw-velxio/velxio/avr
+ * @module dsh-embagent/velxio/avr
  */
 
 import { createRequire } from 'node:module'

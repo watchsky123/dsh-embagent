@@ -932,7 +932,7 @@ def check(design: DesignModel,
 def describe() -> dict[str, Any]:
     """给 CLI / 工具自省用。"""
     return {
-        "module": "hw_velxio.design.claims",
+        "module": "dsh_embagent.design.claims",
         "claim_types": list(CLAIM_TYPES),
         "priorities": list(PRIORITIES),
         "states": [PASS, FAIL, UNKNOWN],

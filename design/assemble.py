@@ -35,7 +35,7 @@ PlannedPart(role='camera', template='camera_module', size_mm=(8,25,25))
 这样 hwforge 的引脚不变量（严格在体内、不重合、边声明必须真）继续生效，
 而不是被这里绕过。
 
-@module hw_velxio.design.assemble
+@module dsh_embagent.design.assemble
 """
 
 from __future__ import annotations

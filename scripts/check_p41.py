@@ -1,6 +1,6 @@
 """P41 验收 —— spec 扩四域（`power_nets` / `firmware` / `mechanical` / 来源分级）。
 
-    python -m hw_velxio.scripts.check_p41
+    python -m dsh_embagent.scripts.check_p41
 
 ## 这一段补的是什么
 
@@ -37,10 +37,10 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import dims as dims_module  # noqa: E402
-from hw_velxio.design import model as model_module  # noqa: E402
-from hw_velxio.design import power as power_module  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent.design import dims as dims_module  # noqa: E402
+from dsh_embagent.design import model as model_module  # noqa: E402
+from dsh_embagent.design import power as power_module  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     PHYSICAL_SOURCES, SOURCE_ORDER, Board, DesignError, DesignModel, Part,
     source_at_least,
 )

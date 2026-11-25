@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""安装自检：证明 hw_velxio **被 profile 接受并会持续挂载**。
+"""安装自检：证明 dsh_embagent **被 profile 接受并会持续挂载**。
 
-    python hw_velxio/scripts/check_installed.py
+    python dsh_embagent/scripts/check_installed.py
 
 (1)「每次重启都要重新启用」的真正原因有两类，都不是"重启会丢配置"：
 
@@ -38,7 +38,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-PACKAGE = "dsh-hw-velxio"
+PACKAGE = "dsh-embagent"
 
 
 def dsh_bin() -> Path:
@@ -154,7 +154,7 @@ def main() -> int:
         tree = proc.stdout
         # 组合树用 `# == <package>` 标注各 bundle 的层
         in_tree = re.search(r"#\s*==\s*" + re.escape(PACKAGE), tree) is not None
-        row = re.search(r"- id:\s*hw-velxio\s*\n\s*name:\s*" + re.escape(PACKAGE),
+        row = re.search(r"- id:\s*embagent\s*\n\s*name:\s*" + re.escape(PACKAGE),
                         tree) is not None
         check("组合树含本包层", in_tree, "patch 未被 loader 接受（语法/路径问题）")
         check("组合树含插件行 id/name", row)

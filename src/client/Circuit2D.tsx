@@ -10,7 +10,7 @@
  *   · 右键元件 = 旋转 90°
  *   · 空白处拖 = 平移；滚轮 = 缩放
  *
- * @module dsh-hw-velxio/client/Circuit2D
+ * @module dsh-embagent/client/Circuit2D
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'

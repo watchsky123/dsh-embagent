@@ -1,7 +1,7 @@
 """同一个工程、两种窗口来源，布线表现一样吗？—— 一次说清。
 
-    python -m hw_velxio.scripts.probe_route_session --path <x.eprj3> [--headless]
-    python -m hw_velxio.scripts.probe_route_session --session <sessionId>
+    python -m dsh_embagent.scripts.probe_route_session --path <x.eprj3> [--headless]
+    python -m dsh_embagent.scripts.probe_route_session --session <sessionId>
 
 ## 为什么要做这个对照
 
@@ -41,7 +41,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import lceda  # noqa: E402
+from dsh_embagent.design import lceda  # noqa: E402
 
 OUT_FILE = "route_session_probe.json"
 
@@ -189,8 +189,8 @@ def main(argv: list[str]) -> int:
             session.open(path=path, headless=headless)
             opened_here = True
         if build:
-            from hw_velxio.design import emit_lceda
-            from hw_velxio.scripts.probe_route import design as probe_design
+            from dsh_embagent.design import emit_lceda
+            from dsh_embagent.scripts.probe_route import design as probe_design
 
             d = probe_design()
             name = f"hwv-route-gui-{time.strftime('%H%M%S')}"

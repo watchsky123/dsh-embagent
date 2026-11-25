@@ -1,5 +1,5 @@
 # 示例需求：带图传与云台的四旋翼
-# 用法：python -m hw_velxio.design_cli generate --requirement <本文件> --max-candidates 20
+# 用法：python -m dsh_embagent.design_cli generate --requirement <本文件> --max-candidates 20
 id: qdrone
 title: 带图传的四旋翼
 roles:

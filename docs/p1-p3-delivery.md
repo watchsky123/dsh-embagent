@@ -108,7 +108,7 @@ DSH 的 Bash 执行器给每条命令建一个 Job，命令结束按 `KILL_ON_JO
 | 9 | `tools.ts` hw_log | 描述承诺 `action=write` 但无实现 | ✅ 补 append 分支 |
 | 附1 | `design_cli.cmd_workspace` | set/create 缺 `source`/`writable` | ✅ 统一 `_describe_workspace` |
 | 附2 | `bridge status` | 把 `logs/`、`*-master/` 都当工程 | ✅ `_project_ids` 只认 design.json |
-| 附3 | `hw_velxio` 工具 | 新增，能启动/停止/看日志 | ✅ |
+| 附3 | `dsh_embagent` 工具 | 新增，能启动/停止/看日志 | ✅ |
 
 ## 五、P3 新增能力
 
@@ -116,14 +116,14 @@ DSH 的 Bash 执行器给每条命令建一个 Job，命令结束按 `KILL_ON_JO
 
 | 工具 | 作用 |
 |---|---|
-| `hw_velxio` | 后端 status/start/stop/logs —— **没有它，模型不知道后端有没有起** |
+| `dsh_embagent` | 后端 status/start/stop/logs —— **没有它，模型不知道后端有没有起** |
 | `hw_compile` | 真实编译，返回 hex；可从 `sources/` 读或内联 files |
 | `hw_circuit` | Wokwi 互转，**不需要后端在线** |
 | `hw_libs` | Arduino + **MicroPython 双通道**（后者原是死代码） |
 
 ### 内聚的其它修复
 
-- `hw_velxio` 工具描述里明说"不需要浏览器、不需要 Docker"。
+- `dsh_embagent` 工具描述里明说"不需要浏览器、不需要 Docker"。
 - 死端点 `velxioHealth` 改为调 `serve status`（报三态 + 工具链，而不是只报 HTTP 通不通）。
 - 新增 `velxioControl`（start/stop/status），客户端面板据此驱动。
 - 面板新增第 8 个页签 **Velxio**：状态灯、端口/PID、arduino-cli 与 QEMU 分别显示、
@@ -133,20 +133,20 @@ DSH 的 Bash 执行器给每条命令建一个 Job，命令结束按 `KILL_ON_JO
 
 ```bash
 # 1. 首次准备（自动建 venv、装依赖、下 arduino-cli、装 AVR core）
-python -m hw_velxio.serve prepare          # 只装 venv 依赖
-python -m hw_velxio.serve arduino          # 预置 arduino 环境（清死 URL + 确保 AVR）
+python -m dsh_embagent.serve prepare          # 只装 venv 依赖
+python -m dsh_embagent.serve arduino          # 预置 arduino 环境（清死 URL + 确保 AVR）
 
 # 2. 启动后端（计划任务托管，跨工具调用存活）
-python -m hw_velxio.serve start
+python -m dsh_embagent.serve start
 
 # 3. 查看状态
-python -m hw_velxio.serve status
+python -m dsh_embagent.serve status
 
 # 4. 停止
-python -m hw_velxio.serve stop
+python -m dsh_embagent.serve stop
 ```
 
-或直接用工具：`hw_velxio action=start` / `hw_compile` / `hw_libs` / `hw_circuit`。
+或直接用工具：`dsh_embagent action=start` / `hw_compile` / `hw_libs` / `hw_circuit`。
 
 ## 七、诚实的边界
 
@@ -159,6 +159,6 @@ python -m hw_velxio.serve stop
    可能不全。本机本来也装不了那些 core（要 GitHub release），所以这是
    "如实少一个能力"而不是"假装有"。
 4. **`sitecustomize.py` 是 venv 内的本地补丁**，不改 Velxio 源码。
-   `HW_VELXIO_EAGER_CLI=1` 可回到上游原始行为；删掉该文件即完全还原。
+   `DSH_EMBAGENT_EAGER_CLI=1` 可回到上游原始行为；删掉该文件即完全还原。
 5. STM32 / 树莓派 / 品牌板是 Velxio 的**商业分层**（README 明写需授权二进制
    与多 GB 镜像），纯 DSH 内不提供，也没有假装提供。

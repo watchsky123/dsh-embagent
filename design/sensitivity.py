@@ -272,7 +272,7 @@ def report(design: Any, params: Any, *,
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.sensitivity",
+        "module": "dsh_embagent.design.sensitivity",
         "perturbations": list(PERTURBATIONS),
         "wired": wired_keys(),
         "why_split": ("未接线（没人读）与不敏感（读了但没效果）必须分开——"

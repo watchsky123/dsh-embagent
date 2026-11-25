@@ -1,6 +1,6 @@
 """P43 验收 —— 编排器（`scaffold`）：一句需求 → 一份半成品。
 
-    python -m hw_velxio.scripts.check_p43
+    python -m dsh_embagent.scripts.check_p43
 
 ## 这一段补的是什么
 
@@ -40,12 +40,12 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio import design_cli  # noqa: E402
-from hw_velxio.design import scaffold as scaffold_module  # noqa: E402
-from hw_velxio.design.model import (  # noqa: E402
+from dsh_embagent import design_cli  # noqa: E402
+from dsh_embagent.design import scaffold as scaffold_module  # noqa: E402
+from dsh_embagent.design.model import (  # noqa: E402
     Board, DesignModel, Part, Placement,
 )
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PROJECT = "p43-fixture"
 PROJECT_B = "p43-happy"

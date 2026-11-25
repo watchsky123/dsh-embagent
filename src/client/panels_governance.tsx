@@ -8,7 +8,7 @@
  * * `not_ready` 载荷**照样显示**（预检没过的那一层就是内容）
  * * 表格只显示计数与最前面的几条，完整载荷在 store 里可查
  *
- * @module dsh-hw-velxio/client/panels_governance
+ * @module dsh-embagent/client/panels_governance
  */
 
 import type {

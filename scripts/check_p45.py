@@ -1,6 +1,6 @@
 """P45 验收 —— 制造可行性：DRC 分级 + DFM 三态。
 
-    python -m hw_velxio.scripts.check_p45
+    python -m dsh_embagent.scripts.check_p45
 
 ## 这一段补的是什么
 
@@ -40,9 +40,9 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio import design_cli  # noqa: E402
-from hw_velxio.design import dfm as dfm_module  # noqa: E402
-from hw_velxio.design.store import DesignStore  # noqa: E402
+from dsh_embagent import design_cli  # noqa: E402
+from dsh_embagent.design import dfm as dfm_module  # noqa: E402
+from dsh_embagent.design.store import DesignStore  # noqa: E402
 
 PROJECT = "p45-fixture"
 
@@ -203,7 +203,7 @@ def part_command() -> None:
 
 
 def _minimal_design():
-    from hw_velxio.design.model import Board, DesignModel
+    from dsh_embagent.design.model import Board, DesignModel
 
     return DesignModel(
         id=PROJECT,

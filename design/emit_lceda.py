@@ -352,7 +352,7 @@ for (let i = 1; i <= maxTries && !projectUuid; i++) {
   want = (i <= 20) ? ((i === 1) ? base : (base + '-' + i)) : base;
   try {
     projectUuid = await eda.dmt_Project.createProject(
-      want, undefined, undefined, undefined, 'hw_velxio emit');
+      want, undefined, undefined, undefined, 'dsh_embagent emit');
   } catch (e) {
     lastError = String((e && e.message) || e);
     projectUuid = null;

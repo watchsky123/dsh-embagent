@@ -1,7 +1,7 @@
 {
-  "name": "dsh-hw-velxio",
+  "name": "dsh-embagent",
   "version": "0.1.0",
-  "description": "HW×Velxio：以一份 mm 规范模型驱动 2D 电路与 3D 装配两个投影，并把物理检查、预算、过程纪律、制造交接、交叉核对放进 DSH 的「硬件工作台」会话视图。",
+  "description": "EmbAgent：把一份 mm 规范模型做成 2D 电路、3D 整机装配、物理检查与打板交接的 DSH 工作台——PCB、电机/螺旋桨、外壳开口都在同一条链上。",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,7 +13,9 @@
     "./client": {
       "default": "./dist/client.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
   },
   "files": [
     "dist",
@@ -30,7 +32,9 @@
     "LICENSE",
     "serve.py",
     "patch.py",
-    "docs"
+    "docs",
+    "locale",
+    "icon.svg"
   ],
   "dsh": {
     "bundle": {
@@ -47,32 +51,32 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsdown",
     "check": "tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "test": "cd .. && python -m unittest hw_velxio.tests.test_design hw_velxio.tests.test_phases",
-    "verify": "cd .. && python -m hw_velxio.scripts.check_m1",
-    "verify:justify": "cd .. && python -m hw_velxio.scripts.check_justify",
-    "verify:handoff": "cd .. && python -m hw_velxio.scripts.check_handoff",
-    "verify:ladder": "cd .. && python -m hw_velxio.scripts.check_ladder",
-    "verify:units": "cd .. && python -m hw_velxio.scripts.check_units_links",
-    "verify:generate": "cd .. && python -m hw_velxio.scripts.check_generate",
-    "verify:m2": "cd .. && python -m hw_velxio.scripts.check_units_links && python -m hw_velxio.scripts.check_generate",
-    "verify:m3": "cd .. && python -m hw_velxio.scripts.check_m3",
-    "verify:m15": "cd .. && python -m hw_velxio.scripts.check_m15",
-    "verify:m16": "cd .. && python -m hw_velxio.scripts.check_m16",
-    "verify:m18": "cd .. && python -m hw_velxio.scripts.check_m18",
-    "verify:p17": "cd .. && python -m hw_velxio.scripts.check_p17",
-    "verify:m4": "cd .. && python -m hw_velxio.scripts.check_m18 && python -m hw_velxio.scripts.check_p17",
-    "verify:p19": "cd .. && python -m hw_velxio.scripts.check_p19",
-    "verify:p20": "cd .. && python -m hw_velxio.scripts.check_p20",
-    "verify:p21": "cd .. && python -m hw_velxio.scripts.check_p21",
-    "verify:p22": "cd .. && python -m hw_velxio.scripts.check_p22",
-    "verify:p23": "cd .. && python -m hw_velxio.scripts.check_p23",
-    "verify:all": "cd .. && python -m unittest hw_velxio.tests.test_design hw_velxio.tests.test_phases && python -m hw_velxio.scripts.check_m1 && python -m hw_velxio.scripts.check_m18 && python -m hw_velxio.scripts.check_p22 && python -m hw_velxio.scripts.check_p23",
-    "verify:p0": "cd .. && python -m hw_velxio.scripts.check_p0",
-    "verify:p1": "cd .. && python -m hw_velxio.scripts.check_p1",
-    "verify:p2": "cd .. && python -m hw_velxio.scripts.check_p2",
-    "verify:p3": "cd .. && python -m hw_velxio.scripts.check_p3",
-    "verify:p4": "cd .. && python -m hw_velxio.scripts.check_p4",
-    "verify:p5": "cd .. && python -m hw_velxio.scripts.check_p5"
+    "test": "cd .. && python -m unittest dsh_embagent.tests.test_design dsh_embagent.tests.test_phases",
+    "verify": "cd .. && python -m dsh_embagent.scripts.check_m1",
+    "verify:justify": "cd .. && python -m dsh_embagent.scripts.check_justify",
+    "verify:handoff": "cd .. && python -m dsh_embagent.scripts.check_handoff",
+    "verify:ladder": "cd .. && python -m dsh_embagent.scripts.check_ladder",
+    "verify:units": "cd .. && python -m dsh_embagent.scripts.check_units_links",
+    "verify:generate": "cd .. && python -m dsh_embagent.scripts.check_generate",
+    "verify:m2": "cd .. && python -m dsh_embagent.scripts.check_units_links && python -m dsh_embagent.scripts.check_generate",
+    "verify:m3": "cd .. && python -m dsh_embagent.scripts.check_m3",
+    "verify:m15": "cd .. && python -m dsh_embagent.scripts.check_m15",
+    "verify:m16": "cd .. && python -m dsh_embagent.scripts.check_m16",
+    "verify:m18": "cd .. && python -m dsh_embagent.scripts.check_m18",
+    "verify:p17": "cd .. && python -m dsh_embagent.scripts.check_p17",
+    "verify:m4": "cd .. && python -m dsh_embagent.scripts.check_m18 && python -m dsh_embagent.scripts.check_p17",
+    "verify:p19": "cd .. && python -m dsh_embagent.scripts.check_p19",
+    "verify:p20": "cd .. && python -m dsh_embagent.scripts.check_p20",
+    "verify:p21": "cd .. && python -m dsh_embagent.scripts.check_p21",
+    "verify:p22": "cd .. && python -m dsh_embagent.scripts.check_p22",
+    "verify:p23": "cd .. && python -m dsh_embagent.scripts.check_p23",
+    "verify:all": "cd .. && python -m unittest dsh_embagent.tests.test_design dsh_embagent.tests.test_phases && python -m dsh_embagent.scripts.check_m1 && python -m dsh_embagent.scripts.check_m18 && python -m dsh_embagent.scripts.check_p22 && python -m dsh_embagent.scripts.check_p23",
+    "verify:p0": "cd .. && python -m dsh_embagent.scripts.check_p0",
+    "verify:p1": "cd .. && python -m dsh_embagent.scripts.check_p1",
+    "verify:p2": "cd .. && python -m dsh_embagent.scripts.check_p2",
+    "verify:p3": "cd .. && python -m dsh_embagent.scripts.check_p3",
+    "verify:p4": "cd .. && python -m dsh_embagent.scripts.check_p4",
+    "verify:p5": "cd .. && python -m dsh_embagent.scripts.check_p5"
   },
   "license": "MIT",
   "peerDependencies": {
@@ -110,5 +114,6 @@
   },
   "dependencies": {
     "avr8js": "^0.21.1"
-  }
+  },
+  "icon": "icon.svg"
 }

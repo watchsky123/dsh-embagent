@@ -1,6 +1,6 @@
 """P71 验收 —— 前端 P3（治理面板）/ P4（空态 + 可访问性）。
 
-    python -m hw_velxio.scripts.check_p71
+    python -m dsh_embagent.scripts.check_p71
 
 ## 判据
 

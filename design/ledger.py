@@ -1,4 +1,4 @@
-"""过程纪律 —— **hw_velxio 自己的**：未决决策账本 + 哈希链轨迹。
+"""过程纪律 —— **dsh_embagent 自己的**：未决决策账本 + 哈希链轨迹。
 
 取代 `hwforge.deferred` 与 `hwforge.trace`。两个东西，一个目的：
 **让"还没定的事"和"已经做过的事"都无法被悄悄忽略。**
@@ -26,7 +26,7 @@
 `verify()` 除了查链，还会**重算每条 payload 的哈希**：只查链的话，
 有人改了内容却没改哈希，链仍然连续。
 
-@module hw_velxio.design.ledger
+@module dsh_embagent.design.ledger
 """
 
 from __future__ import annotations
@@ -247,7 +247,7 @@ def verify_trace(trace: Trace) -> dict[str, Any]:
 
 
 def describe() -> dict[str, Any]:
-    return {"module": "hw_velxio.design.ledger",
+    return {"module": "dsh_embagent.design.ledger",
             "kinds": list(KINDS),
             "irreversible": dict(IRREVERSIBLE_DECISIONS),
             "note": "append-only；不可逆决策只 lock，没有 unlock"}

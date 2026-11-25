@@ -136,7 +136,7 @@ def _fetch(path: str) -> tuple[str | None, str]:
     for url, headers in ((api, {"Accept": "application/vnd.github.raw"}),
                          (RAW_BASE + path, {})):
         request = urllib.request.Request(url, headers={
-            "User-Agent": "hw_velxio/afmap", **headers})
+            "User-Agent": "dsh_embagent/afmap", **headers})
         try:
             with urllib.request.urlopen(request, timeout=180) as resp:
                 return resp.read().decode("utf-8", "replace"), ""
@@ -482,7 +482,7 @@ def pins_for_signal(table: dict[str, Any], signal: str) -> list[dict[str, Any]]:
 def describe() -> dict[str, Any]:
     rows = list_tables()
     return {
-        "module": "hw_velxio.design.afmap",
+        "module": "dsh_embagent.design.afmap",
         "dir": str(DIR),
         "tables": len(rows),
         "parts": [row.get("part") for row in rows],

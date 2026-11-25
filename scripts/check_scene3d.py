@@ -2,7 +2,7 @@
 
 从仓库根运行：
 
-    python -m hw_velxio.scripts.check_scene3d
+    python -m dsh_embagent.scripts.check_scene3d
 
 `check_canvas_render.py` 验的是 2D 像素；这里验 3D 载荷的**几何正确性**。
 3D 视图出过的真实事故全是"看起来有东西、其实位置/朝向是错的"：
@@ -48,7 +48,7 @@ class Failures:
 def _run(args: list[str], workspace: Path) -> str:
     env = {**os.environ, "HWV_WORKSPACE": str(workspace)}
     result = subprocess.run(
-        [sys.executable, "-m", "hw_velxio.design_cli", *args],
+        [sys.executable, "-m", "dsh_embagent.design_cli", *args],
         cwd=str(REPO_ROOT), env=env, capture_output=True, text=True,
         encoding="utf-8", errors="replace", timeout=900)
     if result.returncode != 0:
@@ -71,7 +71,7 @@ def main() -> int:
         else:
             _run(["new", "scene-probe", "arduino-uno"], workspace)
             _run(["import", "scene-probe",
-                  str(REPO_ROOT / "hw_velxio" / "examples" / "wokwi" / "blink.json")],
+                  str(REPO_ROOT / "dsh_embagent" / "examples" / "wokwi" / "blink.json")],
                  workspace)
         payload = json.loads(_run(["snapshot", "scene-probe"], workspace))
         snapshot: dict[str, Any] = payload.get("snapshot") or payload

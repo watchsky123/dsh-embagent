@@ -110,7 +110,7 @@ def _check_lcsc() -> dict[str, Any]:
     if str(os.environ.get("HWV_PARTS_OFFLINE", "")).strip().lower() in ("1", "true", "yes"):
         return _row("lcsc", "not_ready", "HWV_PARTS_OFFLINE 打开着（不发网络请求）",
                     impact="选料/尺寸只能用手上缓存")
-    cache = Path.home() / ".dsh" / "hw_velxio_parts_cache.json"
+    cache = Path.home() / ".dsh" / "dsh_embagent_parts_cache.json"
     if cache.is_file():
         return _row("lcsc", "ok", f"本地缓存 {cache}（{cache.stat().st_size} 字节）",
                     impact="不联网也能查已缓存的编号")
@@ -209,7 +209,7 @@ def run() -> dict[str, Any]:
 
 def describe() -> dict[str, Any]:
     return {
-        "module": "hw_velxio.design.doctor",
+        "module": "dsh_embagent.design.doctor",
         "required": list(REQUIRED),
         "checks": ["workspace", "lceda", "bridge", "lcsc", "mujoco",
                    "arduino-cli", "gcc", "ffmpeg"],

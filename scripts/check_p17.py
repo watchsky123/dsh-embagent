@@ -1,6 +1,6 @@
 """P17 验收：立创EDA 发射层（``design/lceda.py`` + ``emit_lceda.py`` + ``stackup_spec.py``）。
 
-    python -m hw_velxio.scripts.check_p17
+    python -m dsh_embagent.scripts.check_p17
 
 七条验收对应 `docs/execution-plan-v3.md` §P17，其中第 7 条是**退化验证**
 （把自校验拆掉，确认验收真的会红）。
@@ -39,8 +39,8 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hw_velxio.design import emit_lceda, lceda, stackup_spec  # noqa: E402
-from hw_velxio.design.model import Board, DesignModel, Part, Placement  # noqa: E402
+from dsh_embagent.design import emit_lceda, lceda, stackup_spec  # noqa: E402
+from dsh_embagent.design.model import Board, DesignModel, Part, Placement  # noqa: E402
 
 PASS = "pass"
 FAIL = "fail"
@@ -218,7 +218,7 @@ def check_live() -> None:
     # 这是 2026-11-21 查出来的真因：`['R', 0, 0, w, h]` 让板框落在 y∈[-h,0]，
     # 而元件在 y>0 ⇒ autoRouting 返回 totalNetsCount=2 / successNetsCount=0。
     # 这条是**纯函数**断言，不需要立创在线；改回 y0 它立刻红。
-    from hw_velxio.design.model import Board  # noqa: PLC0415
+    from dsh_embagent.design.model import Board  # noqa: PLC0415
 
     probe = Board(kind="generic", name="ycheck",
                   outline=[(0.0, 0.0), (50.0, 0.0), (50.0, 40.0), (0.0, 40.0)],
@@ -234,7 +234,7 @@ def check_live() -> None:
           y_ok, f"src={src} 覆盖 y∈{span}")
 
     # -- 4a3. 分母只算 ≥2 焊盘的网络；空设计必须 not_ready（不是 0 条 = 通过）--
-    from hw_velxio.design.model import DesignModel  # noqa: PLC0415
+    from dsh_embagent.design.model import DesignModel  # noqa: PLC0415
 
     expected = emit_lceda._expected_nets(design)
     empty_expected = emit_lceda._expected_nets(DesignModel(title="empty"))

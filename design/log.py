@@ -24,7 +24,7 @@ GitHub Actions 每条 job 一份日志、按时间追加、带 `[step]` 前缀�
 `logs/` 不进 `list_projects()`（那只看含 `design.json` 的目录），也不会被
 当成工程条目（`entries.scan` 只认 `.ioc`/`.kicad_pcb`/BOM/固件）。
 
-@module hw_velxio.design.log
+@module dsh_embagent.design.log
 """
 
 from __future__ import annotations

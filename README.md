@@ -1,4 +1,4 @@
-# hw_velxio — 硬件工作台（DSH 插件）
+# dsh_embagent — 硬件工作台（DSH 插件）
 
 一份 **mm 规范模型**，两个投影：**2D 电路是电气/拓扑权威，3D 装配是物理/机械权威**。
 体素网格只做求解索引（重叠/keepout/限高），不参与渲染。这正是 [方案-v3.md](方案-v3.md)
@@ -29,22 +29,22 @@
 | `hw_circuit` | Wokwi diagram ↔ 电路 JSON（复用 Velxio 的 `app/mcp/wokwi`） | ❌ 纯计算 |
 | `hw_libs` | Arduino + MicroPython 库搜索/安装 | ✅ 需要 |
 | `hw_sim` / `hw_serial` | **真跑固件**（avr8js）并读串口 | ❌ 不需要 |
-| `hw_velxio` | 后端生命周期：status/start/stop/logs | — |
+| `dsh_embagent` | 后端生命周期：status/start/stop/logs | — |
 
 后端管理（**不需要 Docker**，用本机 venv 跑 uvicorn）：
 
 ```bash
-python -m hw_velxio.serve prepare   # 建 venv + 装依赖
-python -m hw_velxio.serve arduino   # 预置 arduino-cli + AVR core
-python -m hw_velxio.serve start     # 启动（计划任务托管，跨工具调用存活）
-python -m hw_velxio.serve status    # 三态 + 工具链 + 补丁状态
-python -m hw_velxio.serve stop
+python -m dsh_embagent.serve prepare   # 建 venv + 装依赖
+python -m dsh_embagent.serve arduino   # 预置 arduino-cli + AVR core
+python -m dsh_embagent.serve start     # 启动（计划任务托管，跨工具调用存活）
+python -m dsh_embagent.serve status    # 三态 + 工具链 + 补丁状态
+python -m dsh_embagent.serve stop
 ```
 
 场景补丁（让后端启动从 76 秒降到 0.5 秒）：
 
 ```bash
-python -m hw_velxio.patch status|install|remove
+python -m dsh_embagent.patch status|install|remove
 ```
 
 **详细说明**：[docs/p4-simulation.md](docs/p4-simulation.md)（含 AVR 可直接跑的
@@ -81,7 +81,7 @@ python -m hw_velxio.patch status|install|remove
 
 ## 立创 EDA 工程（`.epro2`）—— 唯一能给出网表的来源
 
-`hw_velxio` 的 2D 是**电气权威**，它需要"有哪些元件"和"谁连到谁"。工作区
+`dsh_embagent` 的 2D 是**电气权威**，它需要"有哪些元件"和"谁连到谁"。工作区
 里大部分材料只能给一半：
 
 | 材料 | 元件清单 | 连接关系 |
@@ -102,10 +102,10 @@ JSON，`|` 分隔）+ `IMAGE/*.webp`（原理图截图）。解析要点：
 
 ```bash
 # 导入（可选 --bom：用物料清单补全 PCB 里没有的元件）
-python -m hw_velxio.design_cli import <工程id> board.epro2 --bom BOM.csv
+python -m dsh_embagent.design_cli import <工程id> board.epro2 --bom BOM.csv
 
 # 给**已有**工程补 BOM（工程已有但内容不全时用这个）
-python -m hw_velxio.design_cli bom <工程id> BOM.csv [--dry-run]
+python -m dsh_embagent.design_cli bom <工程id> BOM.csv [--dry-run]
 ```
 
 ### 需求 → 设计：R2 角色映射（`roles` 命令）
@@ -118,13 +118,13 @@ python -m hw_velxio.design_cli bom <工程id> BOM.csv [--dry-run]
 
 ```bash
 # 只校验映射表：表里写的模板在 hwforge 里真的存在吗
-python -m hw_velxio.design_cli roles --validate
+python -m dsh_embagent.design_cli roles --validate
 
 # 直接给角色
-python -m hw_velxio.design_cli roles --roles camera,gimbal_pan,servo_power
+python -m dsh_embagent.design_cli roles --roles camera,gimbal_pan,servo_power
 
 # 从自然语言需求出发（需要 hwforge 可导入）
-python -m hw_velxio.design_cli roles --goal "做一个壁挂云台相机，手机看实时视频"
+python -m dsh_embagent.design_cli roles --goal "做一个壁挂云台相机，手机看实时视频"
 ```
 
 **映射表**（9 行，两边都由 `validate()` 对照真实代码校验）：
@@ -161,7 +161,7 @@ python -m hw_velxio.design_cli roles --goal "做一个壁挂云台相机，手�
 
 ```bash
 # 从需求一路装到设计并落盘
-python -m hw_velxio.design_cli roles --goal "做一个壁挂云台相机" --assemble my-board
+python -m dsh_embagent.design_cli roles --goal "做一个壁挂云台相机" --assemble my-board
 ```
 
 实测（4 角色 → 4 元件 / 2 网表 / 66×63mm 板 / 9 项检查全过）：
@@ -190,11 +190,11 @@ PS1   servo_power  x= 15.0.. 45.0  y=  0.0.. 20.0
 
 ### 独立运行：**不依赖 hwforge**
 
-hw_velxio **不需要 clone hwforge**。迁移前，需求分析、模板、装配、体素
+dsh_embagent **不需要 clone hwforge**。迁移前，需求分析、模板、装配、体素
 空间、预算、账本、协同验证、阶梯全部来自 hwforge 的 4366 行代码 ——
 没有它，除了 2D 视图什么都做不了。
 
-现在这些能力都是 hw_velxio 自己的：
+现在这些能力都是 dsh_embagent 自己的：
 
 | 模块 | 取代 | 行数 |
 |---|---|---|
@@ -435,11 +435,11 @@ hwforge 的 8 条 CV 检查（需求数值 vs 硬件能力）。它回答**别�
 
 ```bash
 # 只导主板（默认）——其余板如实上报，不静默丢弃
-python -m hw_velxio.design_cli import <id> board.epro2
+python -m dsh_embagent.design_cli import <id> board.epro2
 # 导入全部 8 块板（316 个元件一个不丢）
-python -m hw_velxio.design_cli import <id> board.epro2 --boards all
+python -m dsh_embagent.design_cli import <id> board.epro2 --boards all
 # 只导某一块
-python -m hw_velxio.design_cli import <id> board.epro2 --boards "PCB#a22effc9"
+python -m dsh_embagent.design_cli import <id> board.epro2 --boards "PCB#a22effc9"
 ```
 
 **模型结构**（`design/model.py`）：
@@ -621,7 +621,7 @@ LQFP-64 → `12.000 mm`。都是库里的真实包围盒。
 ### P2 `design.json` → `scene.json` —— 打通 hwforge
 
 ```bash
-python -m hw_velxio.design_cli scene <id> [--pitch 0.5]
+python -m dsh_embagent.design_cli scene <id> [--pitch 0.5]
 ```
 
 之后 `hw_block(simulate)` / `electrical` / `coverify` 都能读。两处如实标注：
@@ -633,7 +633,7 @@ python -m hw_velxio.design_cli scene <id> [--pitch 0.5]
 ### P3 需求 → 设计（模板）
 
 ```bash
-python -m hw_velxio.design_cli synth <id> blink --spec '{"pin":"D13"}'
+python -m dsh_embagent.design_cli synth <id> blink --spec '{"pin":"D13"}'
 ```
 
 | 模板 | 组成 |
@@ -707,16 +707,16 @@ python -m hw_velxio.design_cli synth <id> blink --spec '{"pin":"D13"}'
 
 
 ```bash
-python -m hw_velxio.design_cli workspace show          # 当前根 + 来源 + 可写性
-python -m hw_velxio.design_cli workspace set <绝对路径>   # 接已有目录
-python -m hw_velxio.design_cli workspace create <父目录> <名>  # 建子目录并切换
+python -m dsh_embagent.design_cli workspace show          # 当前根 + 来源 + 可写性
+python -m dsh_embagent.design_cli workspace set <绝对路径>   # 接已有目录
+python -m dsh_embagent.design_cli workspace create <父目录> <名>  # 建子目录并切换
 ```
 
 ## 快速开始
 
 ```bash
 # 依赖（一次）
-cd hw_velxio && npm install --legacy-peer-deps
+cd dsh_embagent && npm install --legacy-peer-deps
 
 # 构建：宿主半（tsc）+ 客户端半（tsdown，three.js 内联）
 npm run build
@@ -742,27 +742,27 @@ node scripts/check_remote_signature.mjs
 
 # 2D 画布**真实绘制**自检：挂真 Circuit2D 到无头 Edge，量真 canvas 像素
 # （复刻绘制逻辑的检查证明不了"真组件画对了"——上一版就是这么漏的）
-cd .. && node hw_velxio/scripts/check_canvas_draw.mjs
+cd .. && node dsh_embagent/scripts/check_canvas_draw.mjs
 
 # 3D 视图**真实渲染**自检：挂真 Assembly3D，截 WebGL 画面量亮度/颜色直方图
-cd .. && node hw_velxio/scripts/check_assembly3d.mjs
+cd .. && node dsh_embagent/scripts/check_assembly3d.mjs
 
 # 布局自检：真浏览器里量画布容器尺寸/DPR/自适应缩放
-cd .. && node hw_velxio/scripts/check_layout_browser.mjs
+cd .. && node dsh_embagent/scripts/check_layout_browser.mjs
 
 # 2D 投影几何自检（不依赖浏览器）
 
 # 样式与组件同步（死规则双向扫描）
-cd .. && python hw_velxio/scripts/check_dead_css.py
+cd .. && python dsh_embagent/scripts/check_dead_css.py
 
 # 自检：产物形状 + 上述冒烟 + 宿主契约（重读 app.asar）+ Python 端到端
-cd .. && python hw_velxio/scripts/check_plugin.py
+cd .. && python dsh_embagent/scripts/check_plugin.py
 
 # 安装持久性：manifest / lockfile / 组合树 / 产物 / **宿主是否在跑旧代码**
-python hw_velxio/scripts/check_installed.py
+python dsh_embagent/scripts/check_installed.py
 
 # 单元测试（215 个用例，标准库 unittest）
-python -m unittest hw_velxio.tests.test_design -v
+python -m unittest dsh_embagent.tests.test_design -v
 ```
 
 仓库里已预置两个工程，打开视图即可看到内容：
@@ -777,11 +777,11 @@ python -m unittest hw_velxio.tests.test_design -v
 安装走的是宿主自己的通道，不是手改运行中的组合树：
 
 1. `~/.dsh/profiles/desktop/package.json`：`dependencies` 加
-   `dsh-hw-velxio: file:workspace/hw_velxio`，`dsh.profile.bundles` 追加同名
-   条目（原文件备份为 `package.json.bak-hw-velxio-*`）；
+   `dsh-embagent: file:workspace/dsh_embagent`，`dsh.profile.bundles` 追加同名
+   条目（原文件备份为 `package.json.bak-embagent-*`）；
 2. profile 目录下用运行时自带的 pnpm 安装（产物在 profile 的
-   `node_modules/dsh-hw-velxio/` 下，**`workspace/hw_velxio` 源码原样保留**）；
-3. `plugin_manager set_bundle dsh-hw-velxio` 启用——一次失败暴露了真实契约：
+   `node_modules/dsh-embagent/` 下，**`workspace/dsh_embagent` 源码原样保留**）；
+3. `plugin_manager set_bundle dsh-embagent` 启用——一次失败暴露了真实契约：
    运行中的宿主是 **0.2.2-rc.1** 代次，而依赖树里装的 rc.6 `dsh-tools` 导入了
    rc.6 自己的 `dsh-llm`；宿主解析一侧到 app 的 0.2.2 `dsh-llm`，`CallId`
    不存在 → `failed to import`。把全部 `@deepseek-ai/*` 依赖钉到与宿主一致的
@@ -789,8 +789,8 @@ python -m unittest hw_velxio.tests.test_design -v
 
 验证（三条互相独立）：
 
-- `dsh --profile desktop --dump-config`：树里出现 `id: hw-velxio / name: dsh-hw-velxio`；
-- `plugin_manager list_plugins`：`include:hw-velxio` **enabled, fiberPhase=active**；
+- `dsh --profile desktop --dump-config`：树里出现 `id: embagent / name: dsh-embagent`；
+- `plugin_manager list_plugins`：`include:embagent` **enabled, fiberPhase=active**；
 - `scripts/check_host_runtime.mjs` / `check_client_runtime.mjs`：真实 cordis 里
   apply 不抛、23 个远程端点齐全、8 个工具注册；伪宿主里 bundle 注册并渲染。
 
@@ -810,7 +810,7 @@ order=20）。若标签未出现，刷新一次页面即可——客户端 bundl
 ## 结构
 
 ```
-hw_velxio/
+dsh_embagent/
 ├── design/                 规范模型（Python，唯一事实源）
 │   ├── model.py            DesignModel / Part / Placement / Board（mm，**多板**）
 │   ├── boards.py           板卡预设（Velxio 像素 ↔ 毫米，含来源标签）
@@ -917,8 +917,8 @@ hw_velxio/
 { "hwforge_root": "workspace/hwforge", "velxio_url": "http://127.0.0.1:3080" }
 ```
 
-环境变量：`HWFORGE_ROOT`、`HW_VELXIO_ROOT`（仓库根）、`HW_VELXIO_PYTHON`
-（解释器）、`HW_VELXIO_VELXIO_URL`、`HW_VELXIO_VELXIO_TOKEN`。
+环境变量：`HWFORGE_ROOT`、`DSH_EMBAGENT_ROOT`（仓库根）、`DSH_EMBAGENT_PYTHON`
+（解释器）、`DSH_EMBAGENT_VELXIO_URL`、`DSH_EMBAGENT_VELXIO_TOKEN`。
 
 ## 许可
 

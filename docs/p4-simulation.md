@@ -131,12 +131,12 @@ pip install esp32-qemu  → No matching distribution
 ## 四、`sitecustomize` 现在是什么
 
 之前它是**手工放在 venv 里的一个文件**，有三个问题：重装 venv 就丢、
-不可见、不好关。现在收敛为 `hw_velxio/patch.py`：
+不可见、不好关。现在收敛为 `dsh_embagent/patch.py`：
 
 ```
-python -m hw_velxio.patch status    # 在不在、是不是当前版本
-python -m hw_velxio.patch install   # 写入/刷新（幂等）
-python -m hw_velxio.patch remove    # 删除，完全还原
+python -m dsh_embagent.patch status    # 在不在、是不是当前版本
+python -m dsh_embagent.patch install   # 写入/刷新（幂等）
+python -m dsh_embagent.patch remove    # 删除，完全还原
 ```
 
 **自动重建**：`serve.ensure_venv()` 装完依赖后会自动 `install`（幂等），
@@ -149,7 +149,7 @@ python -m hw_velxio.patch remove    # 删除，完全还原
           "note": "补丁存在且是当前版本"}
 ```
 
-**可关**：`HW_VELXIO_EAGER_CLI=1` 回到上游原始行为（启动慢 76 秒，但零介入）。
+**可关**：`DSH_EMBAGENT_EAGER_CLI=1` 回到上游原始行为（启动慢 76 秒，但零介入）。
 
 ### 它到底改了什么
 
@@ -170,11 +170,11 @@ python -m hw_velxio.patch remove    # 删除，完全还原
 
 ```bash
 # 1. 补丁状态
-python -m hw_velxio.patch status
+python -m dsh_embagent.patch status
 
 # 2. 后端
-python -m hw_velxio.serve start
-python -m hw_velxio.serve status
+python -m dsh_embagent.serve start
+python -m dsh_embagent.serve status
 
 # 3. 编译 + 仿真（在会话里用工具）
 #    hw_compile → hw_sim(start) → hw_sim(run) → hw_serial

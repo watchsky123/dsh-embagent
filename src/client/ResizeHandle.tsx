@@ -13,7 +13,7 @@
  *
  * 持久化由调用方负责（本插件在 store 里，前缀 dsh-hwv.）。
  *
- * @module dsh-hw-velxio/client/ResizeHandle
+ * @module dsh-embagent/client/ResizeHandle
  */
 
 import { useCallback, useRef } from 'react'

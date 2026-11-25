@@ -315,7 +315,7 @@ intake(req) → architecture(units/roles) → parts(lcsc/jlc_class)
 
 ## 4. 完成定义（每段都必须满足）
 
-1. `python -m hw_velxio.design_cli <新命令>` 有 `describe()`（自省）
+1. `python -m dsh_embagent.design_cli <新命令>` 有 `describe()`（自省）
 2. `scripts/check_p4x.py` 能一条命令跑，且**至少一条退化验证**
 3. `npm test` 全绿 + 新用例覆盖三态
 4. `AGENTS.md` 新增该段踩的坑（有实测才写）+ §6 缺口表更新
@@ -347,4 +347,4 @@ intake(req) → architecture(units/roles) → parts(lcsc/jlc_class)
 5. `scripts/check_p40.py`：5 条（含 1 条退化）
 6. `AGENTS.md` §8.7 加 `check_p40`；`CHANGES.md` 加 P40 一节
 
-**完成信号**：`python -m hw_velxio.design_cli mjcf check <工程>` 在一份带关节的设计上返回 `ok`，且 `model.xml` 能被 MuJoCo 加载；缺参数时返回 `not_ready` 并点名关节。
+**完成信号**：`python -m dsh_embagent.design_cli mjcf check <工程>` 在一份带关节的设计上返回 `ok`，且 `model.xml` 能被 MuJoCo 加载；缺参数时返回 `not_ready` 并点名关节。

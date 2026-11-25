@@ -21,7 +21,7 @@
  * 不同，那是宿主侧的形状），所以超时只能在客户端做竞速；超时后对话框可
  * 能还开着，用户选完的结果会被忽略——如实写进错误文案，不假装取消了它。
  *
- * @module dsh-hw-velxio/client/directoryPicker
+ * @module dsh-embagent/client/directoryPicker
  */
 
 /** 调用时才解析的两个客户端入口（延迟读取：ui-workspace 可能比本插件晚装载）。 */
