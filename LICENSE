@@ -21,4 +21,4 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 本插件依赖的 Velxio 采用 AGPLv3 + 商业双许可；hwforge 目前没有 LICENSE 文件。
-两者的许可都影响再分发方式，详见 方案-v3.md §7。
+两者的许可都影响再分发方式，详见 dsh-embagent-docs:方案-v3.md §7。

@@ -1,12 +1,15 @@
 # dsh_embagent — 硬件工作台（DSH 插件）
 
 一份 **mm 规范模型**，两个投影：**2D 电路是电气/拓扑权威，3D 装配是物理/机械权威**。
-体素网格只做求解索引（重叠/keepout/限高），不参与渲染。这正是 [方案-v3.md](方案-v3.md)
+体素网格只做求解索引（重叠/keepout/限高），不参与渲染。这正是 dsh-embagent-docs:方案-v3.md
 的核心判断：hwforge 的 3D 不是"要做好的烂 3D"，而是一个被误当成渲染器的求解器。
 
 落到 DSH 里，它是一个**会话视图**（与 Chat / Trajectory 并列的「硬件工作台」标签），
+> 历史方案 / 执行记录已迁到私有仓库 `dsh-embagent-docs`（22 篇，索引见其 `INDEX.md`）；
+> 本仓库只保留**跟代码一起改**的功能文档（`README` / `AGENTS` / `CHANGES` / `runbook` / `architecture-*` 等）。
+
 不是右侧边栏。前端重构（模仿 Velxio 的分布形式，F1–F7）见
-**[方案-前端-v1.md](方案-前端-v1.md)**。
+**dsh-embagent-docs:方案-前端-v1.md**。
 
 ```
 ┌ 硬件工作台 ─────────────────────────────────────────────────────────────┐
@@ -47,7 +50,7 @@ python -m dsh_embagent.serve stop
 python -m dsh_embagent.patch status|install|remove
 ```
 
-**详细说明**：[docs/p4-simulation.md](docs/p4-simulation.md)（含 AVR 可直接跑的
+**详细说明**：dsh-embagent-docs:docs/p4-simulation.md（含 AVR 可直接跑的
 实测证据、ESP32 为什么不可用的三重约束、补丁改了什么）。
 
 **明确的边界**：AVR 仿真支持 ATmega328p 家族（Uno/Nano/Mini/Pro Mini），
@@ -923,4 +926,4 @@ dsh_embagent/
 ## 许可
 
 本插件 MIT。依赖的 Velxio 是 **AGPLv3 + 商业双许可**；hwforge 目前**没有
-LICENSE 文件**——两者都影响分发方式，详见 [方案-v3.md](方案-v3.md) §7。
+LICENSE 文件**——两者都影响分发方式，详见 dsh-embagent-docs:方案-v3.md §7。

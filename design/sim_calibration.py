@@ -2,7 +2,7 @@
 
 ## 这条规则是哪来的
 
-RoboBuilder 的项目页写得很直白（本仓库 `docs/execution-plan-v3.md` P21 引了原文）：
+RoboBuilder 的项目页写得很直白（本仓库 `dsh-embagent-docs:docs/execution-plan-v3.md` P21 引了原文）：
 
 > **≤2 个参数/次失败，且只有"旧设计在新参数下也按录像那样失败"才保留**
 

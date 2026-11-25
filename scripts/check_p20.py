@@ -2,7 +2,7 @@
 
     python -m dsh_embagent.scripts.check_p20
 
-七条对应 `docs/execution-plan-v3.md` §P20，第 7 条是**退化验证**。
+七条对应 `dsh-embagent-docs:docs/execution-plan-v3.md` §P20，第 7 条是**退化验证**。
 
 ## 夹具策略
 

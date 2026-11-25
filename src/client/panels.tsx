@@ -1449,7 +1449,7 @@ export function SimPanel(props: PanelProps & {
       <div className="hwv-dim hwv-block-tight">
         支持 ATmega328p（Uno/Nano/Mini/Pro Mini）。Mega2560 的寄存器不同，
         ESP32 需要 QEMU —— 两者都会如实拒绝，不硬套。
-        {' '}不支持板卡时先 hw_compile 换一块，或看 docs/p4-simulation.md。
+        {' '}不支持板卡时先 hw_compile 换一块，或看 dsh-embagent-docs:docs/p4-simulation.md。
       </div>
     </div>
   )

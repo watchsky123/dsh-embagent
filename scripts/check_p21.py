@@ -2,7 +2,7 @@
 
     python -m dsh_embagent.scripts.check_p21
 
-六条对应 `docs/execution-plan-v3.md` §P21，第 6 条是**退化验证**。
+六条对应 `dsh-embagent-docs:docs/execution-plan-v3.md` §P21，第 6 条是**退化验证**。
 
 ## 夹具策略（AGENTS §0.3）
 

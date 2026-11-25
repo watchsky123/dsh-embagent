@@ -2,7 +2,7 @@
 
     python -m dsh_embagent.scripts.check_p22
 
-五条对应 `docs/execution-plan-v3.md` §P22，第 5 条是**退化验证**。
+五条对应 `dsh-embagent-docs:docs/execution-plan-v3.md` §P22，第 5 条是**退化验证**。
 
 ## 全程假模型
 

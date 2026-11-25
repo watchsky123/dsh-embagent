@@ -2,7 +2,7 @@
 
     python -m dsh_embagent.scripts.check_p19
 
-六条对应 `docs/execution-plan-v3.md` §P19，其中第 6 条是**退化验证**。
+六条对应 `dsh-embagent-docs:docs/execution-plan-v3.md` §P19，其中第 6 条是**退化验证**。
 
 ## 两种夹具分开用（AGENTS §0.3）
 

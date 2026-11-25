@@ -85,7 +85,7 @@ export function start(options: StartOptions): Record<string, unknown> {
       findings: [
         `这个板不能走 AVR 运行通道：${support.reason}`,
         '能跑的是 ATmega328p 家族（Uno/Nano/Mini/Pro Mini）。'
-        + 'ESP32 需要 QEMU（见 docs/p4-simulation.md），Mega2560 需要另补寄存器表。',
+        + 'ESP32 需要 QEMU（见 dsh-embagent-docs:docs/p4-simulation.md），Mega2560 需要另补寄存器表。',
       ],
     }
   }

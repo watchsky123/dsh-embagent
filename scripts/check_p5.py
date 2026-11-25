@@ -2,7 +2,7 @@
 
     python -m dsh_embagent.scripts.check_p5
 
-P5 的初版方案有两处**错的前提**（见 `docs/p5-plan.md` §0）：
+P5 的初版方案有两处**错的前提**（见 `dsh-embagent-docs:docs/p5-plan.md` §0）：
 
 * 「0 个 provider」→ 错。DSH 的 `ctx.llm` 已挂载，`dsh-our-free-model` 就是适配器；
   dsh_embagent 早就在用 `session.prompt()` 投递。**P5 不写 provider。**

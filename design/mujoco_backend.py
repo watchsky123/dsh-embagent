@@ -242,7 +242,7 @@ def drop_test(*, size_mm: float = 20.0, mass_g: float = 100.0,
               start_z_mm: float = 100.0, duration_s: float = 1.0) -> SimResult:
     """最小可用性证明：一个方块从高处落下，应停在地板上。
 
-    **这是 P16 的第一个验收**（execution-plan-v3 的止损线）。
+    **这是 P16 的第一个验收**（dsh-embagent-docs:docs/execution-plan-v3.md 的止损线）。
     判据（由验收脚本做，不在这个函数里）：
     * 结束高度 ≈ 半边长（不穿地、不弹飞）
     * 没有 NaN

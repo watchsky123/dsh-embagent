@@ -6,7 +6,7 @@
 
 ## 这个脚本存在的理由
 
-计划文档 `docs/execution-plan.md` 给每个阶段写了硬验收条件。那些条件
+计划文档 `dsh-embagent-docs:docs/execution-plan.md` 给每个阶段写了硬验收条件。那些条件
 之前是**我手工一条条敲命令验证的**——敲完就没了，下次改动没人知道
 有没有退化。
 

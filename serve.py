@@ -248,7 +248,7 @@ def _run(cmd: list[str], cwd: Path | None = None, timeout: float = 900.0) -> sub
     )
 
 
-#: 最小可跑集。理由见 docs/p0-velxio-findings.md「P3 结论」：
+#: 最小可跑集。理由见 dsh-embagent-docs:docs/p0-velxio-findings.md「P3 结论」：
 #: mcp（只被独立 MCP 入口用）、esptool（代码里 0 处 import）、
 #: wasmtime（lazy，只有自定义芯片要）、zstandard（Pi 镜像用）都不在这里。
 #:
@@ -357,7 +357,7 @@ def ensure_venv(with_deps: bool = True) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 #: 只走 downloads.arduino.cc —— `raw.githubusercontent.com` 在本机**不可达**（实测
-#: HTTP 000），官方 install.sh 那条路必然失败。见 docs/p0-velxio-findings.md。
+#: HTTP 000），官方 install.sh 那条路必然失败。见 dsh-embagent-docs:docs/p0-velxio-findings.md。
 ARDUINO_CLI_ZIP = {
     "win32": "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Windows_64bit.zip",
     "darwin": "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_macOS_64bit.tar.gz",

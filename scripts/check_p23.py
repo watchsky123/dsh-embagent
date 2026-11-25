@@ -2,7 +2,7 @@
 
     python -m dsh_embagent.scripts.check_p23
 
-四条对应 `docs/execution-plan-v3.md` §P23：
+四条对应 `dsh-embagent-docs:docs/execution-plan-v3.md` §P23：
 
 1. 单测 **≥550**（实测 665）
 2. 验收脚本 **≥12**（实测 16）

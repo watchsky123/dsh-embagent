@@ -2,7 +2,7 @@
 
     python -m dsh_embagent.scripts.check_p17
 
-七条验收对应 `docs/execution-plan-v3.md` §P17，其中第 7 条是**退化验证**
+七条验收对应 `dsh-embagent-docs:docs/execution-plan-v3.md` §P17，其中第 7 条是**退化验证**
 （把自校验拆掉，确认验收真的会红）。
 
 ## 两种夹具分开用（AGENTS §0.3）
