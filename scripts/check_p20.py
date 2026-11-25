@@ -45,7 +45,8 @@ SKIP = "not_ready"
 _RESULTS: list[dict[str, Any]] = []
 
 #: 真实 `.ioc` 的位置（存在才跑那条）。板名与工程名无交集，所以写死路径。
-REAL_IOC = Path(r"C:/Users/<user>/Desktop/示例工作区/F401-Front-master/F401-Front.ioc")
+from dsh_embagent.scripts._probe import path as probe_path  # noqa: E402
+REAL_IOC = probe_path("DSH_EMBAGENT_PROBE_IOC")
 
 
 def check(name: str, ok: bool, detail: str = "", *, status: str = "") -> bool:

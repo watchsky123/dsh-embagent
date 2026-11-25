@@ -38,6 +38,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from dsh_embagent.scripts._probe import project_id  # noqa: E402
 from dsh_embagent.design import (mjcf, mujoco_backend,   # noqa: E402
                               sim_dispatch, sim_params)
 from dsh_embagent.design.model import (Board, DesignModel, Joint,   # noqa: E402
@@ -385,12 +386,14 @@ def check_weld(f: Failures) -> None:
     print("\n== 10d. 真实工程：weld 后能跑且稳定 ==")
 
     from dsh_embagent.design.store import DesignStore, list_projects
+    want = project_id()
     row = next((p for p in list_projects()
-                if p.get("id") == "示例-单板" and p.get("has_design")), None)
+                if want and p.get("id") == want and p.get("has_design")), None)
     if row is None:
-        print("  skip 找不到 示例-单板")
+        print("  skip 没有指定真实工程（DSH_EMBAGENT_PROBE_PROJECT_NAME）"
+              " —— 这一节没跑，不是通过")
         return
-    real = DesignStore("示例-单板").load()
+    real = DesignStore(want).load()
     result = mujoco_backend.run(real, duration_s=0.5, free_bodies=True,
                                 weld_parts=True)
     f.check("141 元件的板 weld 后能跑", result.ok, result.error)

@@ -115,5 +115,13 @@
   "dependencies": {
     "avr8js": "^0.21.1"
   },
-  "icon": "icon.svg"
+  "icon": "icon.svg",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/watchsky123/dsh-embagent.git"
+  },
+  "homepage": "https://github.com/watchsky123/dsh-embagent#readme",
+  "bugs": {
+    "url": "https://github.com/watchsky123/dsh-embagent/issues"
+  }
 }

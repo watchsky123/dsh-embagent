@@ -430,7 +430,7 @@ TypeError: cannot unpack non-iterable float object
 
 ```
 ValueError: ParseXML: Error opening file
-'C:\Users\<user>\Desktop\示例工作区\p40-fixture\model.xml'
+'<工作区>\p40-fixture\model.xml'
 ```
 
 文件**确实存在**（1345 字节），`read_text` 读得好好的；换成
@@ -449,7 +449,7 @@ ValueError: ParseXML: Error opening file
 ### 13.1 装在哪
 
 ```
-workspace\dsh_embagent\_tools\arm-gcc\13.3.rel1\      ← 仓库内，1.2 GB
+<仓库根>\dsh_embagent\_tools\arm-gcc\13.3.rel1\      ← 仓库内，1.2 GB
     bin\arm-none-eabi-gcc.exe  (Arm GNU Toolchain 13.3.Rel1, build arm-13.24)
 ```
 
@@ -468,9 +468,9 @@ python -m zipfile -e _tools/_dl/arm-gcc.zip _tools/arm-gcc/
 # 再把 arm-gnu-toolchain-13.3.rel1-.../ 改名为 13.3.rel1/
 
 # 3) **必做**：去继承的 Low 完整性标签（见 13.5，不做则编译全 Permission denied）
-icacls "workspace\dsh_embagent\_tools" /remove:d Everyone
-icacls "workspace\dsh_embagent\_tools\arm-gcc" /grant "%USERNAME%:(OI)(CI)F" /T
-icacls "workspace\dsh_embagent\_tools\arm-gcc" /setintegritylevel "(OI)(CI)Medium" /T /C
+icacls "<仓库根>\dsh_embagent\_tools" /remove:d Everyone
+icacls "<仓库根>\dsh_embagent\_tools\arm-gcc" /grant "%USERNAME%:(OI)(CI)F" /T
+icacls "<仓库根>\dsh_embagent\_tools\arm-gcc" /setintegritylevel "(OI)(CI)Medium" /T /C
 # 实测：8604 个文件，各 1 秒级
 ```
 
@@ -562,7 +562,7 @@ icacls <exe> /setintegritylevel Medium     # 报 Access is denied → 你缺 WRI
 ## 14. 软件任务为什么要拆三层（P51）
 
 `plan` 第一版对**软件能力**（S1–S6）也只用"缺数据 → 一条任务 + 一条验收"，
-于是 `复刻-示例` 的软件任务只有 **12 条**（6 能力 × 2）。看着像把软件
+于是 `复刻-示例-单板` 的软件任务只有 **12 条**（6 能力 × 2）。看着像把软件
 做完了，实际**"写"这一步根本没出现在任务表里**。
 
 拆法（`design/plan.py` 的 `SW_BREAKDOWN`）：
@@ -609,7 +609,7 @@ fw/build/Makefile    给人手工编也能用
 
 ### 四条硬判据（缺一条就不是 ok）
 
-| 判据 | 实测（复刻-示例，F103C8）|
+| 判据 | 实测（复刻-示例-单板，F103C8）|
 |---|---|
 | 编译返回 0 | ✅ |
 | `Machine = ARM` | `ARM` |
@@ -776,7 +776,7 @@ P52 的骨架里引脚是**两套来源**：`main.c` 里的 TODO 注释 vs `inte
 看起来像功能坏了，其实是环境变了。
 
 **约定**：切过工作区之后，跑全套验收前先切回去：
-`design_cli workspace set "C:\Users\<user>\Desktop\示例工作区"`。
+`design_cli workspace set "<工作区>"`。
 
 ### 17.7 边界（诚实）
 
@@ -877,7 +877,7 @@ cfg_wrong            → "HWV_EXPECT_CFG: USART1.BAUDRATE differs from .ioc ..."
    unknown，但"**编号**"仍是 —— 它只能从 datasheet 来。`unknown` 清单要写
    "AF 编号"，不是整条删掉。
 
-### 18.7 实测（真实项目 `复刻-示例` + `F103-GPS.ioc`）
+### 18.7 实测（真实项目 `复刻-示例-单板` + `F103-GPS.ioc`）
 
 ```
 clock：SYSCLK 64 MHz / HCLK 64 MHz / APB1 32 MHz（源 PLL）
@@ -947,7 +947,7 @@ P~show~0~30~315~185~180~gge41~0^^…^^1~328.7~189~0~USART1_TX…^^1~324.5~184~0~
 **方向只判软**：网名可能站在对方视角（`RX` 是 MCU 的 RX 还是模块的 RX？），
 硬判会误伤。协议族与电源/地不会歧义，才判硬。
 
-### 19.5 实测（真实项目 `复刻-示例` + `F103-GPS.ioc`）
+### 19.5 实测（真实项目 `复刻-示例-单板` + `F103-GPS.ioc`）
 
 ```
 引脚表 stm32f103c8t6（C8734，LQFP-48，catalog）
@@ -1050,7 +1050,7 @@ UART 的脚上"、以及"固件里 `GPIO_AF4_USART1` 写错"这两类错，都�
 ### 20.5 实测
 
 ```
-F103（复刻-示例 + F103-GPS.ioc）：19 个 `.ioc` 功能全部查得到
+F103（复刻-示例-单板 + F103-GPS.ioc）：19 个 `.ioc` 功能全部查得到
   by_status: ok 11 / exti 2 / gpio 6；style=F1_REMAP；冲突 0
 F401：PA9 → USART1_TX = AF7（与 CubeMX 生成的 `GPIO_AF7_USART1` 一致）
 H743：41 条 CubeMX 生成的 AF 证据全部与表一致
@@ -1106,7 +1106,7 @@ bodyBBox 8.09×8.58（含丝印/引脚，**不是本体**）
 判据。拿 `full` 当本体会把 LQFP48 记成 10×10、把 0603 记成 2.9×1.5。
 
 写回纪律：只覆盖空 / `estimated` / `proposed` / `catalog`；`datasheet` /
-`measured` **一个字节不动**（实测 `复刻-示例` 28 颗全是 datasheet，
+`measured` **一个字节不动**（实测 `复刻-示例-单板` 28 颗全是 datasheet，
 `--apply` 结果 applied=0 / skipped=27 —— 这是对的）。
 
 **两个实测坑**：
@@ -1150,7 +1150,7 @@ bodyBBox 8.09×8.58（含丝印/引脚，**不是本体**）
 `false`，而原理图里刻意保留的悬空脚（`CHECKFLOATPIN`）就是 warn。所以本模块
 用详细模式、自己按 `type` 过滤：`error` 才判 `failed`，`warn` 单列不挡门。
 
-实测 `复刻-示例`：3 页 / 0 error / 0 fatal / **31 warn**；`audit` 的
+实测 `复刻-示例-单板`：3 页 / 0 error / 0 fatal / **31 warn**；`audit` 的
 schematic 段现在会带上 `sch_drc.counts`（没跑就写 "missing"，不假判）。
 
 ### 21.4 拼板（`lceda-panel`）—— 只到容器

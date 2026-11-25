@@ -43,7 +43,8 @@ from dsh_embagent.design.model import (Board, DesignModel, Part,   # noqa: E402
                                     Placement)
 
 #: 用户工作区（.ioc 与固件都在这里）。
-WORKSPACE = Path(r"C:\Users\<user>\Desktop\示例工作区")
+from dsh_embagent.scripts._probe import path as probe_path  # noqa: E402
+WORKSPACE = probe_path("DSH_EMBAGENT_PROBE_WORKSPACE")
 
 
 class Failures:
@@ -346,12 +347,14 @@ def check_real_project(f: Failures) -> None:
         return
     from dsh_embagent.design.store import DesignStore, list_projects
 
-    if not any(p.get("id") == "示例-多板" and p.get("has_design")
-               for p in list_projects()):
-        print("  skip 找不到 示例-多板")
+    want = project_id()
+    if not want or not any(p.get("id") == want and p.get("has_design")
+                           for p in list_projects()):
+        print("  skip 没有指定真实工程（DSH_EMBAGENT_PROBE_PROJECT_NAME）"
+              " —— 这一节没跑，不是通过")
         return
 
-    design = DesignStore("示例-多板").load()
+    design = DesignStore(want).load()
     report = renode.build_resc(design, ioc_root=WORKSPACE)
     f.check("8 块板都建了机台",
             len(report["machines"]) == 8, str(len(report["machines"])))

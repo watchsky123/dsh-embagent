@@ -61,9 +61,9 @@ IOC_GOOD = REPO / "tests" / "fixtures" / "ioc" / "p55-usart.ioc"
 
 #: 真实项目（可选）：EasyEDA 网表 与 CubeMX `.ioc` 来自**两个独立来源**，
 #: 它们在这张表上对得上，才说明表是对的。
-REAL_DESIGN = Path(r"C:\Users\<user>\Desktop\示例复现区\复刻-示例\design.json")
-REAL_IOC = Path(
-    r"C:\Users\<user>\Desktop\示例工作区\F103-GPS-master\F103-GPS.ioc")
+from dsh_embagent.scripts._probe import path as probe_path  # noqa: E402
+REAL_DESIGN = probe_path("DSH_EMBAGENT_PROBE_DESIGN")
+REAL_IOC = probe_path("DSH_EMBAGENT_PROBE_IOC")
 
 _failures: list[str] = []
 _checks = 0

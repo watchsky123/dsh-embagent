@@ -2,8 +2,8 @@
 
 > **状态：架构综合方案，未执行。** 整合三方实测事实：
 >
-> 1. `C:\Users\<user>\Desktop\RoboBuilder-main`（MIT，540 文件，47MB）
-> 2. `workspace\vendor\traceforge`（MIT，v1.0.1）
+> 1. `<桌面>\RoboBuilder-main`（MIT，540 文件，47MB）
+> 2. `<仓库根>\vendor\traceforge`（MIT，v1.0.1）
 > 3. 立创EDA专业版 4.1.97 的 CLI（本机实测可跑，沙箱不拦）
 >
 > 取代 `architecture-v2-lceda.md` 中与本文冲突的部分（§7 列明）。

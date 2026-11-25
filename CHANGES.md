@@ -137,8 +137,8 @@ npm run check → 0 错；build OK；check_tools OK
 ### 环境（不污染全局）
 
 ```bash
-python -m pip install --target workspace\vendor\pylib \
-  workspace\mujoco-3.12.0-cp311-cp311-win_amd64.whl
+python -m pip install --target <仓库根>\vendor\pylib \
+  <仓库根>\mujoco-3.12.0-cp311-cp311-win_amd64.whl
 # 装上：mujoco 3.12.0 + numpy 2.4.6 + glfw/pyopengl/absl-py/etils/fsspec/zipp
 # 当前解释器 Python 3.11.15，wheel 是 cp311 → 匹配
 ```
@@ -2836,7 +2836,7 @@ handoff    deliverable=False（final: route=ok, pour=ok, verify=not_ready）
 
 - `scripts/check_p48.py`（**20 条**，含 3 条退化）
 - `docs/plan-v6.md`（spec/compare 的方案，本次未做）
-- 工作区 `C:\Users\<user>\Desktop\示例复现区`：`spec.md`（读原工程手写的规格）+ `比对.md`（手工比对）
+- 工作区 `<复现区>`：`spec.md`（读原工程手写的规格）+ `比对.md`（手工比对）
 
 ### 顺带修
 
@@ -2910,7 +2910,7 @@ check_p49  27/27      npm test 760      tsc 干净      check_tools 54
 ## P49b — 多板干涉误报修复 + 类似项目的可行性实测（2026-11-22）
 
 > 起因：用户要求"做一个类似示例-单板的项目，生成信息文件，并检查是否都能实现"。
-> 我造了 3 板 28 件的 `复刻-示例`，跑完整链，撞出一个真 bug。
+> 我造了 3 板 28 件的 `复刻-示例-单板`，跑完整链，撞出一个真 bug。
 
 ### 修：`mech` 的干涉判据没按板分组
 
@@ -2919,7 +2919,7 @@ check_p49  27/27      npm test 760      tsc 干净      check_tools 54
 修法：按 `board_id` 分组后再两两比；修后 fail **7 → 0**。
 `check_p44` 增 1d/1e（跨板 pass / 同板同坐标必须 fail）。
 
-### 实测（`复刻-示例`：3 板 / 28 件 / 18 网，28/28 有 LCSC）
+### 实测（`复刻-示例-单板`：3 板 / 28 件 / 18 网，28/28 有 LCSC）
 
 ```
 plan v1     14 能力全 unknown（需求只给目标、无实测）· 31 模块 · 73 节点 · 436 边 · 28 任务
@@ -2962,7 +2962,7 @@ check_p44 18/18   npm test 760   27 个离线 check_* 全 exit=0
 | 外设分组 | 有 `.ioc` 按 `.ioc`；没有就按网名族**推断**（`source=inferred`）|
 | 时钟/中断/AF/时序 | 一律 `unknown`，各带 `need`（**不猜**，AF 表本仓库没录）|
 
-实测（`复刻-示例`）：48 脚 / 19 已连 / 29 未接 / 4 电源 / 4 地 / 2 外设组（uart、usb）。
+实测（`复刻-示例-单板`）：48 脚 / 19 已连 / 29 未接 / 4 电源 / 4 地 / 2 外设组（uart、usb）。
 
 ### `fw-algo` —— 纯 C 算法 + PC 侧单元测试
 
@@ -3014,7 +3014,7 @@ check_p50 14/14    npm test 760    28 个离线 check_* 全 exit=0    check_tool
 ### 装了什么
 
 ```
-workspace\dsh_embagent\_tools\arm-gcc\13.3.rel1\     1.2 GB
+<仓库根>\dsh_embagent\_tools\arm-gcc\13.3.rel1\     1.2 GB
 Arm GNU Toolchain 13.3.Rel1 (build arm-13.24)
 ```
 
@@ -3091,7 +3091,7 @@ S5 任务    fsm → impl → wp → V
 S6 遥测    frame → impl → rate → V
 ```
 
-### 实测（复刻-示例）
+### 实测（复刻-示例-单板）
 
 ```
 任务 28 → 50      软件任务 12 → 34（5.7 条/能力）    硬件 16 条（2 条/能力）
@@ -3135,7 +3135,7 @@ fw-build <工程> → fw/build/{startup.c, link.ld, main.c, Makefile}
                  → firmware.elf（9548 B）+ firmware.bin（172 B）
 ```
 
-### 实测（复刻-示例，STM32F103C8T6）
+### 实测（复刻-示例-单板，STM32F103C8T6）
 
 ```
 status: ok
@@ -3240,7 +3240,7 @@ check_p53 18/18    npm test 760    tsc 干净    check_tools 58
 
 ### 顺带
 
-- 删掉了我第一次跑 `params` 时误写进工作区的 `复刻-示例/`（§4.4 夹具不进用户区）
+- 删掉了我第一次跑 `params` 时误写进工作区的 `复刻-示例-单板/`（§4.4 夹具不进用户区）
 - AGENTS 压到 63.5 KB（预算 65 KB / 有效 65.2 KB），细节全进 runbook §13–§16
 
 
@@ -3277,7 +3277,7 @@ P52 的骨架里引脚是**两套来源**：`main.c` 的 TODO 注释 vs `interfa
 `build()` 跑三条负例，**每条都期望编译失败**；任一条编过 → 整体 `failed`
 （闸门写了没挂上 = §0.1 的假绿）。
 
-实测（`复刻-示例`，真工具链）：
+实测（`复刻-示例-单板`，真工具链）：
 
 ```
 骨架：Machine=ARM  Entry=0x8000045  text 168 B
@@ -3370,7 +3370,7 @@ P50 的 `interface.json` 把时钟/中断/复用功能/时序**四类一律记 `
 
 ```
 7 个真实 .ioc：引脚 208 / 用户外设 67 / 用户中断 56，全部能读
-真实项目 复刻-示例 + F103-GPS.ioc：
+真实项目 复刻-示例-单板 + F103-GPS.ioc：
   clock 64 MHz、APB1 32 MHz、用户中断 3（DMA1_Channel4/EXTI4/USART1）
   提示 SPI2 配了但网表无 spi 网；网表有 USB 但 .ioc 没配
   fw-build：Machine=ARM、text 168 B、负例 5/5 编不过
@@ -3431,7 +3431,7 @@ P55 把 `.ioc` 的配置读进了契约，但只能**按名字对**：`.ioc` 说
 交叉核对：4 张表的非 GPIO 脚名与 fwgen.mcus 的 power_pins **前缀覆盖**
   （写法差异显式列 allowlist：VDDAVREF+/PDR/VCAP/VREF+）
 拒绝：STM32F405RGT6 的符号只有 55/64 脚 → 不建表
-端到端（复刻-示例 + F103-GPS.ioc）：19 脚全部落位，冲突 0
+端到端（复刻-示例-单板 + F103-GPS.ioc）：19 脚全部落位，冲突 0
   PA9↔30 UART_TX / PA10↔31 UART_RX / PD0↔5 OSC_IN / PD1↔6 OSC_OUT / PA8↔29 GPS_EN
   配了但没接：PA2/PA3/PB13/PB14/PB15（USART2/SPI2）→ 5 条软提示
 退化：表里 26↔30 对调 → 真实项目 failed（PB13 配成 SPI2_SCK，脚 30 是 UART_TX）
@@ -3496,7 +3496,7 @@ P56 让 `PA9` 对上了 `30`，但"`PA9` 能不能做 `USART1_TX`、AF 几号"�
 4 张表：48 / 48 / 64 / 176 脚；AF 条数 0 / 0 / 141 / 964
 两个厂商源逐脚一致：ST Position == P56 引脚表的封装脚号（4 张表全等）
 固件证据：F401 9 条、H743 41 条 GPIO_AF* 全部与表一致
-真实项目（复刻-示例 + F103-GPS.ioc）：
+真实项目（复刻-示例-单板 + F103-GPS.ioc）：
   19 个功能：ok 11 / exti 2 / gpio 6；style=F1_REMAP；冲突 0
   F103 的 PB6=USART1_TX 只在 USART1_REMAP1 下成立（default=false）
 F401 夹具：PA9→AF7；负例 6/6 全部编不过
@@ -3543,7 +3543,7 @@ npm test / npm run check / build / check_tools
 | `docs/runbook.md` | 新增 §21 |
 | `AGENTS.md` | 指针表加 §21；压缩 §17–§20 保持 65 KB 内 |
 
-### 实测（`复刻-示例`，4.1.97.04b092ac）
+### 实测（`复刻-示例-单板`，4.1.97.04b092ac）
 
 ```
 lceda-geom：28 个位号 / 19 个 LCSC → 27 拿到几何，1 个 no_footprint 写明原因
@@ -4238,8 +4238,8 @@ npm test                                     # 774 项
 
 | 位置 | 改动 |
 |---|---|
-| `workspace/hw_velxio` → `workspace/dsh_embagent` | 目录改名（Python 包名 = 目录名） |
-| `~/.dsh/profiles/desktop/package.json` | `dependencies` 换成 `dsh-embagent: file:workspace/dsh_embagent`；`dsh.profile.bundles` 里 `dsh-hw-velxio` → `dsh-embagent`；旧条目的备份在 `package.json.bak-rename-*` |
+| `<仓库根>/hw_velxio` → `<仓库根>/dsh_embagent` | 目录改名（Python 包名 = 目录名） |
+| `~/.dsh/profiles/desktop/package.json` | `dependencies` 换成 `dsh-embagent: file:<仓库根>/dsh_embagent`；`dsh.profile.bundles` 里 `dsh-hw-velxio` → `dsh-embagent`；旧条目的备份在 `package.json.bak-rename-*` |
 | profile `pnpm install` | 生成 `node_modules/dsh-embagent`；旧指向已删目录的悬空链接已移除 |
 | `__pycache__` | 全仓清掉（旧模块名的 `.pyc` 会让 `python -m` 走错） |
 
@@ -4247,7 +4247,7 @@ npm test                                     # 774 项
 
 ```
 npm test                                       776 OK（新模块名下，含 2 项 schema 兼容）
-plugin_manager list_bundles                    出现 dsh-embagent（source=file:workspace/dsh_embagent，
+plugin_manager list_bundles                    出现 dsh-embagent（source=file:<仓库根>/dsh_embagent，
                                                row=embagent）；`meta.title` 要**重启后**才下发
 npm run check                                  通过（tsc build + client）
 python -m dsh_embagent.scripts.check_bodies    42/42

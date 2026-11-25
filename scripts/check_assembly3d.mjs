@@ -60,8 +60,8 @@ function cli(args) {
     encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
   }).trim()
 }
-const EPRO2 = 'C:/Users/<user>/Desktop/示例工作区/'
-  + 'ProPrj_示例四旋翼飞行器_2026-11-15.epro2'
+const EPRO2 = process.env.DSH_EMBAGENT_PROBE_EPRO2
+  ?? '/nonexistent/dsh-embagent-probe/probe.epro2'
 if (existsSync(EPRO2)) {
   cli(['import', 'probe3d', EPRO2])
 } else {

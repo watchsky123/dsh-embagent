@@ -5,7 +5,7 @@
 `emit` 的第 5 段只导 3 样：Gerber(zip) / BOM(xlsx) / 坐标(xlsx)。立创的
 `pcb_ManufactureData` 还有一大排 `get*File`，实测可用的：
 
-| kind | 调用 | 实测大小（`复刻-示例`）| 头 |
+| kind | 调用 | 实测大小（`复刻-示例-单板`）| 头 |
 |---|---|---|---|
 | `step` | `get3DFile(name, 'step')` | 14.1 MB | `ISO-10303-21` |
 | `dxf` | `getDxfFile(name)` | 1.18 MB | DXF 文本 |

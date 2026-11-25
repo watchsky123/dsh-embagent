@@ -223,7 +223,7 @@ def part_degeneration() -> None:
 
 
 def part_real() -> None:
-    workspace = Path(r"C:\Users\<user>\Desktop\示例工作区")
+    workspace = probe_path("DSH_EMBAGENT_PROBE_WORKSPACE")
     if not (workspace / "config_20261021_102258.param").is_file():
         print(_safe("[skip] 4b. 真实工作区不在（不假装跑过）"))
         return

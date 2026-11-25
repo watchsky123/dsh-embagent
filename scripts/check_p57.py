@@ -55,10 +55,10 @@ PROJECT = "p57-fixture"
 REPO = Path(__file__).resolve().parents[1]
 IOC_F103 = REPO / "tests" / "fixtures" / "ioc" / "p55-usart.ioc"
 
-REAL_DESIGN = Path(r"C:\Users\<user>\Desktop\示例复现区\复刻-示例\design.json")
-REAL_IOC = Path(
-    r"C:\Users\<user>\Desktop\示例工作区\F103-GPS-master\F103-GPS.ioc")
-FIRMWARE_ROOT = Path(r"C:\Users\<user>\Desktop\示例工作区")
+from dsh_embagent.scripts._probe import path as probe_path  # noqa: E402
+REAL_DESIGN = probe_path("DSH_EMBAGENT_PROBE_DESIGN")
+REAL_IOC = probe_path("DSH_EMBAGENT_PROBE_IOC")
+FIRMWARE_ROOT = probe_path("DSH_EMBAGENT_PROBE_FIRMWARE")
 F401_IOC = FIRMWARE_ROOT / "F401-Bottom-master" / "F401-Bottom.ioc"
 H743_IOC = FIRMWARE_ROOT / "H743PilotX-master" / "H743PilotX.ioc"
 
@@ -356,6 +356,10 @@ def _f401_design() -> DesignModel:
 def part_build() -> None:
     if not (shutil.which("arm-none-eabi-gcc") or fw_build._find_toolchain()):
         print(_safe("[skip] 4. 没有 arm-none-eabi-gcc（不假装跑过）"))
+        return
+    if not F401_IOC.is_file():
+        print(_safe("[skip] 4. 没有 .ioc 探针（DSH_EMBAGENT_PROBE_IOC）"
+                    "—— 这一节**没跑**，不是通过；4a-4d 需要真实 AF 表"))
         return
     store = DesignStore(PROJECT)
     try:

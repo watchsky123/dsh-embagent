@@ -14,7 +14,8 @@ import json
 import sys
 from pathlib import Path
 
-SRC = Path(r"C:\Users\<user>\Desktop\RoboBuilder-main\robobuilder\sim\params\initial.json")
+from dsh_embagent.scripts._probe import path as probe_path  # noqa: E402
+SRC = probe_path("DSH_EMBAGENT_PROBE_SIM_PARAMS")
 OUT = Path(__file__).resolve().parent.parent / "design" / "sim_params_default.json"
 
 #: 参数 → (物理域, 单位, 一句话物理含义, 是否通用)

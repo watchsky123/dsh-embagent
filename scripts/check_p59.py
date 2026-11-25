@@ -36,7 +36,8 @@ from dsh_embagent.design import lceda_fab as fab_module  # noqa: E402
 from dsh_embagent.design import lceda_panel as panel_module  # noqa: E402
 from dsh_embagent.design import lceda_sch as sch_module  # noqa: E402
 
-REAL_PROJECT = Path(r"C:\Users\<user>\Desktop\示例复现区\复刻-示例")
+from dsh_embagent.scripts._probe import path as probe_path  # noqa: E402
+REAL_PROJECT = probe_path("DSH_EMBAGENT_PROBE_PROJECT")
 
 _failures: list[str] = []
 _checks = 0

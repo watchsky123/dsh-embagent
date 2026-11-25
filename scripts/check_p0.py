@@ -32,6 +32,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from dsh_embagent.scripts._probe import project_id  # noqa: E402
 from dsh_embagent.design import handoff, verdict  # noqa: E402
 from dsh_embagent.design.store import DesignStore  # noqa: E402
 
@@ -99,14 +100,19 @@ def check_empty(tmp: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _real_id() -> str:
+    """真实工程 id；没设环境变量时返回空串（那些检查会 SKIP）。"""
+    return project_id()
+
+
 def _real() -> dict[str, Any]:
-    return verdict.compose(DesignStore("示例-多板"))
+    return verdict.compose(DesignStore(_real_id()))
 
 
 def check_real() -> None:
     payload = _real()
     levels = payload.get("levels") or []
-    artifact = (DesignStore("示例-多板").read("ladder.json") or {}).get("levels") or []
+    artifact = (DesignStore(_real_id()).read("ladder.json") or {}).get("levels") or []
     want = [str(row.get("level")) for row in artifact]
     want.sort(key=lambda name: verdict.LEVEL_ORDER.index(name)
               if name in verdict.LEVEL_ORDER else 99)
@@ -155,7 +161,7 @@ def check_order() -> None:
 
 
 def check_no_judgement() -> None:
-    store = DesignStore("示例-多板")
+    store = DesignStore(_real_id())
     payload = verdict.compose(store)
     reference = handoff.build(store).to_dict()
     check("4a. 六类计数与 handoff 逐类一致（**只投影、不重判**）",
@@ -265,6 +271,10 @@ def check_contract() -> None:
 
 
 def check_degradation() -> None:
+    if not _real_id():
+        check("5. 退化验证（真实工程上）", False,
+              "没有指定真实工程", status=SKIP)
+        return
     saved = dict(verdict.CATEGORY_RANK)
     payload = _real()
     normal = [str(r.get("category")) for r in (payload.get("next") or [])]
@@ -275,7 +285,7 @@ def check_degradation() -> None:
         verdict.CATEGORY_RANK.update({name: 99 - rank
                                      for name, rank in saved.items()})
         degraded = [str(r.get("category")) for r in
-                    (verdict.compose(DesignStore("示例-多板")).get("next") or [])]
+                    (verdict.compose(DesignStore(_real_id())).get("next") or [])]
     finally:
         verdict.CATEGORY_RANK.clear()
         verdict.CATEGORY_RANK.update(saved)
@@ -307,11 +317,24 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if only in ("", "empty"):
             check_empty(tmp)
+        # 这几节要读**真实工程的产物**（ladder.json / handoff）。没有真实工程
+        # 时必须整节跳过：`DesignStore("")` 会抛 ValueError，看起来像"结论层坏了"。
+        real_available = bool(_real_id())
         if only in ("", "real"):
-            check_real()
-            check_order()
+            if real_available:
+                check_real()
+                check_order()
+            else:
+                for name in ("2a. 真工程：层名与顺序", "2b. 真工程：六类计数",
+                             "3. 排序稳定"):
+                    check(name, False, "没有指定真实工程"
+                          "（DSH_EMBAGENT_PROBE_PROJECT_NAME）", status=SKIP)
         if only in ("", "nojudge"):
-            check_no_judgement()
+            if real_available:
+                check_no_judgement()
+            else:
+                for name in ("4a. 六类计数与 handoff 一致", "4b. 连跑两次结果一样"):
+                    check(name, False, "没有指定真实工程", status=SKIP)
         if only in ("", "stale"):
             check_stale(tmp)
         if only in ("", "contract"):

@@ -116,7 +116,7 @@ const services = {
     binding: () => ({
       session: {
         prompt: () => {},
-        projections: { faceOf: () => ({ getSnapshot: () => 'workspace' }) },
+        projections: { faceOf: () => ({ getSnapshot: () => '/workspace/probe' }) },
         ui: { directoryPicker: undefined },
       },
     }),
@@ -161,7 +161,7 @@ const bootstrapPayload = {
     nets: snapshot.design?.nets?.length ?? 0,
     artifacts: {},
   }],
-  workspace: 'workspace',
+  workspace: '/workspace/probe',
 }
 const noop = async () => ({ status: 'ok' })
 const face = {
@@ -175,7 +175,7 @@ const face = {
   hint: async () => ({ status: 'ok', findings: [] }),
   survey: noop, initialReview: noop,
   workspace: async () => ({
-    status: 'ok', workspace: 'workspace', exists: true,
+    status: 'ok', workspace: '/workspace/probe', exists: true,
     writable: true, source: 'config', projects: [],
   }),
   setWorkspace: noop, createWorkspace: noop,

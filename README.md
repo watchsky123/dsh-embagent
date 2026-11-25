@@ -780,10 +780,10 @@ python -m unittest dsh_embagent.tests.test_design -v
 安装走的是宿主自己的通道，不是手改运行中的组合树：
 
 1. `~/.dsh/profiles/desktop/package.json`：`dependencies` 加
-   `dsh-embagent: file:workspace/dsh_embagent`，`dsh.profile.bundles` 追加同名
+   `dsh-embagent: file:<仓库根>/dsh_embagent`，`dsh.profile.bundles` 追加同名
    条目（原文件备份为 `package.json.bak-embagent-*`）；
 2. profile 目录下用运行时自带的 pnpm 安装（产物在 profile 的
-   `node_modules/dsh-embagent/` 下，**`workspace/dsh_embagent` 源码原样保留**）；
+   `node_modules/dsh-embagent/` 下，**`<仓库根>/dsh_embagent` 源码原样保留**）；
 3. `plugin_manager set_bundle dsh-embagent` 启用——一次失败暴露了真实契约：
    运行中的宿主是 **0.2.2-rc.1** 代次，而依赖树里装的 rc.6 `dsh-tools` 导入了
    rc.6 自己的 `dsh-llm`；宿主解析一侧到 app 的 0.2.2 `dsh-llm`，`CallId`
@@ -917,7 +917,7 @@ dsh_embagent/
 `~/.dsh/hw_velxio.json`（可选）：
 
 ```json
-{ "hwforge_root": "workspace/hwforge", "velxio_url": "http://127.0.0.1:3080" }
+{ "hwforge_root": "<仓库根>/hwforge", "velxio_url": "http://127.0.0.1:3080" }
 ```
 
 环境变量：`HWFORGE_ROOT`、`DSH_EMBAGENT_ROOT`（仓库根）、`DSH_EMBAGENT_PYTHON`
@@ -925,5 +925,8 @@ dsh_embagent/
 
 ## 许可
 
-本插件 MIT。依赖的 Velxio 是 **AGPLv3 + 商业双许可**；hwforge 目前**没有
-LICENSE 文件**——两者都影响分发方式，详见 dsh-embagent-docs:方案-v3.md §7。
+本插件 **MIT**（见 [LICENSE](LICENSE)）。
+
+它**不捆绑**第三方组件：Velxio（AGPLv3 + 商业双许可）、hwforge（无 LICENSE）、
+立创 EDA（商业软件）都只在运行时可选择地通过进程 / HTTP 调用，需自行安装。
+**MIT 不覆盖它们**，各自的分发条款见 [NOTICE](NOTICE)。

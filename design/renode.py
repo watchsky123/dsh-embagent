@@ -192,7 +192,9 @@ def _find_executable() -> tuple[Path | None, str]:
         return None, f"HWV_RENODE={env!r} 指向的文件不存在"
 
     roots = [
-        Path("workspace/renode_1.17.0-portable"),
+        # 便携包放在哪由使用者决定：默认是"仓库同级"的那个目录名。
+        Path(os.environ.get("DSH_EMBAGENT_RENODE_DIR",
+                            "renode_1.17.0-portable")),
         Path("C:/Program Files/Renode"),
         Path("C:/Program Files (x86)/Renode"),
         Path.home() / "Renode",

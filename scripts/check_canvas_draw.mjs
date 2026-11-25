@@ -64,9 +64,11 @@ function cli(args) {
 
 // 用**用户工作区里的真实工程**（若存在），否则退回立创源文件/样例。
 // 这样检查覆盖的就是用户实际打开的那份数据。
-const WORKSPACE = 'C:/Users/<user>/Desktop/示例工作区'
-const REAL_PROJECT = '示例-无人机'
-const EPRO2 = WORKSPACE + '/ProPrj_示例四旋翼飞行器_2026-11-15.epro2'
+const WORKSPACE = process.env.DSH_EMBAGENT_PROBE_WORKSPACE
+  ?? '/nonexistent/dsh-embagent-probe/workspace'
+const REAL_PROJECT = process.env.DSH_EMBAGENT_PROBE_PROJECT_NAME ?? 'example-project'
+const EPRO2 = process.env.DSH_EMBAGENT_PROBE_EPRO2
+  ?? '/nonexistent/dsh-embagent-probe/probe.epro2'
 let sourceLabel = ''
 // 优先用**多板**工程（如果有），这样检查也覆盖拼板渲染。
 const MULTI_PROJECT = 'r3demo'

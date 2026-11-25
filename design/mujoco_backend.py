@@ -2,7 +2,7 @@
 
 ## 环境隔离（本项目的要求）
 
-`mujoco` **不装在全局 Python 里**，装在 `workspace\vendor\pylib`。
+`mujoco` **不装在全局 Python 里**：仓库同级的 `vendor/pylib` 就是为此准备的。
 所以这个模块在 import 前先把它加进 `sys.path`，且**只在需要时加载**
 （`_import_mujoco()`），这样：
 

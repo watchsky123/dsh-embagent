@@ -41,8 +41,9 @@ from dsh_embagent.design.model import (  # noqa: E402
 )
 from dsh_embagent.design.store import DesignStore  # noqa: E402
 
+from dsh_embagent.scripts._probe import path as probe_path  # noqa: E402
 PROJECT = "p58-fixture"
-REAL_DESIGN = Path(r"C:\Users\<user>\Desktop\示例复现区\复刻-示例\design.json")
+REAL_DESIGN = probe_path("DSH_EMBAGENT_PROBE_DESIGN")
 
 _failures: list[str] = []
 _checks = 0

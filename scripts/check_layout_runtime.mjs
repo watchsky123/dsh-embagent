@@ -77,7 +77,7 @@ const services = {
       session: {
         prompt: () => {},
         // DSH 当前工作目录投影（chat 包同款路径）
-        projections: { faceOf: () => ({ getSnapshot: () => 'workspace' }) },
+        projections: { faceOf: () => ({ getSnapshot: () => '/workspace/probe' }) },
       },
     }),
   },
@@ -88,7 +88,7 @@ const services = {
   uiWorkspace: {
     pickDirectory: async () => {
       pickerCalls.push({ via: 'uiWorkspace' })
-      return 'workspace/hw-created-ws'
+      return '/workspace/probe/hw-created-ws'
     },
   },
   uiConversation: { views: { register: (d) => { registrations.views.push(d); return () => {} } } },
@@ -272,7 +272,7 @@ const fakeBootstrap = (projectId) => ({
     title: '冒烟', board: 'arduino-uno', board_name: 'Arduino Uno', parts: 2, nets: 1 }],
   hwforge: { root: 'D:/x', available: true, capabilities: 14 },
   velxio: { url: 'http://127.0.0.1:3080', reachable: false },
-  python: { executable: 'python', root: 'workspace' },
+  python: { executable: 'python', root: '/workspace/probe' },
 })
 
 /**
@@ -292,7 +292,7 @@ const face = {
   hint: async () => ({ status: 'ok', seq: 0, at: 0 }),
   // 工作区三件套：真宿主由 design_cli 提供，这里给固定的可信答案。
   workspace: async () => ({
-    status: 'ok', workspace: 'workspace/hw-ws', exists: true,
+    status: 'ok', workspace: '/workspace/probe/hw-ws', exists: true,
     writable: true, source: 'config', default: 'C:/Users/x/.dsh/hw_velxio/workspace',
     config_path: 'C:/Users/x/.dsh/hw_velxio.json',
   }),
@@ -440,7 +440,7 @@ if (htmlSplit === null) {
       pickerCalls.length === 1 && pickerCalls[0]?.via === 'uiWorkspace',
       JSON.stringify(pickerCalls))
     check('pickDirectory 返回选中的绝对路径',
-      picked === 'workspace/hw-created-ws', String(picked))
+      picked === '/workspace/probe/hw-created-ws', String(picked))
 
     // ①b 桌面壳优先：Electron 窗口里 preload 的 __DSH_DIRECTORY_PICKER__
     //     直达主进程原生对话框，必须盖过 RPC 路径（宿主自己的 native 客户端
@@ -466,8 +466,8 @@ if (htmlSplit === null) {
       seamError.includes('__DSH_DIRECTORY_PICKER__') && seamError.includes('uiWorkspace'),
       seamError)
 
-    // ② cwd 注入：会话投影里的 workspace 应到达 store。
-    check('DSH 当前工作目录注入到 store', store.getSnapshot().dshCwd === 'workspace',
+    // ② cwd 注入：会话投影里的 /workspace/probe 应到达 store。
+    check('DSH 当前工作目录注入到 store', store.getSnapshot().dshCwd === '/workspace/probe',
       String(store.getSnapshot().dshCwd))
 
     // ③ 空态渲染：**真的没有工程**（工程列表为空）。
@@ -501,8 +501,8 @@ if (htmlSplit === null) {
     // 补充说明，不是第二处的重复显示）。
     const visible = emptyHtml.replace(/title="[^"]*"/g, '')
     check('工作区路径只出现一次（空态不复述）',
-      (visible.match(/D:\/think-play\/hw-ws/g) ?? []).length === 1,
-      `出现 ${(visible.match(/D:\/think-play\/hw-ws/g) ?? []).length} 次`)
+      (visible.match(/\/workspace\/probe\/hw-ws/g) ?? []).length === 1,
+      `出现 ${(visible.match(/\/workspace\/probe\/hw-ws/g) ?? []).length} 次`)
 
     // ④ 展开后：设置块出现，且入口只有一个（工具栏那个按钮）。
     store.setWorkspaceOpen(true)

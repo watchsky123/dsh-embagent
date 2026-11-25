@@ -388,12 +388,15 @@ export function Circuit2D(props: Circuit2DProps): JSX.Element {
         <span><i className="src-estimated" />估算</span>
         <span><i className="wire-copper" />铜线（已布线）</span>
         <span><i className="wire-ratline" />飞线（未布线）</span>
-        {projection.enclosure !== null && (
+        {/* `!= null` 同时挡 undefined：老载荷/测试夹具可能整个键都不在，
+            写成 `!== null` 会把 undefined 放过去，然后在读字段时崩掉整块画布。 */}
+        {projection.enclosure != null && (
           <span><i className="body-shell" />外壳（虚线）</span>
         )}
-        {projection.enclosure !== null && projection.enclosure.side_openings > 0 && (
+        {projection.enclosure != null
+          && (projection.enclosure.side_openings ?? 0) > 0 && (
           <span className="hwv-dim">
-            侧面 {projection.enclosure.side_openings} 处开口（见 3D）
+            侧面 {projection.enclosure.side_openings ?? 0} 处开口（见 3D）
           </span>
         )}
         <span className="hwv-dim">
@@ -655,7 +658,7 @@ function drawEnclosure(ctx: CanvasRenderingContext2D,
   ctx.globalAlpha = 0.55
   ctx.strokeStyle = palette.warnStroke
   ctx.lineWidth = Math.max(0.6, 0.8 / view.scale)
-  for (const opening of enc.openings) {
+  for (const opening of enc.openings ?? []) {
     ctx.fillRect(opening.x_px, opening.y_px, opening.w_px, opening.h_px)
     ctx.strokeRect(opening.x_px, opening.y_px, opening.w_px, opening.h_px)
   }

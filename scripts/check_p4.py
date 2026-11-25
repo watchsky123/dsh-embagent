@@ -41,10 +41,11 @@ FAIL = "fail"
 SKIP = "not_ready"
 
 _RESULTS: list[dict[str, Any]] = []
+from dsh_embagent.scripts._probe import path as probe_path  # noqa: E402
 REPO = Path(__file__).resolve().parents[2]
 PKG = REPO / "dsh_embagent"
 WORKSPACE = Path(os.environ.get(
-    "HWV_WORKSPACE", r"C:\Users\<user>\Desktop\示例工作区"))
+    "HWV_WORKSPACE", str(probe_path("DSH_EMBAGENT_PROBE_WORKSPACE"))))
 IOC = WORKSPACE / "F401-Front-master" / "F401-Front.ioc"
 
 
@@ -247,9 +248,19 @@ def check_contract() -> None:
         snapshot = {}
     fw = snapshot.get("firmware")
     # 「扫了 0 个文件」不能和「扫到了但没有引脚用法」长得一样（AGENTS §0.2）
+    #
+    # 探针 .ioc 没设时用**仓库自带夹具**（`tests/fixtures/ioc/p55-usart.ioc`）
+    # 造一个最小 src 目录：这里验的是"报告里有 scanned 这个计数"，
+    # 与使用者自己的工程无关——所以不该因为没探针就跳过这条断言。
+    ioc_use = IOC if IOC.is_file() else (
+        REPO / "dsh_embagent" / "tests" / "fixtures" / "ioc" / "p55-usart.ioc")
+    src_dir = ioc_use.parent / "App"
+    if not src_dir.is_dir():
+        src_dir = Path(tempfile.mkdtemp(prefix="p4-src-"))
+        (src_dir / "probe.c").write_text("/* probe */\n", encoding="utf-8")
     code_f, out_f = _run([
         sys.executable, "-m", "dsh_embagent.design_cli", "fw-matrix", "001-blink",
-        f"--ioc={IOC}", f"--src={IOC.parent / 'App'}"])
+        f"--ioc={ioc_use}", f"--src={src_dir}"])
     try:
         scanned = json.loads(out_f.strip().splitlines()[-1])
     except (ValueError, IndexError):

@@ -35,6 +35,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from dsh_embagent.scripts._probe import project_id  # noqa: E402
 from dsh_embagent.design import sensitivity, sim_params  # noqa: E402
 from dsh_embagent.design.store import DesignStore  # noqa: E402
 
@@ -210,17 +211,22 @@ def check_verdict_layer() -> None:
 
 
 def check_contract() -> None:
-    code, out = _run([sys.executable, "-m", "dsh_embagent.design_cli", "sensitivity",
-                      "示例-多板"])
+    want = project_id()
+    # 缺工程时**只把 5a 标 SKIP**，后面的契约检查（5b/5c/6a-6d）与
+    # 真实工程无关，必须继续跑——`return` 会把它们一起吞掉，
+    # 表现成"通过项变少"，那是覆盖率悄悄消失。
+    code, out = _run([sys.executable, "-m", "dsh_embagent.design_cli",
+                      "sensitivity", want or "nonexistent-project"])
     try:
         payload = json.loads(out.strip().splitlines()[-1])
     except (ValueError, IndexError):
         payload = {}
     check("5a. CLI `sensitivity <id>` 返回四类计数",
-          payload.get("status") == "ok"
+          bool(want) and payload.get("status") == "ok"
           and set(payload.get("counts") or {}) ==
           {"wired", "wired_noop", "unwired", "missing"},
-          f"exit={code} counts={payload.get('counts')}")
+          f"exit={code} counts={payload.get('counts')}",
+          status="" if want else SKIP)
 
     code2, out2 = _run([sys.executable, "-m", "dsh_embagent.design_cli", "snapshot",
                         "001-blink"])

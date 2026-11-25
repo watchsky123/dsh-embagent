@@ -65,7 +65,8 @@ IOC_C6 = FIXTURES / "p55-usart-c6.ioc"
 IOC_WRONG = FIXTURES / "p55-h743-wrong.ioc"
 
 #: 真实 `.ioc` 所在（可选）。**这 7 个文件是用户资产，只读不写。**
-REAL_ROOT = Path(r"C:\Users\<user>\Desktop\示例工作区")
+from dsh_embagent.scripts._probe import path as probe_path  # noqa: E402
+REAL_ROOT = probe_path("DSH_EMBAGENT_PROBE_WORKSPACE")
 
 #: 实测表：文件 → (引脚, 用户外设, 用户中断, SYSCLK, 封装)。
 #: 数字变了 = 解析器漏了/多了东西（**改过 .ioc 就改这里**）。

@@ -28,9 +28,8 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-EPRO2 = Path(
-    "C:/Users/<user>/Desktop/示例工作区/"
-    "ProPrj_示例四旋翼飞行器_2026-11-15.epro2")
+from dsh_embagent.scripts._probe import path as probe_path  # noqa: E402
+EPRO2 = probe_path("DSH_EMBAGENT_PROBE_EPRO2")
 
 
 class Failures:
@@ -75,6 +74,9 @@ def main() -> int:
                  workspace)
         payload = json.loads(_run(["snapshot", "scene-probe"], workspace))
         snapshot: dict[str, Any] = payload.get("snapshot") or payload
+        # 内置 blink 样例**没有双面元件、也没有焊盘**：这两条断言需要
+        # 真实立创工程才能验，缺数据时如实 SKIP（既不 fail 也不 pass）。
+        rich_source = EPRO2.is_file()
         scene = snapshot["scene3d"]
         board = scene["board"]
         parts = scene["parts"]
@@ -124,14 +126,20 @@ def main() -> int:
             bad = [p["ref"] for p in top_parts if p["bbox_mm"][2] < -0.001]
             failures.check("顶层元件的 z0 ≥ 0（贴板顶面向上）", not bad,
                            f"{len(bad)} 个在板面下方：{bad[:5]}")
-        failures.check("顶层与底层都有元件（双面板）",
-                       len(top_parts) > 0 and len(bottom_parts) > 0,
-                       f"顶层 {len(top_parts)} / 底层 {len(bottom_parts)}")
+        if rich_source:
+            failures.check("顶层与底层都有元件（双面板）",
+                           len(top_parts) > 0 and len(bottom_parts) > 0,
+                           f"顶层 {len(top_parts)} / 底层 {len(bottom_parts)}")
+        else:
+            print("  SKIP 顶层与底层都有元件（双面板）— 内置样例没有双面信息")
 
         # -- 4. 焊盘 ---------------------------------------------------------
         pads = [pad for part in parts for pad in (part.get("pads") or [])]
         print(f"  ..   焊盘 {len(pads)} 个")
-        failures.check("焊盘带几何", len(pads) > 0, "一个焊盘都没有")
+        if rich_source:
+            failures.check("焊盘带几何", len(pads) > 0, "一个焊盘都没有")
+        else:
+            print("  SKIP 焊盘带几何 — 内置样例没有焊盘")
         failures.check("焊盘尺寸为正",
                        all(pad["w_mm"] > 0 and pad["h_mm"] > 0 for pad in pads))
         failures.check("焊盘带形状",

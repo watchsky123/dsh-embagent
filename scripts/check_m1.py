@@ -35,6 +35,7 @@ P1 就是典型：真实工程的 V1 是 `unknown`（141 个元件都没申报�
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -48,8 +49,11 @@ from dsh_embagent.design.model import (Board, DesignModel, Part,  # noqa: E402
                                     Placement)
 from dsh_embagent.design.store import DesignStore, list_projects  # noqa: E402
 
-#: 用哪个工程做"在真实脏数据上不崩"的验证。
-REAL_PROJECT = "示例-单板"
+#: 用哪个工程做"在真实脏数据上不崩"的验证：
+#: **名字由环境变量给**（开源仓库里不写死使用者的工程名）；没给就用一个
+#: 必然不存在的名字，脚本据此走 `[skip]` 分支。
+REAL_PROJECT = os.environ.get("DSH_EMBAGENT_PROBE_PROJECT_NAME",
+                              "nonexistent-project")
 
 
 class Failures:
